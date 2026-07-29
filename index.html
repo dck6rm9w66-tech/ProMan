@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ProMan - Projektmanagement</title>
+    
+    <!-- Externe Bibliotheken -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Eigenes CSS -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- Gestaltungsschicht: überschreibt Themenvariablen, ergänzt die neue Wegführung -->
+    <link rel="stylesheet" href="werkstatt.css">
+</head>
+<body onclick="closeAllMultiSelects(event)">
+    <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (Upload ist jetzt im Theme-Editor) -->
+    <div id="logo_preview_container" style="display:none;"></div>
+    <span id="logo_fname" style="display:none;"></span>
+    <input type="file" id="set_company_logo" style="display:none;" accept="image/png,image/jpeg" onchange="handleLogoUpload(event);">
+
+    <!-- Sidebar (Desktop) -->
+    <div class="sidebar" id="app-sidebar"></div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Topbar -->
+        <div class="topbar" id="mainTopbar">
+            <div class="topbar-left">
+                <h2 id="viewTitle" style="font-size: 20px; white-space:nowrap;">Kanban Board</h2>
+            </div>
+            
+            <div class="filter-area">
+                <div class="filter-chips" id="activeFilterChips"></div>
+            </div>
+
+            <div class="topbar-actions">
+                <div id="global-timer-wrap" class="global-timer-container"></div>
+                
+                <button class="secondary icon-btn" onclick="openSearchModal()" title="Suche (Strg+K)" style="font-size: 16px; padding: 6px 10px;">
+                    <i class="fas fa-search"></i>
+                </button>
+                <button class="secondary icon-btn" id="btnCompactToggle" data-i18n-title="compact_toggle" onclick="toggleCompactMode()" title="Kompakt-Ansicht Umschalten" style="font-size: 16px; padding: 6px 10px;"><i class="fas fa-compress-alt"></i></button>
+                <button class="secondary icon-btn" onclick="toggleTheme()" data-i18n-title="theme_toggle" title="Light/Dark Mode" style="font-size: 16px; padding: 6px 10px;"><i class="fas fa-moon"></i></button>
+                
+                <!-- Filter Dropdown -->
+                <div class="dropdown click-only filter-dropdown-container" id="mainFilterDropdown">
+                    <button class="secondary icon-btn" style="font-size: 16px; padding: 6px 10px; position:relative;" data-i18n-title="filter_menu_title" title="Filtermenü" onclick="toggleFilterMenu(event)">
+                        <i class="fas fa-filter"></i>
+                        <span id="filterBadge" class="notif-badge" style="display:none; background:var(--primary-color)">!</span>
+                    </button>
+                    <div id="filterMenu" class="dropdown-content" style="right:0; width: 280px; padding: 15px; gap: 8px; flex-direction: column;">
+                        <div id="desktopFilterContent"></div>
+                    </div>
+                </div>
+
+                <!-- Notification Bell -->
+                <div class="dropdown" onmouseenter="renderNotificationDropdown()">
+                    <button class="secondary icon-btn" style="font-size: 16px; padding: 6px 10px; position:relative;" data-i18n-title="notif_title" title="Benachrichtigungen" onclick="toggleNotifMenu(event)">
+                        <i class="fas fa-bell"></i>
+                        <span id="notifBadge" class="notif-badge" style="display:none;">0</span>
+                    </button>
+                    <div class="dropdown-content" style="width:360px; max-height:400px; overflow-y:auto; padding:0; right:-50px;" id="notifContainer"></div>
+                </div>
+
+                <!-- Active User Dropdown -->
+                <div class="dropdown" data-i18n-title="user_title" title="Aktueller Benutzer (Profil-Einstellungen)">
+                    <div id="active_user_icon" style="cursor:pointer;" onclick="openSettings()"></div>
+                </div>
+
+                <div class="dropdown" data-i18n-title="export_title" title="Export & Backup">
+                    <button class="secondary"><i class="fas fa-ellipsis-v"></i></button>
+                    <div class="dropdown-content">
+                        <div id="desktopExportContent">
+                            <a onclick="exportSharedData(getFilteredTasks(), getFilteredStacks(), 'proman_shared_view.json')"><i class="fas fa-share-alt"></i> <span data-i18n="export_share">Gefilterte Ansicht teilen (JSON)</span></a>
+                            <hr style="border-top:1px solid var(--border-color); margin:5px 0;">
+                            <a onclick="exportExcel()"><i class="fas fa-file-excel"></i> <span data-i18n="export_excel_view">Excel (Ansicht)</span></a>
+                            <a onclick="exportTimeExcel()"><i class="fas fa-file-excel"></i> <span data-i18n="export_excel_time">Excel (Zeiten)</span></a>
+                            <a onclick="exportPDFGefiltert()"><i class="fas fa-file-pdf"></i> <span data-i18n="export_pdf">PDF (Gefiltert)</span></a>
+                            <a onclick="exportWord()"><i class="fas fa-file-word"></i> <span data-i18n="export_word">Word Dokument (.doc)</span></a>
+                            <a onclick="exportICS()"><i class="fas fa-calendar-plus"></i> <span data-i18n="export_ics">Kalender (.ics) exportieren</span></a>
+                            <hr style="border-top:1px solid var(--border-color); margin:5px 0;">
+                            <a onclick="exportJSON()"><i class="fas fa-download"></i> <span data-i18n="export_backup">Backup herunterladen</span></a>
+                            <a onclick="document.getElementById('importJsonFile').click()"><i class="fas fa-file-import"></i> <span data-i18n="import_backup">Backup / Geteilte Datei importieren</span></a>
+                            <input type="file" id="importJsonFile" style="display:none" accept=".json" onchange="importJSON(event)">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- (oben-rechts „Neu" entfernt: der Aktionsknopf unten übernimmt) -->
+                </div>
+        </div>
+
+        <div class="content-area" id="mainContainer"></div>
+    </div>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <div class="bottom-nav">
+        <div class="bottom-nav-item active" onclick="switchView('kanban')" id="bn_kanban"><i class="fas fa-columns"></i><span data-i18n="view_kanban">Kanban</span></div>
+        <div class="bottom-nav-item" onclick="switchView('list')" id="bn_list"><i class="fas fa-list"></i><span data-i18n="view_list">Liste</span></div>
+        <div class="bottom-nav-item" onclick="switchView('planner')" id="bn_planner"><i class="far fa-calendar-alt"></i><span data-i18n="view_planner">Planung</span></div>
+        <div class="bottom-nav-item" onclick="switchView('notes')" id="bn_notes"><i class="fas fa-sticky-note"></i><span data-i18n="view_notes">Notizen</span></div>
+        <div class="bottom-nav-item" onclick="openMobileMoreMenu()" id="bn_more">
+            <div id="bn_more_icon_wrapper" style="padding:4px; transition:0.2s;"><i class="fas fa-ellipsis-h"></i></div>
+            <span>Mehr</span>
+        </div>
+    </div>
+
+    <!-- MOBILE FAB (Floating Action Button) -->
+    <button class="mobile-fab" id="wkFab" aria-label="Neu anlegen"><i class="fas fa-plus"></i></button>
+
+    <!-- MOBILE MORE MENU (Bottom Sheet) -->
+    <div class="modal-overlay" id="mobileMoreMenu">
+        <div class="modal-content bottom-sheet-mobile">
+            <div class="modal-header">
+                <h3>Menü & Werkzeuge</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeMobileMoreMenu()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="padding: 10px 20px 30px;">
+                <div id="mobileActiveTimerContainer" style="margin-bottom: 15px;"></div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom: 20px;">
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('time')">
+                        <i class="fas fa-clock" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_time">Zeiterfassung</span>
+                    </div>
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('stacks')">
+                        <i class="fas fa-folder-open" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_stacks">Projekt-Stacks</span>
+                    </div>
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('checklists')">
+                        <i class="fas fa-check-square" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_checklists">Checklisten</span>
+                    </div>
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('stakeholder')">
+                        <i class="fas fa-users" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_stakeholder">Stakeholder</span>
+                    </div>
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('buckets')">
+                        <i class="fas fa-box-open" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_buckets">Buckets</span>
+                    </div>
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('dependencies')">
+                        <i class="fas fa-project-diagram" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
+                        <span style="font-size:13px; font-weight:bold;" data-i18n="view_dependencies">Abhängigkeiten</span>
+                    </div>
+                </div>
+
+                <div class="ms-btn" style="margin-bottom:10px;" onclick="closeMobileMoreMenu(); openMobileFilterMenu();"><i class="fas fa-filter" style="width:20px; color:var(--text-muted)"></i> Filter anpassen</div>
+                <div class="ms-btn" style="margin-bottom:10px;" onclick="closeMobileMoreMenu(); openSettings();"><i class="fas fa-cog" style="width:20px; color:var(--text-muted)"></i> Einstellungen</div>
+                <div class="ms-btn" style="margin-bottom:10px;" onclick="closeMobileMoreMenu(); openMobileExportMenu();"><i class="fas fa-file-export" style="width:20px; color:var(--text-muted)"></i> Export & Backup</div>
+                <div class="ms-btn" onclick="closeMobileMoreMenu(); toggleTheme();"><i class="fas fa-moon" style="width:20px; color:var(--text-muted)"></i> Ansicht (Tag/Nacht)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOBILE ADD MENU (Bottom Sheet) -->
+    <div class="modal-overlay" id="mobileAddMenu">
+        <div class="modal-content bottom-sheet-mobile">
+            <div class="modal-header">
+                <h3>Neu erstellen</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeMobileAddMenu()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="padding: 10px 20px 30px;">
+                <div class="ms-btn" style="margin-bottom:10px; padding:15px;" onclick="closeMobileAddMenu(); openModal();">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="background:var(--primary-color); color:white; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px;"><i class="fas fa-tasks"></i></div>
+                        <div><div style="font-weight:bold; font-size:15px;" data-i18n="new_task">Neue Aufgabe</div><div style="font-size:11px; color:var(--text-muted);">Einzelne To-Dos oder Schritte anlegen</div></div>
+                    </div>
+                </div>
+                <div class="ms-btn" style="padding:15px;" onclick="closeMobileAddMenu(); openStackModal();">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="background:var(--surface-color); color:var(--primary-color); border:2px solid var(--primary-color); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px;"><i class="fas fa-folder-plus"></i></div>
+                        <div><div style="font-weight:bold; font-size:15px;" data-i18n="new_stack">Neues Projekt-Stack</div><div style="font-size:11px; color:var(--text-muted);">Gruppe für mehrere Aufgaben erstellen</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOBILE FILTER MENU (Fullscreen) -->
+    <div class="modal-overlay" id="mobileFilterMenu">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="secondary icon-btn modal-close-btn" onclick="document.getElementById('mobileFilterMenu').classList.remove('active')"><i class="fas fa-arrow-left"></i></button>
+                <h3>Filtermenü</h3>
+            </div>
+            <div class="modal-body-simple" id="mobileFilterContainer"></div>
+        </div>
+    </div>
+
+    <!-- MOBILE EXPORT MENU (Bottom Sheet) -->
+    <div class="modal-overlay" id="mobileExportMenu">
+        <div class="modal-content bottom-sheet-mobile">
+            <div class="modal-header">
+                <h3>Export & Backup</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="document.getElementById('mobileExportMenu').classList.remove('active')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" id="mobileExportContainer"></div>
+        </div>
+    </div>
+
+    <!-- DEPENDENCY MODAL -->
+    <div class="modal-overlay" id="dependencyModal" style="z-index: 2500;">
+        <div class="modal-content bottom-sheet-mobile" style="width: 500px;">
+            <div class="modal-header">
+                <h3 id="depModalTitleText">Abhängigkeiten verwalten</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeDependencyModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="display:flex; flex-direction:column; height: 50vh;">
+                <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Wähle Elemente aus, die abgeschlossen sein müssen, bevor dieses Element gestartet werden kann. (Es werden die gleichen Filter angewandt, wie für die reguläre Ansicht)</p>
+                <input type="text" id="depSearchInput" placeholder="Suchen..." onkeyup="renderDependencyList()" style="margin-bottom:10px;">
+                <div id="depListContainer" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; padding-right:5px; margin-top:5px;"></div>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;">
+                <button onclick="closeDependencyModal()">Fertig</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- RATING MODAL (Bottom Sheet fähig) -->
+    <div class="modal-overlay" id="ratingModal">
+        <div class="modal-content bottom-sheet-mobile" style="width: 500px;">
+            <div class="modal-header">
+                <h3 data-i18n="modal_rate">Bewertung abgeben</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeRatingModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple">
+                <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;" data-i18n="modal_rate_desc">Du hast dieses Projekt/Aufgabe abgeschlossen. Wie lief es?</p>
+                <div style="display:grid; grid-template-columns: 1fr auto; gap: 15px; align-items:center;">
+                    <label data-i18n="rate_comm">Kommunikation & Transparenz</label><div id="stars_comm" style="display:flex; gap:5px; align-items:center;"></div>
+                    <label data-i18n="rate_time">Einhaltung von Zeitplänen</label><div id="stars_time" style="display:flex; gap:5px; align-items:center;"></div>
+                    <label data-i18n="rate_qual">Qualität der Ergebnisse</label><div id="stars_qual" style="display:flex; gap:5px; align-items:center;"></div>
+                    <label data-i18n="rate_team">Zusammenarbeit & Teamdynamik</label><div id="stars_team" style="display:flex; gap:5px; align-items:center;"></div>
+                    <label data-i18n="rate_crea">Kreativität & Innovation</label><div id="stars_crea" style="display:flex; gap:5px; align-items:center;"></div>
+                    <label data-i18n="rate_satis">Kundenzufriedenheit</label><div id="stars_satis" style="display:flex; gap:5px; align-items:center;"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;"><button class="secondary" onclick="closeRatingModal()" data-i18n="rate_skip">Überspringen</button><button onclick="saveRating()" data-i18n="save">Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- MERGE MODAL (Bottom Sheet fähig) -->
+    <div class="modal-overlay" id="mergeModal">
+        <div class="modal-content bottom-sheet-mobile" style="width: 500px;">
+            <div class="modal-header">
+                <h3 data-i18n="merge_title">Aufgaben zu Stack verbinden</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeMergeModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple">
+                <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;" data-i18n="merge_desc">Wähle ein bestehendes Projekt-Stack oder erstelle ein neues.</p>
+                <input type="hidden" id="merge_t1"><input type="hidden" id="merge_t2">
+                <div style="margin-bottom:15px;"><span class="form-label" data-i18n="merge_existing">Bestehendes Stack:</span><select id="merge_existing_stack"></select></div>
+                <div style="text-align:center; font-weight:bold; margin-bottom:15px;" data-i18n="merge_or">ODER</div>
+                <div><span class="form-label" data-i18n="merge_new">Neues Stack erstellen (Name):</span><input type="text" id="merge_new_stack" placeholder="..."></div>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;"><button class="secondary" onclick="closeMergeModal()" data-i18n="cancel">Abbrechen</button><button onclick="executeMerge()" data-i18n="merge_btn">Verbinden</button></div>
+        </div>
+    </div>
+
+    <!-- MARKER MODAL (Bottom Sheet fähig) -->
+    <div class="modal-overlay" id="markerModal">
+        <div class="modal-content bottom-sheet-mobile" style="width: 400px;">
+            <div class="modal-header">
+                <h3 id="markerModalTitle" data-i18n="marker_title_edit">Marker bearbeiten</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeMarkerModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple">
+                <input type="hidden" id="m_id">
+                <div style="margin-bottom:15px;">
+                    <span class="form-label" data-i18n="marker_name">Name des Markers</span>
+                    <input type="text" id="m_name" placeholder="...">
+                </div>
+                <div>
+                    <span class="form-label" data-i18n="marker_date">Datum</span>
+                    <input type="date" id="m_date">
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="secondary" style="color:var(--danger); border-color:var(--danger);" id="btnDeleteMarker" onclick="deleteMarker()"><i class="fas fa-trash"></i> <span data-i18n="delete">Löschen</span></button>
+                <div style="display:flex; gap:10px;">
+                    <button class="secondary" onclick="closeMarkerModal()" data-i18n="cancel">Abbrechen</button>
+                    <button onclick="saveMarker()" data-i18n="save">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT TIME LOG MODAL (Bottom Sheet fähig) -->
+    <div class="modal-overlay" id="editTimeModal">
+        <div class="modal-content bottom-sheet-mobile" style="width: 500px;">
+            <div class="modal-header">
+                <h3 data-i18n="time_title">Zeiteintrag bearbeiten</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeEditTimeModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple">
+                <input type="hidden" id="et_id">
+                <div style="margin-bottom:15px;"><span class="form-label" data-i18n="time_task">Aufgabe</span><select id="et_task"></select></div>
+                <div class="form-grid-2" style="margin-bottom:15px;">
+                    <div><span class="form-label" data-i18n="time_date">Datum</span><input type="date" id="et_date"></div>
+                    <div><span class="form-label" data-i18n="time_hours">Stunden</span><input type="number" id="et_hours" step="0.25" min="0"></div>
+                </div>
+                <div><span class="form-label" data-i18n="time_note">Notiz</span><input type="text" id="et_note"></div>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;"><button class="secondary" onclick="closeEditTimeModal()" data-i18n="cancel">Abbrechen</button><button onclick="saveEditedTimeLog()" data-i18n="save">Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ABSENCE MODAL (Urlaub / Krank / Feiertag fuer einen Zeitraum) -->
+    <div class="modal-overlay" id="absenceModal">
+        <div class="modal-content bottom-sheet-mobile" style="width: 480px;">
+            <div class="modal-header">
+                <h3 data-i18n="tt_abs_modal_title">Abwesenheit erfassen</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="ttCloseAbsenceRange()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple">
+                <div style="margin-bottom:15px;">
+                    <span class="form-label" data-i18n="tt_abs_type">Art der Abwesenheit</span>
+                    <select id="abs_type">
+                        <option value="vacation" data-i18n="abs_vacation">Urlaub</option>
+                        <option value="sick" data-i18n="abs_sick">Krank</option>
+                        <option value="holiday" data-i18n="abs_holiday">Feiertag</option>
+                        <option value="other" data-i18n="abs_other">Frei / Kompensation</option>
+                    </select>
+                </div>
+                <div class="form-grid-2" style="margin-bottom:15px;">
+                    <div><span class="form-label" data-i18n="tt_from">Von</span><input type="date" id="abs_from"></div>
+                    <div><span class="form-label" data-i18n="tt_to">Bis</span><input type="date" id="abs_to"></div>
+                </div>
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:15px; cursor:pointer;">
+                    <input type="checkbox" id="abs_half" style="width:auto; margin:0;"> <span data-i18n="tt_half_day">Halbe Tage</span>
+                </label>
+                <div><span class="form-label" data-i18n="time_note">Notiz</span><input type="text" id="abs_note" placeholder="..."></div>
+                <p style="font-size:11px; color:var(--text-muted); margin-top:12px;" data-i18n="tt_abs_modal_hint">Arbeitsfreie Tage (z.B. Wochenenden) werden automatisch übersprungen.</p>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;">
+                <button class="secondary" onclick="ttCloseAbsenceRange()" data-i18n="cancel">Abbrechen</button>
+                <button onclick="ttSaveAbsenceRange()" data-i18n="save">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TASK MODAL (FULLSCREEN) -->
+    <div class="modal-overlay" id="taskModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button class="secondary icon-btn modal-close-btn" onclick="closeModal()"><i class="fas fa-arrow-left"></i></button>
+                <h3 id="modalTitle">Aufgabe erstellen</h3>
+                <div style="display:flex; gap:5px; align-items:center;" id="task_header_actions"></div>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab-btn active" onclick="switchTaskTab('tab-general', this)" data-i18n="tab_gen">Allgemein</button>
+                <button class="modal-tab-btn" onclick="switchTaskTab('tab-planning', this)" data-i18n="tab_plan">Planung & Zeiten</button>
+                <button class="modal-tab-btn" onclick="switchTaskTab('tab-detail', this)" data-i18n="tab_detail">Checkliste & Dateien</button>
+                <button class="modal-tab-btn" onclick="switchTaskTab('tab-rating', this)" data-i18n="tab_rating">Bewertung</button>
+            </div>
+            
+            <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
+                <input type="hidden" id="taskId">
+                
+                <!-- TAB 1: Allgemein -->
+                <div id="tab-general" class="modal-tab-content active">
+                    <div style="margin-bottom: 10px;">
+                        <span class="form-label" data-i18n="t_name">Aufgabenname</span>
+                        <input type="text" id="t_project" required style="font-size: 20px; font-weight: bold; padding: 15px;">
+                    </div>
+                    
+                    <div class="form-grid-2">
+                        <div><span class="form-label" data-i18n="t_stack">Zugehöriges Projekt-Stack</span><select id="t_projectStack"></select></div>
+                        <div><span class="form-label" data-i18n="t_assignee">Verantwortlich (Benutzer)</span><select id="t_assignee"></select></div>
+                        
+                        <div><span class="form-label" data-i18n="t_status">Status</span><select id="t_status"></select></div>
+                        <div>
+                            <span class="form-label" data-i18n="t_prio">Priorität</span>
+                            <select id="t_priority">
+                                <option value="low" data-i18n="prio_low">Niedrig</option>
+                                <option value="medium" selected data-i18n="prio_med">Mittel</option>
+                                <option value="high" data-i18n="prio_high">Hoch</option>
+                            </select>
+                        </div>
+                        
+                        <div><span class="form-label" data-i18n="t_sh">Stakeholder</span><select id="t_stakeholder"></select></div>
+                        <div><span class="form-label" data-i18n="t_bucket">Bucket (Kategorie)</span><select id="t_bucket"></select></div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Planung -->
+                <div id="tab-planning" class="modal-tab-content">
+                    <div class="form-grid-2">
+                        <div>
+                            <span class="form-label" data-i18n="t_start">Startdatum</span>
+                            <div style="display:flex; gap:5px;">
+                                <input type="date" id="t_start_date" style="flex:2;">
+                                <input type="time" id="t_start_time" style="flex:1;" title="Uhrzeit (Optional)">
+                            </div>
+                        </div>
+                        <div>
+                            <span class="form-label" data-i18n="t_due">Fälligkeitsdatum</span>
+                            <div style="display:flex; gap:5px;">
+                                <input type="date" id="t_due_date" style="flex:2;">
+                                <input type="time" id="t_due_time" style="flex:1;" title="Uhrzeit (Optional)">
+                            </div>
+                        </div>
+                        
+                        <div><span class="form-label" data-i18n="t_est">Geschätzter Aufwand (Std)</span><input type="number" id="t_estTime" min="0" step="0.25"></div>
+                        <div><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
+                    </div>
+
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:5px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <span class="form-label" style="margin:0;">Abhängigkeiten (Wartet auf)</span>
+                            <button class="secondary" style="font-size:12px; padding:4px 8px;" onclick="openDependencyModal(document.getElementById('taskId').value, document.getElementById('t_project').value || 'Neue Aufgabe')"><i class="fas fa-link"></i> Bearbeiten</button>
+                        </div>
+                        <div id="t_deps_display" style="font-size:12px; color:var(--text-muted); display:flex; flex-wrap:wrap;">Keine Abhängigkeiten definiert.</div>
+                    </div>
+
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                        <span class="form-label" data-i18n="t_rec">Wiederholung</span>
+                        <div class="form-grid-2">
+                            <div><select id="t_recurrence" onchange="toggleCustomRecurrence()"><option value="none">-</option><option value="daily">Täglich</option><option value="weekly">Wöchentlich</option><option value="monthly">Monatlich</option><option value="yearly">Jährlich</option><option value="custom">Benutzerdefiniert...</option></select></div>
+                            <div id="custom_recurrence_div" style="display:none; gap:10px;"><div style="flex:1"><input type="number" id="t_rec_num" min="1" value="1"></div><div style="flex:2"><select id="t_rec_type"><option value="days">Tage</option><option value="weeks">Wochen</option><option value="months">Monate</option></select></div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Details -->
+                <div id="tab-detail" class="modal-tab-content">
+                    <div>
+                        <span class="form-label" data-i18n="t_rtf">Notizen (Rich Text)</span>
+                        <div class="rte-toolbar">
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('bold', false, null);" title="Fett"><i class="fas fa-bold"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null);" title="Kursiv"><i class="fas fa-italic"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null);" title="Unterstrichen"><i class="fas fa-underline"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('strikeThrough', false, null);" title="Durchgestrichen"><i class="fas fa-strikethrough"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="toggleRTEHighlight()" title="Text markieren (An/Aus)"><i class="fas fa-highlighter"></i></button>
+                            
+                            <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
+                            
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertUnorderedList', false, null);" title="Aufzählung"><i class="fas fa-list-ul"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertOrderedList', false, null);" title="Nummerierung"><i class="fas fa-list-ol"></i></button>
+                            
+                            <!-- TABELLEN DROPDOWN -->
+                            <div class="dropdown click-only" style="margin:0;">
+                                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Tabelle einfügen & bearbeiten"><i class="fas fa-table"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                                <div class="dropdown-content" style="width: 180px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('create'); this.parentNode.style.display='none';"><i class="fas fa-plus"></i> Neue Tabelle</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Zeilen</div>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowAbove');"><i class="fas fa-arrow-up"></i> Davor einfügen</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowBelow');"><i class="fas fa-arrow-down"></i> Danach einfügen</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delRow');" style="color:var(--danger);"><i class="fas fa-trash"></i> Zeile löschen</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Spalten</div>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColLeft');"><i class="fas fa-arrow-left"></i> Davor einfügen</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColRight');"><i class="fas fa-arrow-right"></i> Danach einfügen</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delCol');" style="color:var(--danger);"><i class="fas fa-trash"></i> Spalte löschen</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('toggleHeader');"><i class="fas fa-heading"></i> Kopfzeile an/aus</a>
+                                </div>
+                            </div>
+                            
+                            <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
+                            
+                            <!-- FORMAT DROPDOWN -->
+                            <div class="dropdown click-only" style="margin:0;">
+                                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Formatierung"><i class="fas fa-paragraph"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                                <div class="dropdown-content" style="width: 150px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H3'); this.parentNode.style.display='none';"><span style="font-size:16px; font-weight:bold;">Titel</span></a>
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H4'); this.parentNode.style.display='none';"><span style="font-size:14px; font-weight:bold;">Überschrift</span></a>
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'P'); this.parentNode.style.display='none';"><span style="font-size:12px;">Standard-Text</span></a>
+                                </div>
+                            </div>
+                            
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="let url = prompt('Link URL:'); if(url) document.execCommand('createLink', false, url);" title="Link einfügen"><i class="fas fa-link"></i></button>
+                        </div>
+                        
+                        <div id="t_desc_rte" class="rte-content" contenteditable="true" onblur="handleRTEBlur(this)"></div>
+                    </div>
+                    
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                        <span class="form-label" data-i18n="t_cl">Checkliste</span>
+                        <div id="t_checklist_container" style="max-height:200px; overflow-y:auto; padding:5px 0;"></div>
+                        <button class="secondary" style="margin-top:5px; font-size:12px;" onclick="addTaskChecklistItem()"><i class="fas fa-plus"></i> <span data-i18n="add_point">Punkt hinzufügen</span></button>
+                    </div>
+                    
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px;">
+                        <span class="form-label" data-i18n="t_files">Dateien & Anhänge (Lokal)</span>
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:5px;">
+                            <span data-i18n="set_folder">Standard-Ordner:</span> <b id="t_base_folder_display"></b><br>
+                            <i data-i18n="t_files_hint">Browser können Dateien nicht automatisch verschieben. Speichere deine Dateien in diesem Ordner und wähle sie hier aus, um den Pfad zu verknüpfen.</i>
+                        </div>
+                        <div style="display:flex; gap:10px; margin-bottom:5px; flex-wrap:wrap;">
+                            <label for="t_files" class="secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:8px 16px; border:1px solid transparent; border-radius:var(--radius); cursor:pointer; font-size:13px; min-height:44px;" data-i18n="choose_files">Dateien auswählen</label>
+                            <input type="file" id="t_files" multiple onchange="document.getElementById('t_files_fname').innerText=this.files.length>0 ? this.files.length + ' ' + t('file_chosen') : t('no_file_chosen');" style="display:none;">
+                            <span id="t_files_fname" style="font-size:11px; margin-left:10px; align-self:center; color:var(--text-muted);" data-i18n="no_file_chosen">Keine Datei ausgewählt</span>
+                            
+                            <button class="secondary" onclick="addFilesAsPaths()" style="margin-left:auto;" data-i18n="attach_file">Dateinamen verknüpfen</button>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <input type="text" id="t_filepath" placeholder="..." style="flex:1; min-width:200px;">
+                            <button class="secondary" onclick="addFilePath()" style="margin-top:5px;" data-i18n="save_path">Pfad speichern</button>
+                        </div>
+                        <div id="t_file_list" style="margin-top:10px; max-height:100px; overflow-y:auto;"></div>
+                    </div>
+                    
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px;">
+                        <span class="form-label" data-i18n="t_hist">Historie (Time-Logs & Bearbeitungen)</span>
+                        <textarea id="t_notes" rows="4" onfocus="handleHistoryFocus(this)" onkeydown="handleHistoryKeydown(event, this)"></textarea>
+                    </div>
+                </div>
+                
+                <!-- TAB 4: Bewertung -->
+                <div id="tab-rating" class="modal-tab-content">
+                     <div style="background:var(--primary-lightest); padding:20px; border-radius:var(--radius); border:1px solid var(--primary-light);">
+                        <h4 style="margin-bottom:15px; color:var(--primary-color);"><i class="fas fa-star"></i> Einschätzung & Bewertung</h4>
+                        
+                        <div id="t_interactive_rating_existing"></div>
+                        <div id="t_interactive_rating"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button class="secondary" style="color:var(--danger);" onclick="deleteTask()" id="btnDeleteTask" title="In den Papierkorb verschieben"><i class="fas fa-trash"></i></button>
+                    
+                    <div class="dropdown" id="dropdownShareTask" style="display:none;">
+                        <button class="secondary" onclick="event.preventDefault();"><i class="fas fa-share-alt"></i> <span data-i18n="share">Teilen</span> <i class="fas fa-chevron-up" style="font-size:10px; margin-left:4px;"></i></button>
+                        <div class="dropdown-content" style="bottom: 100%; top: auto; margin-bottom: 5px;">
+                            <a onclick="exportSingleTaskJSON()"><i class="fas fa-file-code"></i> ProMan JSON</a>
+                            <a onclick="exportSingleTaskExcel()"><i class="fas fa-file-excel"></i> Excel (.xlsx)</a>
+                            <a onclick="exportSingleTaskPDF()"><i class="fas fa-file-pdf"></i> PDF (.pdf)</a>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-left:auto;">
+                    <button class="secondary" onclick="closeModal()" data-i18n="cancel">Abbrechen</button>
+                    <button onclick="saveTask()" data-i18n="save">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STACK MODAL (FULLSCREEN) -->
+    <div class="modal-overlay" id="stackModal">
+        <div class="modal-content" style="width: 800px;">
+            <div class="modal-header">
+                <button class="secondary icon-btn modal-close-btn" onclick="closeStackModal()"><i class="fas fa-arrow-left"></i></button>
+                <h3 id="stackModalTitle">Projekt-Stack bearbeiten</h3>
+                <div style="display:flex; gap:5px; align-items:center;" id="stack_header_actions"></div>
+            </div>
+            <div class="modal-tabs" id="stackModalTabs">
+                <button class="stack-tab-btn active" onclick="switchStackTab('stab-general', this)">Allgemein</button>
+                <button class="stack-tab-btn" onclick="switchStackTab('stab-detail', this)">Notizen & Milestones</button>
+                <button class="stack-tab-btn" onclick="switchStackTab('stab-tasks', this)">Aufgaben</button>
+                <button class="stack-tab-btn" onclick="switchStackTab('stab-rating', this)">Bewertung</button>
+            </div>
+            <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
+                <input type="hidden" id="s_id">
+
+                <!-- STAB 1: Allgemein -->
+                <div id="stab-general" class="modal-tab-content active">
+                    <div class="form-grid-2">
+                        <div style="grid-column: span 2;"><span class="form-label" data-i18n="s_name">Projekt-Name</span><input type="text" id="s_name" required style="font-weight:bold; font-size:16px;"></div>
+                        <div><span class="form-label" data-i18n="t_assignee">Verantwortlich (Benutzer)</span><select id="s_assignee"></select></div>
+                        <div><span class="form-label" data-i18n="t_sh">Stakeholder</span><select id="s_stakeholder"></select></div>
+                        
+                        <div>
+                            <span class="form-label" data-i18n="t_start">Projekt-Startdatum</span>
+                            <div style="display:flex; gap:5px;">
+                                <input type="date" id="s_start_date" style="flex:2;">
+                                <input type="time" id="s_start_time" style="flex:1;" title="Uhrzeit (Optional)">
+                            </div>
+                        </div>
+                        <div>
+                            <span class="form-label" data-i18n="t_due">Projekt-Fälligkeitsdatum (Deadline)</span>
+                            <div style="display:flex; gap:5px;">
+                                <input type="date" id="s_due_date" style="flex:2;">
+                                <input type="time" id="s_due_time" style="flex:1;" title="Uhrzeit (Optional)">
+                            </div>
+                        </div>
+
+                        <div><span class="form-label" data-i18n="t_bucket">Bucket (Kategorie)</span><select id="s_bucket"></select></div>
+                    </div>
+                    
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                            <span class="form-label" style="margin:0;">Abhängigkeiten (Wartet auf)</span>
+                            <button class="secondary" style="font-size:12px; padding:4px 8px;" onclick="openDependencyModal(document.getElementById('s_id').value, document.getElementById('s_name').value || 'Neues Stack')"><i class="fas fa-link"></i> Bearbeiten</button>
+                        </div>
+                        <div id="s_deps_display" style="font-size:12px; color:var(--text-muted); display:flex; flex-wrap:wrap;">Keine Abhängigkeiten definiert.</div>
+                    </div>
+                </div>
+
+                <!-- STAB 2: Notizen & Milestones -->
+                <div id="stab-detail" class="modal-tab-content">
+                    <div>
+                        <span class="form-label" data-i18n="t_rtf">Notizen (Rich Text)</span>
+                        <div class="rte-toolbar">
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('bold', false, null);" title="Fett"><i class="fas fa-bold"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null);" title="Kursiv"><i class="fas fa-italic"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null);" title="Unterstrichen"><i class="fas fa-underline"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('strikeThrough', false, null);" title="Durchgestrichen"><i class="fas fa-strikethrough"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="toggleRTEHighlight()" title="Text markieren (An/Aus)"><i class="fas fa-highlighter"></i></button>
+                            <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertUnorderedList', false, null);" title="Aufzählung"><i class="fas fa-list-ul"></i></button>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertOrderedList', false, null);" title="Nummerierung"><i class="fas fa-list-ol"></i></button>
+                            <div class="dropdown click-only" style="margin:0;">
+                                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Tabelle"><i class="fas fa-table"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                                <div class="dropdown-content" style="width: 180px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('create'); this.parentNode.style.display='none';"><i class="fas fa-plus"></i> Neue Tabelle</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Zeilen</div>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowAbove');"><i class="fas fa-arrow-up"></i> Davor</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowBelow');"><i class="fas fa-arrow-down"></i> Danach</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delRow');" style="color:var(--danger);"><i class="fas fa-trash"></i> Löschen</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Spalten</div>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColLeft');"><i class="fas fa-arrow-left"></i> Davor</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColRight');"><i class="fas fa-arrow-right"></i> Danach</a>
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delCol');" style="color:var(--danger);"><i class="fas fa-trash"></i> Löschen</a>
+                                    <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
+                                    <a onmousedown="event.preventDefault();" onclick="rtfTableAction('toggleHeader');"><i class="fas fa-heading"></i> Kopfzeile an/aus</a>
+                                </div>
+                            </div>
+                            <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
+                            <div class="dropdown click-only" style="margin:0;">
+                                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Format"><i class="fas fa-paragraph"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                                <div class="dropdown-content" style="width: 150px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H3'); this.parentNode.style.display='none';"><span style="font-size:16px; font-weight:bold;">Titel</span></a>
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H4'); this.parentNode.style.display='none';"><span style="font-size:14px; font-weight:bold;">Überschrift</span></a>
+                                    <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'P'); this.parentNode.style.display='none';"><span style="font-size:12px;">Standard-Text</span></a>
+                                </div>
+                            </div>
+                            <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="let url = prompt('Link URL:'); if(url) document.execCommand('createLink', false, url);" title="Link einfügen"><i class="fas fa-link"></i></button>
+                        </div>
+                        <div id="s_notes_rte" class="rte-content" contenteditable="true" onblur="handleRTEBlur(this)"></div>
+                    </div>
+                    
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-top:5px;">
+                        <span class="form-label" data-i18n="s_milestones">Milestones (Stack-Checkliste)</span>
+                        <div id="s_checklist_container" style="max-height:250px; overflow-y:auto; padding:5px 0;"></div>
+                        <button class="secondary" style="margin-top:5px; font-size:12px;" onclick="addStackChecklistItem()"><i class="fas fa-plus"></i> <span data-i18n="add_point">Milestone hinzufügen</span></button>
+                    </div>
+                </div>
+
+                <!-- STAB 3: Aufgaben -->
+                <div id="stab-tasks" class="modal-tab-content">
+                    <div>
+                        <span class="form-label" data-i18n="s_tasks">Zugehörige Aufgaben</span>
+                        <div id="s_tasks_container" style="max-height: 400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
+                    </div>
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">
+                        <span class="form-label" data-i18n="t_hist">Historie (Time-Logs & Bearbeitungen)</span>
+                        <textarea id="s_history" rows="5" onfocus="handleHistoryFocus(this)" onkeydown="handleHistoryKeydown(event, this)"></textarea>
+                    </div>
+                </div>
+
+                <!-- STAB 4: Bewertung -->
+                <div id="stab-rating" class="modal-tab-content">
+                    <div style="background:var(--primary-lightest); padding:20px; border-radius:var(--radius); border:1px solid var(--primary-light);">
+                        <h4 style="margin-bottom:15px; color:var(--primary-color);"><i class="fas fa-star"></i> Projekt-Bewertung</h4>
+                        <div id="s_interactive_rating_existing"></div>
+                        <div id="s_interactive_rating"></div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button class="secondary" style="color:var(--danger);" onclick="deleteCurrentStack()" id="btnDeleteStack" title="In den Papierkorb verschieben"><i class="fas fa-trash"></i></button>
+                    
+                    <div class="dropdown" id="dropdownShareStack" style="display:none;">
+                        <button class="secondary" onclick="event.preventDefault();"><i class="fas fa-share-alt"></i> <span data-i18n="share">Teilen</span> <i class="fas fa-chevron-up" style="font-size:10px; margin-left:4px;"></i></button>
+                        <div class="dropdown-content" style="bottom: 100%; top: auto; margin-bottom: 5px;">
+                            <a onclick="exportSingleStackJSON()"><i class="fas fa-file-code"></i> ProMan JSON</a>
+                            <a onclick="exportSingleStackExcel()"><i class="fas fa-file-excel"></i> Excel (.xlsx)</a>
+                            <a onclick="exportSingleStackPDF()"><i class="fas fa-file-pdf"></i> PDF (.pdf)</a>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-left:auto;">
+                    <button class="secondary" onclick="closeStackModal()" data-i18n="cancel">Abbrechen</button>
+                    <button onclick="saveStack()" data-i18n="save">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL (FULLSCREEN) -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content" style="width:900px; max-height: 95vh;">
+            <div class="modal-header">
+                <button class="secondary icon-btn modal-close-btn" onclick="closeSettings()"><i class="fas fa-arrow-left"></i></button>
+                <h3 data-i18n="set_title">Einstellungen</h3>
+            </div>
+            <div class="modal-tabs" style="margin-bottom:0;">
+                <button class="modal-tab-btn active" onclick="switchSettingsTab('set-general', this)" data-i18n="set_gen">Allgemein & Layout</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-users', this)" data-i18n="set_team">Team & Profil</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-data', this)" data-i18n="set_data">Stammdaten</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-theme', this)">Theme-Editor</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-ai', this); renderAISettingsPanel();"><i class="fas fa-robot"></i> KI-Assistent</button>
+            </div>
+            <div class="modal-body-simple" style="padding-top:0;">
+                
+                <!-- TAB: Allgemein -->
+                <div id="set-general" class="modal-tab-content active" style="padding: 20px 0;">
+                    
+                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
+                        <h4><i class="fas fa-globe"></i> <span data-i18n="set_lang">Sprache / Language</span></h4>
+                        <select id="set_language" style="max-width:300px; margin-top:10px;">
+                            <option value="de">Deutsch</option>
+                            <option value="en">English</option>
+                            <option value="fr">Français</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
+                        <h4 data-i18n="set_folder"><i class="fas fa-folder"></i> Stamm-Ordner für Dateien</h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="folder_desc">Lege hier deinen lokalen Ordner fest, in den du deine Projekt-Dateien speicherst (z.B. C:\Projekte\Dateien\). ProMan speichert dann nur noch die Pfade dorthin, um Backups klein zu halten.</p>
+                        <input type="text" id="set_attachment_folder" placeholder="C:\Mein_ProMan_Ordner\">
+                    </div>
+
+                    <div class="settings-grid">
+                        <!-- Left Column -->
+                        <div>
+                            <!-- Ansichten (Sidebar) versteckt -->
+                            <div style="display: none;">
+                                <h4 data-i18n="set_views"><i class="fas fa-bars"></i> Ansichten (Sidebar)</h4>
+                                <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="views_desc">Ordne die Reihenfolge der Links links in der Sidebar und blende sie ein/aus.</p>
+                                <table class="data-table" id="settings_views_table" style="margin-top:10px; font-size:12px;"></table>
+                            </div>
+
+                            <h4 style="margin-top:0;" data-i18n="set_sc"><i class="fas fa-keyboard"></i> Tastenkürzel</h4>
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label style="font-size:12px;" data-i18n="new_task">Neue Aufgabe</label>
+                                    <input type="text" id="set_sc_newTask" style="width:50px; text-align:center; padding:4px; margin:0;" maxlength="1">
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label style="font-size:12px;" data-i18n="new_stack">Neues Projekt-Stack</label>
+                                    <input type="text" id="set_sc_newStack" style="width:50px; text-align:center; padding:4px; margin:0;" maxlength="1">
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <label style="font-size:12px;" data-i18n="search_sc">Suche (Strg + Taste)</label>
+                                    <input type="text" id="set_sc_search" style="width:50px; text-align:center; padding:4px; margin:0;" maxlength="1">
+                                </div>
+                            </div>
+
+                            <h4 style="margin-top:20px;"><i class="fas fa-calendar-alt"></i> Arbeitstage (Zeitplan)</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Definiere deine Arbeitstage für den Kalender. Du erhältst Warnungen bei Fehlplanung.</p>
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; flex-wrap:wrap; gap:10px;">
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="1" class="workday-cb"> Mo</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="2" class="workday-cb"> Di</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="3" class="workday-cb"> Mi</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="4" class="workday-cb"> Do</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="5" class="workday-cb"> Fr</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="6" class="workday-cb"> Sa</label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="0" class="workday-cb"> So</label>
+                            </div>
+
+                            <h4 style="margin-top:20px;"><i class="fas fa-clock"></i> Arbeitszeiten (Tagesansicht)</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Arbeitszeiten bestimmen die Anzeige in der Tagesansicht des Zeitplans.</p>
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px;">
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;">Von <input type="time" id="set_wd_start"></label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;">Bis <input type="time" id="set_wd_end"></label>
+                            </div>
+
+                            <h4 style="margin-top:20px;"><i class="fas fa-calendar-check"></i> <span data-i18n="set_timeacct">Zeitkonto (Soll-Zeiten)</span></h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_timeacct_desc">Legt fest, wie viele Stunden pro Arbeitstag gebucht sein müssen. Auf dieser Basis erkennt die Zeiterfassung unvollständig gebuchte Tage.</p>
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px; flex-wrap:wrap;">
+                                <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_target_h">Soll-Stunden / Arbeitstag</span> <input type="number" id="set_target_hours" step="0.25" min="0.25" max="24" style="width:80px; margin:0; padding:4px;"></label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_track_from">Prüfung ab</span> <input type="date" id="set_track_from" style="margin:0; padding:4px;"></label>
+                            </div>
+                        </div>
+
+                        <!-- Right Column -->
+                        <div>
+                            <h4 data-i18n="set_notif"><i class="fas fa-bell"></i> Benachrichtigungskanäle</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Wähle für jedes Ereignis, über welche Kanäle du benachrichtigt werden möchtest.</p>
+
+                            <div class="notif-channels-wrap">
+                                <table class="notif-channels-table" id="notifChannelsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Ereignis</th>
+                                            <th title="In der Benachrichtigungsglocke anzeigen"><i class="fas fa-bell"></i><br><span style="font-size:10px;">Glocke</span></th>
+                                            <th title="Toast-Meldung am Bildschirmrand"><i class="fas fa-comment-dots"></i><br><span style="font-size:10px;">Toast</span></th>
+                                            <th title="Modale Popup-Meldung"><i class="fas fa-window-maximize"></i><br><span style="font-size:10px;">Modal</span></th>
+                                            <th title="Browser-Push-Benachrichtigung"><i class="fas fa-mobile-alt"></i><br><span style="font-size:10px;">Push</span></th>
+                                            <th title="E-Mail via Mail-Client (mailto:)"><i class="fas fa-envelope"></i><br><span style="font-size:10px;">E-Mail</span></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><i class="fas fa-exclamation-triangle" style="color:var(--danger); margin-right:5px;"></i> Überfällig</td>
+                                            <td><input type="checkbox" id="nc_overdue_bell"></td>
+                                            <td><input type="checkbox" id="nc_overdue_toast"></td>
+                                            <td><input type="checkbox" id="nc_overdue_modal"></td>
+                                            <td><input type="checkbox" id="nc_overdue_push"></td>
+                                            <td><input type="checkbox" id="nc_overdue_email"></td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-clock" style="color:var(--warning); margin-right:5px;"></i> Heute fällig</td>
+                                            <td><input type="checkbox" id="nc_dueToday_bell"></td>
+                                            <td><input type="checkbox" id="nc_dueToday_toast"></td>
+                                            <td><input type="checkbox" id="nc_dueToday_modal"></td>
+                                            <td><input type="checkbox" id="nc_dueToday_push"></td>
+                                            <td><input type="checkbox" id="nc_dueToday_email"></td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> Erinnerung 1</td>
+                                            <td><input type="checkbox" id="nc_reminder1_bell"></td>
+                                            <td><input type="checkbox" id="nc_reminder1_toast"></td>
+                                            <td><input type="checkbox" id="nc_reminder1_modal"></td>
+                                            <td><input type="checkbox" id="nc_reminder1_push"></td>
+                                            <td><input type="checkbox" id="nc_reminder1_email"></td>
+                                        </tr>
+                                        <tr>
+                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> Erinnerung 2</td>
+                                            <td><input type="checkbox" id="nc_reminder2_bell"></td>
+                                            <td><input type="checkbox" id="nc_reminder2_toast"></td>
+                                            <td><input type="checkbox" id="nc_reminder2_modal"></td>
+                                            <td><input type="checkbox" id="nc_reminder2_push"></td>
+                                            <td><input type="checkbox" id="nc_reminder2_email"></td>
+                                        </tr>
+                                        <tr style="border-top: 2px solid var(--border-color);">
+                                            <td><i class="fas fa-info-circle" style="color:var(--success); margin-right:5px;"></i> Systemmeldungen</td>
+                                            <td><input type="checkbox" id="nc_system_bell"></td>
+                                            <td><input type="checkbox" id="nc_system_toast"></td>
+                                            <td><input type="checkbox" id="nc_system_modal"></td>
+                                            <td><input type="checkbox" id="nc_system_push"></td>
+                                            <td><input type="checkbox" id="nc_system_email"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- E-Mail Adresse -->
+                            <div id="notifEmailRow" style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:10px;">
+                                <label style="font-weight:bold; font-size:12px; display:flex; align-items:center; gap:6px; margin-bottom:5px;"><i class="fas fa-envelope" style="color:var(--primary-color);"></i> E-Mail für Benachrichtigungen</label>
+                                <input type="email" id="set_notif_email" placeholder="max@example.com" style="margin:0;">
+                                <p style="font-size:10px; color:var(--text-muted); margin-top:5px;"><i class="fas fa-info-circle"></i> Öffnet deinen lokalen E-Mail-Client (mailto:). Keine Simulation.</p>
+                            </div>
+
+                            <!-- Push Test & Info -->
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                                <p style="font-size:11px; color:var(--text-muted); margin:0;"><i class="fas fa-mobile-alt"></i> Push erfordert Browser-Berechtigung.</p>
+                                <button class="secondary" style="font-size:11px; padding:4px 10px; flex-shrink:0;" onclick="testPushNotification()"><i class="fas fa-bell"></i> Push testen</button>
+                            </div>
+
+                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom: 20px;">
+                                <label style="font-weight:bold; font-size:12px; margin-bottom:5px; display:block;" data-i18n="rem_1">Erinnerung 1:</label>
+                                <div style="display:flex; gap:5px; align-items:center; margin-bottom:10px;">
+                                    <input type="checkbox" id="set_r1_active">
+                                    <input type="number" id="set_r1_val" style="width:70px; margin:0; padding:5px;" min="1" value="2">
+                                    <select id="set_r1_unit" style="margin:0; padding:5px; flex:1;"><option value="minutes" data-i18n="mins">Minuten vorher</option><option value="hours" data-i18n="hours">Stunden vorher</option><option value="days" data-i18n="days">Tage vorher</option></select>
+                                </div>
+                                
+                                <label style="font-weight:bold; font-size:12px; margin-bottom:5px; display:block;" data-i18n="rem_2">Erinnerung 2 (Optional):</label>
+                                <div style="display:flex; gap:5px; align-items:center;">
+                                    <input type="checkbox" id="set_r2_active">
+                                    <input type="number" id="set_r2_val" style="width:70px; margin:0; padding:5px;" min="1" value="1">
+                                    <select id="set_r2_unit" style="margin:0; padding:5px; flex:1;"><option value="minutes" data-i18n="mins">Minuten vorher</option><option value="hours" data-i18n="hours">Stunden vorher</option><option value="days" data-i18n="days">Tage vorher</option></select>
+                                </div>
+                            </div>
+
+                            <h4 data-i18n="set_autodel"><i class="fas fa-check-circle"></i> Auto-Löschen (Abgeschlossen)</h4>
+                            <div style="display:flex; gap:5px; align-items:center; background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:20px;">
+                                <select id="set_ad_comp_unit" style="margin:0; padding:5px; flex:1;" onchange="document.getElementById('set_ad_comp_val').style.display = this.value === 'never' ? 'none' : 'block'">
+                                    <option value="never" data-i18n="never">Nie löschen</option>
+                                    <option value="days" data-i18n="days">Tagen</option>
+                                    <option value="weeks" data-i18n="weeks">Wochen</option>
+                                    <option value="months" data-i18n="months">Monaten</option>
+                                    <option value="years" data-i18n="years">Jahren</option>
+                                </select>
+                                <input type="number" id="set_ad_comp_val" style="width:70px; margin:0; padding:5px;" min="1" value="30">
+                            </div>
+
+                            <h4 data-i18n="set_trash"><i class="fas fa-trash-restore"></i> Papierkorb Auto-Leeren</h4>
+                            <div style="display:flex; gap:5px; align-items:center; background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:20px;">
+                                <select id="set_ad_trash_unit" style="margin:0; padding:5px; flex:1;" onchange="document.getElementById('set_ad_trash_val').style.display = this.value === 'never' ? 'none' : 'block'">
+                                    <option value="never" data-i18n="manual">Manuell leeren</option>
+                                    <option value="hours" data-i18n="hours">Stunden</option>
+                                    <option value="days" data-i18n="days">Tagen</option>
+                                </select>
+                                <input type="number" id="set_ad_trash_val" style="width:70px; margin:0; padding:5px;" min="1" value="30">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: Team & Profil -->
+                <div id="set-users" class="modal-tab-content" style="padding:20px 0; display:none;">
+                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
+                        <h4 data-i18n="my_profile">Mein Profil</h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="my_profile_desc">Wähle den Nutzer aus, der dieses Gerät gerade bedient.</p>
+                        <select id="set_current_user" style="max-width:300px; margin-top:0;" onchange="changeCurrentUser(this.value)"></select>
+                    </div>
+                    <div>
+                        <h4 data-i18n="team_mgmt">Team Mitglieder verwalten</h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="team_mgmt_desc">Füge Kollegen hinzu, um ihnen Aufgaben zuzuordnen.</p>
+                        <div style="overflow-x:auto;">
+                            <table class="data-table" id="settings_users_table" style="min-width: 400px;"></table>
+                        </div>
+                        <div style="display:flex; gap:10px; background:var(--bg-color); padding:10px; border-radius:var(--radius); align-items:flex-end; flex-wrap: wrap;">
+                            <div style="flex:1; min-width: 150px;"><span class="form-label" data-i18n="name">Name</span><input type="text" id="new_user_name" placeholder="..."></div>
+                            <div style="flex:2; min-width: 150px;"><span class="form-label" data-i18n="avatar_url">Avatar URL (Optional)</span><input type="text" id="new_user_avatar" placeholder="https://..."></div>
+                            <button onclick="addUser()" style="margin-top: 15px; min-height:44px;"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: Stammdaten -->
+                <div id="set-data" class="modal-tab-content" style="padding:20px 0; display:none;">
+                    <div class="settings-grid">
+                        <div>
+                            <h4 data-i18n="set_status">Kanban Status (Spalten)</h4>
+                            <div style="overflow-x:auto;">
+                                <table class="data-table" id="settings_status_table" style="margin-top:10px; min-width: 300px;"></table>
+                            </div>
+                            <div style="display:flex; gap:5px;"><input type="text" id="new_status_name" placeholder="..."><button onclick="addStatus()" data-i18n="new">Neu</button></div>
+                        </div>
+                        <div>
+                            <h4 data-i18n="set_sh">Stakeholder (Kunden/Abteilungen)</h4>
+                            <div style="overflow-x:auto;">
+                                <table class="data-table" id="settings_sh_table" style="margin-top:10px; min-width: 300px;"></table>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:5px; background:var(--bg-color); padding:10px; border-radius:var(--radius);">
+                                <input type="text" id="new_sh_name" placeholder="..."><label style="font-size:12px;" data-i18n="pick_color">Farbe wählen:</label>
+                                <div class="color-palette" id="sh_color_palette"></div><input type="hidden" id="new_sh_color" value="#ffb3ba"><button onclick="addStakeholder()" style="margin-top:10px;" data-i18n="create">Anlegen</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-grid">
+                        <div>
+                            <h4 data-i18n="set_buckets">Buckets (Kategorien)</h4>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; margin-top:10px;" id="settings_bucket_list"></div>
+                            <div style="display:flex; gap:5px; max-width:400px;"><input type="text" id="new_bucket_name" placeholder="..."><button onclick="addBucket()" data-i18n="add">Hinzufügen</button></div>
+                        </div>
+                        <div>
+                            <h4 data-i18n="set_defcl">Standard Checkliste</h4>
+                            <p style="font-size:11px; color:var(--text-muted);" data-i18n="defcl_desc">Wird bei neuen Aufgaben automatisch geladen.</p>
+                            <div style="overflow-x:auto;">
+                                <table class="data-table" id="settings_def_cl_table" style="margin-top:10px; min-width: 300px;"></table>
+                            </div>
+                            <div style="display:flex; gap:5px; max-width:400px; margin-top:10px;"><input type="text" id="new_def_cl_name" placeholder="..."><button onclick="addDefClItem()" data-i18n="new">Neu</button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: Workflows -->
+                <div id="set-workflows" class="modal-tab-content" style="padding:20px 0; display:none; flex-direction:column;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid var(--border-color); flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h4 data-i18n="wf_title"><i class="fas fa-magic"></i> Automatisierungen</h4>
+                            <p style="font-size:11px; color:var(--text-muted);" data-i18n="wf_desc">Erstelle Wenn-Dann-Regeln, um Aufgaben automatisch zuzuweisen oder zu verschieben.</p>
+                        </div>
+                        <button onclick="openWfEditor()"><i class="fas fa-plus"></i> <span data-i18n="wf_new">Neuer Workflow</span></button>
+                    </div>
+
+                    <div id="wf_list" style="display:flex; flex-direction:column; gap:15px;"></div>
+
+                    <!-- Workflow Editor Inline -->
+                    <div id="wf_editor" style="display:none; background:transparent; border:1px solid transparent; padding:0; margin-top:0;">
+                        <input type="hidden" id="wf_edit_id">
+                        
+                        <div class="wf-step-card" style="border-left: 4px solid var(--primary-color);">
+                            <div style="margin-bottom:15px;">
+                                <span class="form-label" data-i18n="wf_name">Workflow Name</span>
+                                <input type="text" id="wf_edit_name" placeholder="Z.B. Auto-Zuweisung Bugs" style="font-weight: bold;">
+                            </div>
+                        </div>
+
+                        <!-- WENN (Trigger) -->
+                        <div class="wf-step-card">
+                            <div class="wf-step-header" data-i18n="wf_trig_1">1. WENN (Auslöser)</div>
+                            <div style="display:flex; gap:10px; flex-wrap: wrap;">
+                                <select id="wf_edit_trigger" style="flex:1; min-width: 200px;" onchange="renderWfTriggerValueOptions()">
+                                    <option value="" data-i18n="wf_trig_select">-- Auslöser wählen --</option>
+                                    <option value="entity_exists">Aufgabe oder Stack existiert (Wird bei jeder Änderung geprüft)</option>
+                                    <option value="task_created" data-i18n="wf_t_t_created">Aufgabe wird erstellt</option>
+                                    <option value="task_updated" data-i18n="wf_t_t_updated">Aufgabe aktualisiert</option>
+                                    <option value="task_status_changed" data-i18n="wf_t_t_status">Aufgabe wechselt Status auf...</option>
+                                    <option value="task_paused" data-i18n="wf_t_t_paused">Aufgabe wird pausiert</option>
+                                    <option value="task_resumed" data-i18n="wf_t_t_resumed">Aufgabe wird fortgesetzt</option>
+                                    <option value="task_completed" data-i18n="wf_t_t_comp">Aufgabe wird abgeschlossen</option>
+                                    <option value="stack_created" data-i18n="wf_t_s_created">Stack wird erstellt</option>
+                                    <option value="stack_updated" data-i18n="wf_t_s_updated">Stack aktualisiert</option>
+                                    <option value="stack_paused" data-i18n="wf_t_s_paused">Stack wird pausiert</option>
+                                    <option value="stack_resumed" data-i18n="wf_t_s_resumed">Stack wird fortgesetzt</option>
+                                    <option value="stack_completed" data-i18n="wf_t_s_comp">Stack wird abgeschlossen</option>
+                                </select>
+                                <select id="wf_edit_trigger_val" style="flex:1; min-width: 200px; display:none;"></select>
+                            </div>
+                        </div>
+
+                        <!-- UND (Conditions) -->
+                        <div class="wf-step-card">
+                            <div class="wf-step-header" style="color:var(--warning);">
+                                <span data-i18n="wf_cond_2">2. UND / ODER (Bedingungen - Optional)</span>
+                                <select id="wf_edit_cond_logic" style="width:auto; margin:0; padding:4px 8px; font-size:12px; border-color: var(--warning);">
+                                    <option value="AND" data-i18n="wf_logic_and">Alle müssen zutreffen (UND)</option>
+                                    <option value="OR" data-i18n="wf_logic_or">Mindestens eine (ODER)</option>
+                                </select>
+                            </div>
+                            <div id="wf_edit_conditions_list"></div>
+                            <button class="secondary" style="font-size:12px; padding:4px 8px; margin-top: 5px;" onclick="addWfConditionRow()"><i class="fas fa-plus"></i> <span data-i18n="wf_cond_add">Bedingung hinzufügen</span></button>
+                        </div>
+
+                        <!-- DANN (Actions) -->
+                        <div class="wf-step-card">
+                            <div class="wf-step-header" style="color:var(--success);" data-i18n="wf_act_3">3. DANN (Aktion)</div>
+                            <div id="wf_edit_actions_list"></div>
+                            <button class="secondary" style="font-size:12px; padding:4px 8px; margin-top: 5px;" onclick="addWfActionRow()"><i class="fas fa-plus"></i> <span data-i18n="wf_act_add">Aktion hinzufügen</span></button>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+                            <button class="secondary" onclick="testCurrentWorkflow()" title="Prüft, auf wie viele Elemente die Bedingungen zutreffen, ohne Aktionen auszuführen."><i class="fas fa-flask" style="color:var(--primary-color);"></i> Workflow testen</button>
+                            <div style="display:flex; gap:10px;">
+                                <button class="secondary" onclick="closeWfEditor()" data-i18n="wf_cancel">Abbrechen</button>
+                                <button onclick="saveWorkflow()" data-i18n="wf_save">Workflow Speichern</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: KI-Assistent -->
+                <div id="set-ai" class="modal-tab-content" style="padding:20px 0; display:none;">
+                    <div id="ai-settings-panel">
+                        <div style="text-align:center;padding:30px;color:var(--text-muted);">
+                            <i class="fas fa-robot" style="font-size:32px;opacity:0.3;display:block;margin-bottom:12px;"></i>
+                            <p style="font-size:13px;">Klicke auf den Tab, um den Status zu laden.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB: Theme-Editor -->
+                <div id="set-theme" class="modal-tab-content" style="padding:20px 0; display:none; flex-direction:column; gap:20px;">
+                    
+                    <!-- Theme Verwaltung -->
+                    <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px;">
+                        <h4 style="margin-bottom:12px;"><i class="fas fa-swatchbook"></i> Gespeicherte Themes</h4>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                            <select id="themeSelector" style="flex:1; min-width:160px; margin:0;" onchange="loadThemeFromSelector()">
+                                <option value="">-- Theme auswählen --</option>
+                            </select>
+                            <input type="text" id="themeNameInput" placeholder="Theme-Name..." style="flex:1; min-width:140px; margin:0;">
+                            <button onclick="saveCurrentTheme()" title="Theme speichern"><i class="fas fa-save"></i> Speichern</button>
+                            <button class="secondary" onclick="renameCurrentTheme()" title="Theme umbenennen"><i class="fas fa-edit"></i> Umbenennen</button>
+                            <button class="secondary" style="color:var(--danger);" onclick="deleteCurrentTheme()" title="Theme löschen"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div id="themePreviewRow" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+                    </div>
+
+                    <!-- Glas-Effekt -->
+                    <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px;">
+                        <h4 style="margin-bottom:15px; display:flex; align-items:center; gap:8px;"><i class="fas fa-glass-martini-alt" style="color:var(--primary-color);"></i> Glas-Effekt</h4>
+                        <input type="hidden" id="tc_glass_edge" value="true">
+                        <input type="hidden" id="tc_glass_opacity" value="65">
+                        <div class="theme-color-row" style="border-bottom:none; align-items:center;">
+                            <label class="form-label" style="margin:0;">Glasintensität</label>
+                            <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                                <input type="range" id="tc_glass_blur" min="0" max="40" step="1" value="16"
+                                    style="width:120px; margin:0; padding:0; height:auto; border:none; background:none; box-shadow:none;"
+                                    oninput="syncGlassSlider(this.value); applyThemePreview()">
+                                <span id="tc_glass_blur_val" style="font-size:12px; color:var(--text-muted); min-width:36px;">16px</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Firmenlogo -->
+                    <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px;">
+                        <h4 style="margin-bottom:12px;"><i class="fas fa-image"></i> Firmenlogo (PDF Export)</h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Wird oben links (ca. 3 cm breit) im PDF-Export platziert.</p>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                            <label for="set_company_logo_te" style="display:inline-flex; align-items:center; justify-content:center; padding:8px 16px; border:1px solid var(--border-color); border-radius:var(--radius); cursor:pointer; font-size:13px; background:var(--surface-color); color:var(--text-main); gap:6px; transition:all 0.2s;">
+                                <i class="fas fa-upload"></i> Datei auswählen
+                            </label>
+                            <input type="file" id="set_company_logo_te" accept="image/png, image/jpeg" onchange="handleLogoUploadThemeEditor(event)" style="display:none;">
+                            <span id="logo_fname_te" style="font-size:11px; color:var(--text-muted);">Keine Datei ausgewählt</span>
+                        </div>
+                        <div id="logo_preview_te" style="margin-top:12px;"></div>
+                    </div>
+
+                    <!-- Farbeditor -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+                        <!-- Light Mode -->
+                        <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px;">
+                            <h4 style="margin-bottom:15px; display:flex; align-items:center; gap:8px;"><i class="fas fa-sun" style="color:var(--warning);"></i> Light Mode</h4>
+                            <div class="theme-color-row"><label class="form-label">Hintergrund</label><input type="color" id="tc_light_bg" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Oberfläche (Karten)</label><input type="color" id="tc_light_surface" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Text (Haupt)</label><input type="color" id="tc_light_text" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Text (Gedimmt)</label><input type="color" id="tc_light_muted" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Rahmen / Trennlinie</label><input type="color" id="tc_light_border" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Primärfarbe</label><input type="color" id="tc_light_primary" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Erfolg (Grün)</label><input type="color" id="tc_light_success" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Warnung (Gelb)</label><input type="color" id="tc_light_warning" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Fehler (Rot)</label><input type="color" id="tc_light_danger" oninput="applyThemePreview()"></div>
+                        </div>
+                        <!-- Dark Mode -->
+                        <div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px;">
+                            <h4 style="margin-bottom:15px; display:flex; align-items:center; gap:8px;"><i class="fas fa-moon" style="color:var(--primary-color);"></i> Dark Mode</h4>
+                            <div class="theme-color-row"><label class="form-label">Hintergrund</label><input type="color" id="tc_dark_bg" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Oberfläche (Karten)</label><input type="color" id="tc_dark_surface" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Text (Haupt)</label><input type="color" id="tc_dark_text" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Text (Gedimmt)</label><input type="color" id="tc_dark_muted" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Rahmen / Trennlinie</label><input type="color" id="tc_dark_border" oninput="applyThemePreview()"></div>
+                            <div class="theme-color-row"><label class="form-label">Primärfarbe</label><input type="color" id="tc_dark_primary" oninput="applyThemePreview()"></div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <button class="secondary" onclick="resetThemeToDefaults()"><i class="fas fa-undo"></i> Standard wiederherstellen</button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="justify-content: flex-start;"><button onclick="closeSettings()" data-i18n="close_apply">Schliessen & Übernehmen</button></div>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION MODAL (for Modal-Channel) -->
+    <div class="notif-modal-overlay" id="notifModalOverlay" onclick="if(event.target===this) dismissNotifModal()">
+        <div class="notif-modal-card" id="notifModalCard">
+            <div class="notif-modal-queue-badge" id="notifModalQueueBadge"></div>
+            <span class="nm-icon" id="notifModalIcon"></span>
+            <h3 id="notifModalTitle"></h3>
+            <p id="notifModalBody"></p>
+            <button class="nm-dismiss" onclick="dismissNotifModal()"><i class="fas fa-check"></i> Verstanden</button>
+        </div>
+    </div>
+
+    <!-- GLOBAL SEARCH MODAL -->
+    <div class="modal-overlay" id="searchModal" style="z-index: 2100;" onclick="if(event.target===this) closeSearchModal()">
+        <!-- Inline "transform: translateY(-50px)" entfernt für Mobile-Fix -->
+        <div class="modal-content" style="width: 600px; max-height: 80vh; background:var(--surface-color);">
+            <div style="padding: 20px 25px; border-bottom: 1px solid var(--border-color); display:flex; align-items:center; gap: 15px;">
+                <i class="fas fa-search" style="color:var(--text-muted); font-size:22px;"></i>
+                <input type="text" id="globalSearchInput" placeholder="Suchen... (Strg+K)" style="border:none; box-shadow:none; font-size:20px; padding:10px 5px; flex:1; background:transparent; margin:0; outline:none;" onkeyup="if(!aiSearchMode) performGlobalSearch(this.value);">
+                <!-- KI-Assistent Umschalter -->
+                <button id="ai-search-btn" class="secondary icon-btn ai-search-toggle"
+                        onclick="toggleAISearchMode()" title="KI-Assistent"
+                        style="display:none; align-items:center; gap:5px; font-size:13px; padding:6px 12px; border-radius:20px; white-space:nowrap;">
+                    <i class="fas fa-robot"></i> <span class="nav-text">KI</span>
+                </button>
+                <button class="secondary icon-btn" onclick="closeSearchModal()"><i class="fas fa-times"></i></button>
+            </div>
+
+            <!-- Standard-Suchergebnisse -->
+            <div id="globalSearchResults" style="overflow-y:auto; padding:0; flex:1;">
+                <div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">
+                    <i class="fas fa-search" style="font-size:32px; opacity:0.3; margin-bottom:15px; display:block;"></i> 
+                    Tippe, um die Suche zu starten...<br>
+                    <span style="font-size:11px; opacity:0.7;">(Aufgaben, Checklisten, Notizen, Historie)</span>
+                </div>
+            </div>
+
+            <!-- KI-Chat-Panel (nur sichtbar wenn KI-Modus aktiv) -->
+            <div id="ai-chat-panel" style="display:none; flex-direction:column; height:420px; overflow:hidden;">
+                <!-- Verlauf -->
+                <div id="ai-chat-messages" style="flex:1; overflow-y:auto; padding:0;"></div>
+                <!-- Eingabe -->
+                <div style="border-top:1px solid var(--border-color); padding:12px 15px; display:flex; gap:8px; align-items:center; background:var(--surface-color);">
+                    <input type="text" id="ai-search-input"
+                           placeholder="Frage oder Befehl…"
+                           style="flex:1; border:1px solid var(--border-color); border-radius:20px; padding:8px 16px; font-size:13px; outline:none; background:var(--bg-color);"
+                           onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMessage();}">
+                    <button onclick="sendAIMessage()" style="padding:8px 16px; border-radius:20px; font-size:13px; white-space:nowrap;">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button class="secondary icon-btn" onclick="clearAIChat()" title="Chat leeren" style="font-size:13px; padding:8px;">
+                        <i class="fas fa-eraser"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Eigenes JavaScript -->
+    <script src="i18n.js"></script>
+    <script src="app.js"></script>
+    <script src="ai.js"></script>
+    <!-- Wegführung als Schicht darüber: baut Schiene, Tableiste und Linsenschiene -->
+    <script src="shell.js"></script>
+
+</body>
+</html>
