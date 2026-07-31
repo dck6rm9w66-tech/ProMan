@@ -697,7 +697,7 @@ function showToast(msg, type='success') {
 
 function spawnCompletionConfetti(anchorEl) {
     if(!anchorEl) return;
-    const colors = ['#10b981','#0070f2','#f59e0b','#a78bfa','#06b6d4','#f97316'];
+    const colors = ['#cca300','#10b981','#f59e0b','#a78bfa','#06b6d4','#f97316'];
     const rect = anchorEl.getBoundingClientRect();
     const count = 14;
     for(let i = 0; i < count; i++) {
@@ -1189,7 +1189,9 @@ function syncMobileFilterMenu() { if(document.getElementById('mobileFilterContai
 
 function updateFilterBadge() {
     const totalFilters = activeFilters.users.length + activeFilters.stack.length + activeFilters.sh.length + activeFilters.bucket.length + activeFilters.status.length;
-    document.getElementById('filterBadge').style.display = (totalFilters > 0 || appData.settings.globalHideCompleted || appData.settings.globalHidePaused) ? 'block' : 'none';
+    const _anyFilter = (totalFilters > 0 || appData.settings.globalHideCompleted || appData.settings.globalHidePaused);
+    const _fb = document.getElementById('filterBadge'); if(_fb) _fb.style.display = 'none';
+    const _fbtn = document.getElementById('mainFilterDropdown'); if(_fbtn) _fbtn.classList.toggle('has-active-filter', _anyFilter);
 }
 
 function updateGlobalHideComp(isChecked) { appData.settings.globalHideCompleted = isChecked; saveToLocal(); updateFilterBadge(); }
@@ -2594,6 +2596,8 @@ function setStackStatus(id, newStatus) {
         if(newStatus === 'paused') triggerWorkflows('stack_paused', { stack });
         if(newStatus === 'active') triggerWorkflows('stack_resumed', { stack });
         if(newStatus === 'completed') { if(!stack.completedAt) { stack.completedAt = Date.now(); triggerWorkflows('stack_completed', { stack }); } } else { delete stack.completedAt; }
+        { const _sm = { paused: ['fa-pause', t('act_stack_paused')], active: ['fa-play', t('act_stack_resumed')], completed: ['fa-check', t('act_stack_done')] };
+          if(_sm[newStatus]) logActivity(_sm[newStatus][0], _sm[newStatus][1].replace('{n}', stack.name || '')); }
         saveToLocal(); if(document.getElementById('stackModal').classList.contains('active')) { openStackModal(id); } renderView();
         if(newStatus === 'completed') { showToast("Stack abgeschlossen!"); openRatingModal('stack', id); } 
     }
@@ -2977,26 +2981,76 @@ function renderDependenciesView(c) {
     };
     nodes.forEach(n => n.depth = calcDepth(n.id));
 
+    /* Gruppen-Schlüssel je Knoten: Stack (Rahmen) und Aufgabe (Checkpunkte) */
+    const groupKey = (n) => n.stackId || '_none';
+    const subKey = (n) => (n.type === 'checklist' && n.parentTask) ? n.parentTask : (n.type === 'task' ? n.id : (n.type === 'milestone' && n.parentStack ? n.parentStack : '~'));
+    const groupOrder = [];
+    nodes.forEach(n => { const g = groupKey(n); if (!groupOrder.includes(g)) groupOrder.push(g); });
+    const groupRank = {}; groupOrder.forEach((g, i) => groupRank[g] = i);
+
     /* nach Tiefe gruppieren */
     const cols = {};
     let maxDepth = 0;
     nodes.forEach(n => { (cols[n.depth] = cols[n.depth] || []).push(n); maxDepth = Math.max(maxDepth, n.depth); });
 
-    const COL_W = 250, NODE_H = 74, V_GAP = 22, H_PAD = 30, V_PAD = 30;
-    let maxRows = 0;
-    Object.keys(cols).forEach(d => { maxRows = Math.max(maxRows, cols[d].length); });
-    const canvasW = H_PAD * 2 + (maxDepth + 1) * COL_W;
-    const canvasH = V_PAD * 2 + maxRows * (NODE_H + V_GAP);
-
-    /* Position je Knoten festlegen */
+    /* Innerhalb jeder Spalte nach Stack-Gruppe, dann Aufgabe sortieren → optische Cluster */
+    const typeRank = { stack: 0, milestone: 1, task: 2, checklist: 3 };
     Object.keys(cols).forEach(d => {
-        cols[d].forEach((n, i) => {
-            n.x = H_PAD + n.depth * COL_W;
-            n.y = V_PAD + i * (NODE_H + V_GAP);
+        cols[d].sort((a, b) => {
+            if (groupRank[groupKey(a)] !== groupRank[groupKey(b)]) return groupRank[groupKey(a)] - groupRank[groupKey(b)];
+            const sa = subKey(a), sb = subKey(b);
+            if (sa !== sb) return String(sa).localeCompare(String(sb));
+            return (typeRank[a.type] || 9) - (typeRank[b.type] || 9);
         });
     });
 
+    const COL_W = 260, NODE_H = 74, V_GAP = 18, H_PAD = 40, V_PAD = 42, GRP_PAD = 14;
+    let maxRows = 0;
+    Object.keys(cols).forEach(d => { maxRows = Math.max(maxRows, cols[d].length); });
     const NODE_W = 200;
+
+    /* Position je Knoten: Spalte = Tiefe; innerhalb Spalte gestapelt, Lücke zwischen Stack-Gruppen */
+    Object.keys(cols).forEach(d => {
+        let y = V_PAD, prevGroup = null;
+        cols[d].forEach((n) => {
+            const g = groupKey(n);
+            if (prevGroup !== null && g !== prevGroup) y += GRP_PAD;
+            n.x = H_PAD + n.depth * COL_W;
+            n.y = y;
+            y += NODE_H + V_GAP;
+            prevGroup = g;
+        });
+    });
+
+    /* ---- Gruppen-Rahmen berechnen ---- */
+    const hulls = [];
+    const boundsOf = (list) => {
+        let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+        list.forEach(n => { x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y); x2 = Math.max(x2, n.x + NODE_W); y2 = Math.max(y2, n.y + NODE_H); });
+        return { x1, y1, x2, y2 };
+    };
+    groupOrder.forEach(g => {
+        if (g === '_none') return;
+        const members = nodes.filter(n => groupKey(n) === g);
+        if (members.length < 2) return;
+        const bk = appData.projectStacks.find(x => x.id === g);
+        const b = boundsOf(members);
+        hulls.push({ kind: 'stack', x: b.x1 - GRP_PAD, y: b.y1 - GRP_PAD - 16, w: (b.x2 - b.x1) + GRP_PAD * 2, h: (b.y2 - b.y1) + GRP_PAD * 2 + 16, name: bk ? bk.name : 'Stack', color: (bk && bk.color) ? bk.color : 'var(--primary-color)' });
+    });
+    const tasksWithCp = {};
+    nodes.forEach(n => { if (n.type === 'checklist' && n.parentTask) (tasksWithCp[n.parentTask] = tasksWithCp[n.parentTask] || []).push(n); });
+    Object.keys(tasksWithCp).forEach(tid => {
+        const taskNode = byId[tid];
+        if (!taskNode) return;
+        const members = [taskNode].concat(tasksWithCp[tid]);
+        const b = boundsOf(members);
+        hulls.push({ kind: 'task', x: b.x1 - 8, y: b.y1 - 8, w: (b.x2 - b.x1) + 16, h: (b.y2 - b.y1) + 16, name: '', color: 'var(--wk-graphite)' });
+    });
+
+    let canvasW = 0, canvasH = 0;
+    nodes.forEach(n => { canvasW = Math.max(canvasW, n.x + NODE_W); canvasH = Math.max(canvasH, n.y + NODE_H); });
+    hulls.forEach(hz => { canvasW = Math.max(canvasW, hz.x + hz.w); canvasH = Math.max(canvasH, hz.y + hz.h); });
+    canvasW += H_PAD; canvasH += V_PAD;
     /* ---- Kanten (SVG) zeichnen: von Vorgänger (rechts) zu Abhängigem (links) ---- */
     let edges = '';
     nodes.forEach(n => {
@@ -3026,14 +3080,16 @@ function renderDependenciesView(c) {
             ondragstart="depDragStart(event,'${n.id}','${n.type}')" ondragend="depDragEnd(event)"
             ondragover="depDragOver(event)" ondragleave="depDragLeave(event)" ondrop="depDrop(event,'${n.id}','${n.type}')"
             ${click ? `onclick="${click}"` : ''}>
-            ${!hasPreds ? `<span class="dep-gport in start" title="${t('dep_start')}">&gt;</span>` : `<span class="dep-gport in"></span>`}
-            <span class="dep-gport out ${locked ? 'locked' : ''}" title="${locked ? t('dep_end') : ''}">${locked ? '<i class=\"fas fa-lock\"></i>' : ''}</span>
+            ${!hasPreds
+                ? `<span class="dep-gport in start" title="${t('dep_start')}">&gt;</span>`
+                : `<span class="dep-gport in linked ${locked ? 'locked' : ''}" title="${t('dep_unlink_hint')}" onclick="event.stopPropagation(); depClearPreds('${n.id}')"><i class="fas fa-lock"></i></span>`}
+            <span class="dep-gport out ${isDependedOn ? '' : 'end'}" title="${!isDependedOn ? t('dep_end') : ''}"></span>
             <div class="dep-gnode-ic"><i class="fas ${typeIcon[n.type]}"></i></div>
             <div class="dep-gnode-body">
                 <span class="dep-gnode-name">${escapeHtmlToday(n.name)}</span>
                 <span class="dep-gnode-type">${n.type === 'stack' ? 'Stack' : (n.type === 'task' ? t('task_title') : t('view_checklists'))}</span>
             </div>
-            ${n.done ? '<i class="fas fa-check-circle dep-gnode-done"></i>' : (locked ? '<i class="fas fa-lock dep-gnode-lock"></i>' : '')}
+            ${n.done ? '<i class="fas fa-check-circle dep-gnode-done"></i>' : ''}
         </div>`;
     });
 
@@ -3043,6 +3099,7 @@ function renderDependenciesView(c) {
                 <path d="M0,0 L8,3 L0,6 Z" fill="var(--wk-graphite-2)"></path></marker></defs>
             ${edges}
         </svg>
+        ${hulls.map(hz => `<div class="dep-hull dep-hull-${hz.kind}" style="left:${hz.x}px; top:${hz.y}px; width:${hz.w}px; height:${hz.h}px; --hc:${hz.color}">${hz.name ? `<span class="dep-hull-label"><i class='fas fa-folder'></i> ${escapeHtmlToday(hz.name)}</span>` : ''}</div>`).join('')}
         ${nodeHtml}
     </div></div>`;
 
@@ -3147,6 +3204,17 @@ function depRemovePred(id, predId) {
         saveToLocal(true);
         renderView();
     }
+}
+
+function depClearPreds(id) {
+    const e = depFindEntity(id);
+    if (!e || !e.obj.predecessors || !e.obj.predecessors.length) return;
+    if (!confirm(t('dep_unlink_confirm'))) return;
+    e.obj.predecessors = [];
+    if (typeof tempPredecessors === 'object') tempPredecessors[id] = [];
+    saveToLocal(true);
+    showToast(t('dep_unlinked'), 'success');
+    renderView();
 }
 
 function depToggleLevel(key) {
@@ -3461,6 +3529,10 @@ function updateGlobalCl(type, parentId, idx, field, val) {
         }
         const oldVal = parent.checklist[idx][field];
         parent.checklist[idx][field] = val; 
+        { const _cpTitle = parent.checklist[idx].title || ''; const _kind = type === 'stack' ? t('act_ms') : t('act_cp');
+          if (field === 'done') logActivity(val ? 'fa-check' : 'fa-rotate-left', (val ? t('act_cp_done') : t('act_cp_reopened')).replace('{k}', _kind).replace('{n}', _cpTitle));
+          else if (field === 'title') logActivity('fa-pen', t('act_cp_edited').replace('{k}', _kind).replace('{n}', val || _cpTitle));
+          else logActivity('fa-pen', t('act_cp_edited').replace('{k}', _kind).replace('{n}', _cpTitle)); }
 
         if (field === 'done' && val === true && oldVal !== true) {
             const title = parent.checklist[idx].title;
@@ -3490,7 +3562,7 @@ function updateGlobalClDate(type, parentId, idx, dateVal, timeVal) {
 function addGlobalCl(type, parentId) {
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent) {
-        if(!parent.checklist) parent.checklist = []; parent.checklist.push({ id: generateId(), done: false, title: 'Neuer Punkt', dueDate: '', assigneeId: '', predecessors: [] }); saveToLocal(true); 
+        if(!parent.checklist) parent.checklist = []; parent.checklist.push({ id: generateId(), done: false, title: 'Neuer Punkt', dueDate: '', assigneeId: '', predecessors: [] }); logActivity('fa-plus', t('act_cp_added').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', parent.name || parent.projectName || '')); saveToLocal(true); 
         if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
     }
 }
@@ -3498,6 +3570,7 @@ function deleteGlobalCl(type, parentId, idx) {
     if(!confirm(t('delete') + '?')) return;
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent && parent.checklist) {
+        { const _dt = (parent.checklist[idx] && parent.checklist[idx].title) || ''; logActivity('fa-trash', t('act_cp_deleted').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', _dt)); }
         parent.checklist.splice(idx, 1); saveToLocal(true); 
         if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
         showToast(t('toast_deleted'));
@@ -3528,7 +3601,8 @@ function renderKanban(c) {
         colDiv.className = 'kanban-column';
         colDiv.dataset.statusId = col.id;           
         const colTitle = col.id === 'done' ? t('col_completed') : col.title;
-        colDiv.innerHTML = `<div class="kanban-header"><span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${tasks.filter(t_obj => t_obj.status === col.id).length}</span></div>`;
+        const colCount = col.id === 'done' ? appData.tasks.filter(t_obj => isTaskDone(t_obj) && kanbanPassesUserFilters(t_obj)).length : tasks.filter(t_obj => t_obj.status === col.id).length;
+        colDiv.innerHTML = `<div class="kanban-header"><span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${colCount}</span></div>`;
         const cardsDiv = document.createElement('div'); cardsDiv.className = 'kanban-cards';
 
         if (col.id === 'done') {
@@ -3569,6 +3643,13 @@ function createTaskCard(task) {
     const card = document.createElement('div'); const isCompleted = isTaskDone(task); const isPaused = task.isPaused;
     card.className = `task-card draggable-item ${isCompleted ? 'is-completed' : ''} ${isCompactMode ? 'compact' : ''}`; 
     card.dataset.id = task.id; 
+    /* Farbiger Randstreifen: Stakeholder-Farbe, sonst Prioritätsfarbe */
+    { let _strip = 'var(--border-color)';
+      if (task.stakeholderId) { const _sh = appData.stakeholders.find(s => s.id === task.stakeholderId); if (_sh) _strip = _sh.color; }
+      else if (task.priority === 'high') _strip = 'var(--danger)';
+      else if (task.priority === 'medium') _strip = 'var(--primary-color)';
+      else if (task.priority === 'low') _strip = 'var(--success)';
+      card.style.setProperty('--card-strip', _strip); }
     if(isPaused && !isCompleted) {
         card.style.background = 'color-mix(in srgb, var(--surface-color) 92%, #000 8%)';
         card.style.borderColor = 'color-mix(in srgb, var(--border-color) 85%, #000 15%)';
@@ -6340,7 +6421,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null) {
 
     async function renderRTFToPDF(htmlStr, x, y, maxWidth) {
         if(!htmlStr || htmlStr.trim()==='' || htmlStr==='<br>') return y;
-        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.innerHTML = htmlStr; document.body.appendChild(tempDiv);
+        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.style.maxHeight = 'none'; tempDiv.style.height = 'auto'; tempDiv.style.overflow = 'visible'; tempDiv.innerHTML = htmlStr; document.body.appendChild(tempDiv);
         try {
             const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, windowWidth: 720 });
             if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
@@ -6522,11 +6603,11 @@ function performAutoDelete() {
 const defaultThemeVars = {
     light: {
         bg: '#f3f4f6', surface: '#ffffff', text: '#1f2937', muted: '#6b7280',
-        border: '#e5e7eb', primary: '#0070f2', success: '#10b981', warning: '#f59e0b', danger: '#ef4444'
+        border: '#e5e7eb', primary: '#cca300', success: '#10b981', warning: '#f59e0b', danger: '#ef4444'
     },
     dark: {
         bg: '#111827', surface: '#1f2937', text: '#f9fafb', muted: '#9ca3af',
-        border: '#374151', primary: '#0070f2'
+        border: '#374151', primary: '#cca300'
     },
     glass: { blur: 16, opacity: 65, edge: true }
 };
@@ -6944,7 +7025,7 @@ function renderThemeSelector() {
     if(preview) {
         preview.innerHTML = themes.map(t => {
             const bg      = t.data?.light?.bg      || '#f3f4f6';
-            const primary = t.data?.light?.primary  || '#0070f2';
+            const primary = t.data?.light?.primary  || '#cca300';
             return `<div class="theme-preview-chip" style="background:${bg}; border-color:${primary}; box-shadow:0 2px 8px rgba(0,0,0,0.1);"
                 onclick="document.getElementById('themeSelector').value='${t.id}'; loadThemeFromSelector();" title="${t.name}">
                 <span style="width:12px; height:12px; border-radius:50%; background:${primary}; flex-shrink:0; display:inline-block;"></span>
@@ -6983,18 +7064,34 @@ function renderToday(c) {
     const info = ttDayInfo(todayIso);
     const pct = info.target ? Math.min(100, Math.round(info.total / info.target * 100)) : 0;
 
+    /* Fällige Elemente aller Typen einsammeln: Aufgaben, Stacks, Meilensteine, Checkpunkte */
+    const dueItems = [];
+    appData.tasks.forEach(t => {
+        if (!isTaskDone(t)) { if (t.dueDate) dueItems.push({ kind: 'task', obj: t, dueDate: t.dueDate }); }
+        (t.checklist || []).forEach(ci => {
+            if (ci.dueDate && !ci.done) dueItems.push({ kind: 'checkpoint', obj: ci, parent: t, dueDate: ci.dueDate });
+        });
+    });
+    appData.projectStacks.forEach(s => {
+        if (s.status !== 'completed') { if (s.dueDate) dueItems.push({ kind: 'stack', obj: s, dueDate: s.dueDate }); }
+        (s.checklist || []).forEach(ms => {
+            if (ms.dueDate && !ms.done) dueItems.push({ kind: 'milestone', obj: ms, parent: s, dueDate: ms.dueDate });
+        });
+    });
+    const _dateOf = (it) => (it.dueDate || '').split('T')[0];
+
     const all = appData.tasks.filter(t => !isTaskDone(t));
-    const overdue = all.filter(t => t.dueDate && t.dueDate < todayIso)
-                       .sort((a,b) => (a.dueDate||'').localeCompare(b.dueDate||''));
-    const dueToday = all.filter(t => t.dueDate === todayIso);
+    const overdue = dueItems.filter(it => _dateOf(it) < todayIso)
+                       .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
+    const dueToday = dueItems.filter(it => _dateOf(it) === todayIso);
     /* Wochengrenzen für „Diese Woche" / „Nächste Woche" */
     const _todayD = ttParse(todayIso); const _dowT = (_todayD.getDay() + 6) % 7; /* Mo=0 */
     const endThisWeekIso = ttShiftIso(todayIso, 6 - _dowT);       /* bis Sonntag dieser Woche */
     const endNextWeekIso = ttShiftIso(endThisWeekIso, 7);        /* Sonntag nächster Woche */
-    const soon = all.filter(t => t.dueDate && t.dueDate > todayIso && t.dueDate <= endThisWeekIso)
-                    .sort((a,b) => a.dueDate.localeCompare(b.dueDate));
-    const nextWeek = all.filter(t => t.dueDate && t.dueDate > endThisWeekIso && t.dueDate <= endNextWeekIso)
-                    .sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const soon = dueItems.filter(it => _dateOf(it) > todayIso && _dateOf(it) <= endThisWeekIso)
+                    .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
+    const nextWeek = dueItems.filter(it => _dateOf(it) > endThisWeekIso && _dateOf(it) <= endNextWeekIso)
+                    .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
 
     const running = (typeof activeTimers === 'object' && activeTimers)
         ? Object.keys(activeTimers).map(id => appData.tasks.find(t => t.id === id)).filter(Boolean) : [];
@@ -7079,7 +7176,7 @@ function renderToday(c) {
         const bk = (task && task.bucket) ? task.bucket : t('no_bucket');
         bucketHours[bk] = (bucketHours[bk] || 0) + (parseFloat(l.hours) || 0);
     });
-    const bucketRows = Object.keys(bucketHours).map((bk, i) => ({ name: bk, hours: bucketHours[bk], col: bucketPalette[i % bucketPalette.length] }))
+    const bucketRows = Object.keys(bucketHours).map((bk, i) => ({ name: bk, hours: bucketHours[bk], col: '#cca300' }))
         .filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours);
     const maxBk = Math.max(1, ...bucketRows.map(r => r.hours));
     const trendBars = bucketRows.length
@@ -7105,7 +7202,7 @@ function renderToday(c) {
         <div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('today_status_dist')}</b><u>${stTot} ${t('today_open')}</u></div>
             <div class="wk-dist">${stSeg('todo','#B9BFB6','Offen')}${stSeg('inProgress','var(--primary-color)','In Arbeit')}${stSeg('review','#E8A317','Prüfung')}</div>
-            <div class="wk-dist-legend"><span><i style="background:#B9BFB6"></i>${byStatus.todo}</span><span><i style="background:var(--primary-color)"></i>${byStatus.inProgress}</span><span><i style="background:#E8A317"></i>${byStatus.review}</span></div>
+            <div class="wk-dist-legend"><span><i style="background:#B9BFB6"></i>${t('status_todo')}: ${byStatus.todo}</span><span><i style="background:var(--primary-color)"></i>${t('status_inprogress')}: ${byStatus.inProgress}</span><span><i style="background:#E8A317"></i>${t('status_review')}: ${byStatus.review}</span></div>
         </div>
         <div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('today_prio_dist')}</b><u>${prTot} ${t('today_open')}</u></div>
@@ -7184,11 +7281,46 @@ function renderToday(c) {
     /* Karten mit der bestehenden createTaskCard() füllen */
     const fill = (id, list) => {
         const box = document.getElementById(id);
-        if (box) list.forEach(tk => box.appendChild(createTaskCard(tk)));
+        if (!box) return;
+        list.forEach(it => {
+            if (it.kind === 'task') { box.appendChild(createTaskCard(it.obj)); }
+            else { box.appendChild(createTodayItemCard(it)); }
+        });
     };
     fill('wkTodayUrgent', urgent);
     fill('wkTodaySoon', soon);
     fill('wkTodayNext', nextWeek);
+}
+
+/* Mini-Karte für Stacks, Meilensteine und Checkpunkte in der Heute-Ansicht */
+function createTodayItemCard(it) {
+    const card = document.createElement('div');
+    card.className = 'task-card wk-today-item';
+    const parentId = it.parent ? it.parent.id : '';
+    const meta = {
+        stack:      { ic: 'fa-folder',       label: 'Stack',              strip: 'var(--primary-color)', click: `openStackModal('${it.obj.id}')` },
+        milestone:  { ic: 'fa-flag',         label: t('milestones'),      strip: '#E8A317',              click: `openStackModal('${parentId}')` },
+        checkpoint: { ic: 'fa-check-square', label: t('view_checklists'), strip: '#7C6CE0',              click: `openModal('${parentId}')` }
+    }[it.kind];
+    card.style.setProperty('--card-strip', meta.strip);
+    card.style.cursor = 'pointer';
+    card.onclick = () => { try { eval(meta.click); } catch(e){} };
+    const name = it.obj.name || it.obj.title || it.obj.projectName || 'Unbenannt';
+    const parentName = it.parent ? (it.parent.name || it.parent.projectName || '') : '';
+    const dueStr = (it.dueDate || '').split('T')[0];
+    card.innerHTML = `<div class="wk-card">
+        <div class="wk-card-top">
+            <div class="wk-card-tags">
+                <span class="wk-c-kind"><i class="fas ${meta.ic}"></i> ${meta.label}</span>
+                ${parentName ? `<span class="wk-c-parent">${escapeHtmlToday(parentName)}</span>` : ''}
+            </div>
+        </div>
+        <div class="task-title">${escapeHtmlToday(name)}</div>
+        <div class="wk-card-foot">
+            <div class="wk-card-foot-l"><span class="wk-c-due"><i class="far fa-calendar-alt"></i> ${dueStr}</span></div>
+        </div>
+    </div>`;
+    return card;
 }
 
 /* kleine Helfer für die Heute-Ansicht */

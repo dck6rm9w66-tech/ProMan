@@ -173,11 +173,12 @@ h1,h2,h3,h4{ font-family:var(--ff-ui); letter-spacing:-.2px; }
 .task-card{
   border:1px solid var(--border-color);border-radius:var(--radius) !important;
   box-shadow:var(--shadow) !important;position:relative;overflow:hidden;
-  padding-left:19px !important;transition:transform .14s,border-color .14s;
+  padding-right:14px !important;transition:transform .14s,border-color .14s;
 }
-.task-card::before{
-  content:'';position:absolute;left:0;top:0;bottom:0;width:5px;
+.task-card::after{
+  content:'';position:absolute;right:0;top:0;bottom:0;width:5px;
   background:var(--card-strip,var(--border-color));
+  border-top-right-radius:var(--radius);border-bottom-right-radius:var(--radius);
 }
 .task-card:hover{transform:translateY(-1px);border-color:#B9BFB6}
 
@@ -969,10 +970,10 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
 .wk-stat{display:flex;align-items:center;gap:14px}
 .wk-stat-ring{
   --p:0;flex:0 0 auto;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
-  background:conic-gradient(var(--wk-magnet) calc(var(--p)*1%), #333B44 0);
+  background:conic-gradient(#cca300 calc(var(--p)*1%), #333B44 0);
 }
-.wk-stat-ring.ok{background:conic-gradient(var(--success) calc(var(--p)*1%), #333B44 0)}
-.wk-stat-ring.accent{background:conic-gradient(#8AB4F8 calc(var(--p)*1%), #333B44 0)}
+.wk-stat-ring.ok{background:conic-gradient(#cca300 calc(var(--p)*1%), #333B44 0)}
+.wk-stat-ring.accent{background:conic-gradient(#cca300 calc(var(--p)*1%), #333B44 0)}
 .wk-stat-ring span{
   width:44px;height:44px;border-radius:50%;background:var(--wk-graphite);display:grid;place-items:center;
   font-family:var(--ff-data);font-size:15px;font-weight:600;color:#EDEFEB;
@@ -1508,3 +1509,56 @@ body.dep-linking .dep-node:not(.dep-dragging){outline-color:var(--border-color)}
   box-shadow:0 0 0 5px color-mix(in srgb, var(--success) 20%, transparent) !important;
 }
 body.dep-linking .dep-gnode:not(.dep-dragging){outline:1px dashed var(--border-color)}
+
+/* Aktiver Filter: dezente Umrandung statt „!"-Badge */
+#mainFilterDropdown.has-active-filter > button,
+#mainFilterDropdown.has-active-filter .secondary{
+  border:1.5px solid #22262B !important;
+}
+[data-theme="dark"] #mainFilterDropdown.has-active-filter > button,
+[data-theme="dark"] #mainFilterDropdown.has-active-filter .secondary{
+  border-color:#EDEFEB !important;
+}
+
+/* Heute — Mini-Karten für Stacks/Meilensteine/Checkpunkte */
+.wk-today-item .wk-c-kind{
+  display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--wk-graphite);
+  background:var(--bg-color);border:1px solid var(--border-color);border-radius:6px;padding:2px 7px;
+}
+[data-theme="dark"] .wk-today-item .wk-c-kind{color:var(--accent)}
+.wk-today-item .wk-c-parent{
+  display:inline-flex;align-items:center;font-size:11px;color:var(--text-muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;
+}
+
+/* Abhängigkeiten — Gruppen-Rahmen (Stack umschliesst Elemente, Aufgabe ihre Checkpunkte) */
+.dep-hull{
+  position:absolute;border-radius:16px;pointer-events:none;z-index:0;
+}
+.dep-hull-stack{
+  border:1.5px dashed color-mix(in srgb, var(--hc) 55%, transparent);
+  background:color-mix(in srgb, var(--hc) 6%, transparent);
+}
+.dep-hull-task{
+  border:1.5px dotted color-mix(in srgb, var(--hc) 40%, transparent);
+  background:color-mix(in srgb, var(--hc) 4%, transparent);
+  border-radius:12px;
+}
+.dep-hull-label{
+  position:absolute;top:-11px;left:14px;background:var(--surface-color);
+  padding:1px 9px;border-radius:8px;font-size:11px;font-weight:700;
+  color:var(--hc);border:1.5px solid color-mix(in srgb, var(--hc) 45%, transparent);
+  display:inline-flex;align-items:center;gap:5px;pointer-events:none;
+}
+.dep-gnode{z-index:2}
+.dep-edges{z-index:1}
+
+/* Klickbarer Schloss-Port zum Lösen von Verbindungen */
+.dep-gport.in.linked{
+  background:var(--wk-graphite-2);color:#fff;cursor:pointer;pointer-events:auto;
+  width:20px;height:20px;left:-10px;transition:background .15s,transform .15s;
+}
+.dep-gport.in.linked:hover{background:var(--danger);transform:translateY(-50%) scale(1.15)}
+.dep-gport.in.linked.locked{background:var(--danger)}
+.dep-gport.out.end{background:var(--wk-graphite-2)}
