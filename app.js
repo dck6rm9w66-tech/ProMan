@@ -132,11 +132,14 @@ let defaultData = {
     defaultChecklist: ['Briefing', 'Entwurf', 'Freigabe'], 
     projectStacks: [], 
     deletedItems: [],
-    customColor: '#0070f2', 
+    customColor: '#cca300', 
     timeLogs: [],
     absences: [],
     users: [ { id: 'u1', name: 'Max Mustermann', avatar: '' } ],
     timelineMarkers: [],
+    taskPresets: [],
+    activityLog: [],
+    stackPresets: [],
     settings: { 
         views: [...defaultViews],
         noteOrder: [],
@@ -192,6 +195,11 @@ if(loadedData) {
     if(!appData.absences) appData.absences = [];
     if(!appData.timelineMarkers) appData.timelineMarkers = [];
     if(!appData.customColor) appData.customColor = defaultData.customColor;
+    /* Einmalige Umstellung: altes Standard-Blau → Werkstatt-Gold */
+    if(appData.customColor === '#0070f2') appData.customColor = '#cca300';
+    if(!appData.taskPresets) appData.taskPresets = [];
+    if(!appData.stackPresets) appData.stackPresets = [];
+    if(!appData.activityLog) appData.activityLog = [];
     if(!appData.users || appData.users.length === 0) appData.users = defaultData.users;
     if(!appData.customBellNotifs) appData.customBellNotifs = [];
     
@@ -646,14 +654,16 @@ function toggleTheme() {
 
 function changePrimaryColor(color) { 
     document.documentElement.style.setProperty('--primary-color', color); 
-    document.documentElement.style.setProperty('--primary-hover', adjustColor(color, -20)); 
+    /* Werkstatt-Gold nutzt den exakt gewünschten Hover-Ton */
+    const hover = (color.toLowerCase() === '#cca300') ? '#856a23' : adjustColor(color, -20);
+    document.documentElement.style.setProperty('--primary-hover', hover); 
     let rgb = hexToRgb(color);
     document.documentElement.style.setProperty('--primary-light', `rgba(${rgb}, 0.1)`);
     document.documentElement.style.setProperty('--primary-lightest', `rgba(${rgb}, 0.05)`);
     appData.customColor = color; 
 }
 
-function resetPrimaryColor() { const _scp = document.getElementById('settingsColorPicker'); if(_scp) _scp.value = '#0070f2'; changePrimaryColor('#0070f2'); saveToLocal(); }
+function resetPrimaryColor() { const _scp = document.getElementById('settingsColorPicker'); if(_scp) _scp.value = '#cca300'; changePrimaryColor('#cca300'); saveToLocal(); }
 function adjustColor(color, amount) { return '#' + color.replace(/^#/, '').replace(/../g, color => ('0'+Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).substr(-2)); }
 function generateId() { return '_' + Math.random().toString(36).substr(2, 9); }
 function saveToLocal(skipRender = false) { localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
@@ -666,6 +676,12 @@ function _rawToast(msg, type='success') {
     container.appendChild(toast);
     if(type === 'success') { setTimeout(() => toast.classList.add('success-flash'), 50); }
     setTimeout(() => { toast.style.animation = 'slideOut 0.35s ease-in forwards'; setTimeout(() => toast.remove(), 350); }, 3800);
+}
+
+function logActivity(icon, text) {
+    if (!appData.activityLog) appData.activityLog = [];
+    appData.activityLog.unshift({ icon: icon, text: text, ts: Date.now() });
+    if (appData.activityLog.length > 40) appData.activityLog.length = 40;
 }
 
 function showToast(msg, type='success') {
@@ -1232,6 +1248,16 @@ function getFilteredTasks() {
     });
 }
 
+function kanbanPassesUserFilters(t_obj) {
+    /* wie getFilteredTasks, aber OHNE den „Abgeschlossene ausblenden"-Filter,
+       damit die Spalte Abgeschlossen immer gefüllt ist. */
+    if(activeFilters.users.length > 0) { const matchUser = activeFilters.users.includes(t_obj.assigneeId || '') || (Array.isArray(t_obj.assigneeIds) && t_obj.assigneeIds.some(id => activeFilters.users.includes(id))); if(!matchUser) return false; }
+    if(activeFilters.stack.length > 0 && !activeFilters.stack.includes(t_obj.projectStackId || '')) return false;
+    if(activeFilters.sh.length > 0 && !activeFilters.sh.includes(t_obj.stakeholderId || '')) return false;
+    if(activeFilters.bucket.length > 0 && !activeFilters.bucket.includes(t_obj.bucket || '')) return false;
+    return true;
+}
+
 function getFilteredStacks() { 
     const hideDone = appData.settings.globalHideCompleted; const hidePaused = appData.settings.globalHidePaused;
     
@@ -1299,6 +1325,8 @@ function setTaskState(id, action) {
     }
     if(action === 'reopen') { task.status = appData.statuses[0].id; delete task.completedAt; }
     if(oldStatus !== task.status) { triggerWorkflows('task_status_changed', { task, oldStatus, newStatus: task.status }); }
+    { const _actMap = { complete: ['fa-check', t('act_task_done')], reopen: ['fa-rotate-left', t('act_task_reopened')], pause: ['fa-pause', t('act_task_paused')], resume: ['fa-play', t('act_task_resumed')] };
+      if(_actMap[action]) logActivity(_actMap[action][0], _actMap[action][1].replace('{n}', task.projectName || '')); }
 
     saveToLocal();
     if(document.getElementById('taskModal').classList.contains('active')) { openModal(id); }
@@ -2419,7 +2447,7 @@ function openStackModal(id = null) {
     const actionsContainer = document.getElementById('stack_header_actions'); let actionsHtml = '';
 
     if (id) {
-        document.getElementById('stackModalTitle').innerText = t('s_edit'); 
+        document.getElementById('stackModalTitle').innerText = t('s_edit'); { const _pr = document.getElementById('s_preset_row'); if(_pr) _pr.style.display='none'; }
         document.getElementById('btnDeleteStack').style.display = 'block'; document.getElementById('dropdownShareStack').style.display = 'block';
         const s = appData.projectStacks.find(x => x.id === id);
         
@@ -2464,6 +2492,23 @@ function openStackModal(id = null) {
         document.getElementById('stackModalTitle').innerText = t('s_new'); document.getElementById('btnDeleteStack').style.display = 'none'; document.getElementById('dropdownShareStack').style.display = 'none';
         renderInteractiveRating('s_interactive_rating', null); tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Noch keine Aufgaben.</span>';
         document.getElementById('s_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
+        populatePresetPicker('stack');
+        /* Standard-Voreinstellung (Preset) für neue Stacks anwenden */
+        const _sp = (appData.stackPresets || []).find(p => p.isDefault);
+        if (_sp) {
+            const _ssh = document.getElementById('s_stakeholder'); if (_ssh && _sp.stakeholderId) _ssh.value = _sp.stakeholderId;
+            const _sbk = document.getElementById('s_bucket'); if (_sbk && _sp.bucket) _sbk.value = _sp.bucket;
+            if (_sp.note) { const _srte = document.getElementById('s_notes_rte'); if (_srte) _srte.innerHTML = _sp.note.replace(/\n/g, '<br>'); }
+            if (_sp.checklist && _sp.checklist.length) {
+                const _scont = document.getElementById('s_checklist_container');
+                _sp.checklist.forEach(title => {
+                    const div = document.createElement('div'); div.className = 'checklist-item';
+                    const nid = generateId(); div.setAttribute('data-id', nid);
+                    div.innerHTML = buildChecklistItemHTML(title, false, '', '', nid);
+                    addModalClDragHandlers(div); _scont.appendChild(div);
+                });
+            }
+        }
     }
     actionsContainer.innerHTML = actionsHtml;
 }
@@ -2525,6 +2570,7 @@ function saveStack() {
         if(modalRatingChanged) { let targetEntity = appData.projectStacks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
         if(sData.status === 'completed' && !sData.completedAt) { sData.completedAt = Date.now(); triggerWorkflows('stack_completed', { stack: sData }); }
         if(sData.status !== 'completed') { delete sData.completedAt; }
+        logActivity('fa-folder', (existingStack ? t('act_stack_edited') : t('act_stack_created')).replace('{n}', sData.name || ''));
         saveToLocal(); closeStackModal(); showToast(t('toast_saved'));
     } catch(e) {
         console.error(e); showToast("Fehler beim Speichern des Stacks: " + e.message, "error");
@@ -2580,7 +2626,7 @@ function openModal(taskId = null) {
     const actionsContainer = document.getElementById('task_header_actions'); let actionsHtml = '';
 
     if (taskId) {
-        document.getElementById('modalTitle').innerText = t('task_edit'); const t_obj = appData.tasks.find(x => x.id === taskId);
+        document.getElementById('modalTitle').innerText = t('task_edit'); { const _pr = document.getElementById('t_preset_row'); if(_pr) _pr.style.display='none'; } const t_obj = appData.tasks.find(x => x.id === taskId);
         document.getElementById('taskId').value = t_obj.id; document.getElementById('btnDeleteTask').style.display = 'block'; document.getElementById('dropdownShareTask').style.display = 'block';
         
         const isCompleted = isTaskDone(t_obj);
@@ -2615,10 +2661,20 @@ function openModal(taskId = null) {
         document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence();
         if(appData.statuses.length > 0) document.getElementById('t_status').value = appData.statuses[0].id;
         document.getElementById('t_assignee').value = appData.settings.currentUserId || '';
-        appData.defaultChecklist.forEach(title => {
+        populatePresetPicker('task');
+        /* Standard-Voreinstellung (Preset) für neue Aufgaben anwenden */
+        const _tp = (appData.taskPresets || []).find(p => p.isDefault);
+        if (_tp) {
+            if (_tp.priority) document.getElementById('t_priority').value = _tp.priority;
+            const _sh = document.getElementById('t_stakeholder'); if (_sh && _tp.stakeholderId) _sh.value = _tp.stakeholderId;
+            const _bk = document.getElementById('t_bucket'); if (_bk && _tp.bucket) _bk.value = _tp.bucket;
+        }
+        const _presetCl = (_tp && _tp.checklist && _tp.checklist.length) ? _tp.checklist : appData.defaultChecklist;
+        _presetCl.forEach(title => {
             const newId = generateId();
             renderTaskChecklistItem(container, title, false, '', '', newId);
         });
+        if (_tp && _tp.note) { const _rte = document.getElementById('t_desc_rte'); if (_rte) _rte.innerHTML = _tp.note.replace(/\n/g, '<br>'); }
         document.getElementById('t_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
         setTimeout(() => document.getElementById('t_project').focus(), 100);
     }
@@ -2745,6 +2801,7 @@ function saveTask() {
         if (newStatus === 'done' && !taskData.completedAt) { taskData.completedAt = Date.now(); triggerWorkflows('task_completed', { task: taskData }); } else if (newStatus !== 'done') { delete taskData.completedAt; }
         if(oldStatus && oldStatus !== newStatus) { triggerWorkflows('task_status_changed', { task: taskData, oldStatus, newStatus }); }
         
+        logActivity(existingTask ? 'fa-pen' : 'fa-plus', (existingTask ? t('act_task_edited') : t('act_task_created')).replace('{n}', taskData.projectName || ''));
         saveToLocal(); closeModal(); showToast(t('toast_saved'));
     } catch(e) { console.error(e); showToast("Fehler beim Speichern: " + e.message, "error"); }
 }
@@ -2755,10 +2812,7 @@ function switchView(view, elTarget = null) {
         saveCurrentNoteState();
     }
 
-    if(view === 'schedule' || view === 'timeline') {
-        plannerSubView = view;
-        view = 'planner';
-    }
+    if(view === 'schedule' || view === 'timeline') { plannerSubView = view; }
 
     currentView = view; 
     document.querySelectorAll('.sidebar .nav-item').forEach(el => el.classList.remove('active')); 
@@ -2785,7 +2839,7 @@ function switchView(view, elTarget = null) {
     const defaultMatch = defaultViews.find(dv => dv.id === view); if (defaultMatch && vTitle === defaultMatch.name) { vTitle = t('view_' + view); }
     
     document.getElementById('viewTitle').innerText = vTitle; 
-    document.getElementById('btnCompactToggle').style.display = view === 'kanban' ? 'block' : 'none';
+    { const _bc = document.getElementById('btnCompactToggle'); if(_bc) _bc.style.display = view === 'kanban' ? 'block' : 'none'; }
     
     renderView(); 
     if(currentView === 'time') updateTimerDisplays();
@@ -2847,110 +2901,263 @@ function switchPlannerTab(subView) {
 
 // DEPENDENCIES VIEW (NEW)
 function renderDependenciesView(c) {
-    let html = `<div style="padding: 20px; max-width: 1200px; margin: 0 auto;">`;
-    html += `<h2 style="margin-bottom:10px;"><i class="fas fa-project-diagram" style="color:var(--primary-color);"></i> Abhängigkeiten (Netzwerk)</h2>`;
-    html += `<p style="color:var(--text-muted); font-size:12px; margin-bottom:20px;">Hier siehst du alle definierten Abhängigkeiten ("Wartet auf..."). Elemente, die blockieren (Predecessors), stehen oben.</p>`;
-    
-    let edges = []; 
-    let nodes = new Map(); 
+    if (typeof window.depLevels === 'undefined') window.depLevels = { stack: true, task: true, checklist: true };
+    const L = window.depLevels;
+    const hideDone = appData.settings && appData.settings.globalHideCompleted;
 
-    const addNode = (id, name, type, isDone) => {
-        if(!nodes.has(id)) nodes.set(id, { id, name, type, isLocked: isEntityLocked(id), isDone });
-    };
+    /* ---- Alle Elemente als Knoten einsammeln (einheitliches .id / .predecessors Modell) ---- */
+    const nodes = [];      /* {id, type, name, done, stackId, preds[]} */
+    const byId = {};
+    const addNode = (n) => { nodes.push(n); byId[n.id] = n; };
 
-    appData.tasks.forEach(t => {
-        addNode(t.id, t.projectName, 'task', isTaskDone(t));
-        if(t.checklist) t.checklist.forEach(cl => addNode(cl.id, `${t.projectName} > ${cl.title}`, 'task-checklist', cl.done || isTaskDone(t)));
+    appData.projectStacks.forEach(sk => {
+        if (!L.stack) return;
+        addNode({ id: sk.id, type: 'stack', name: sk.name || 'Stack', done: sk.status === 'completed',
+                  color: sk.color || 'var(--text-muted)', stackId: sk.id, preds: (sk.predecessors || []).slice() });
     });
-    appData.projectStacks.forEach(s => {
-        addNode(s.id, s.name, 'stack', s.status === 'completed');
-        if(s.checklist) s.checklist.forEach(m => addNode(m.id, `${s.name} > ${m.title}`, 'milestone', m.done || s.status === 'completed'));
+    appData.tasks.forEach(tk => {
+        if (!L.task) return;
+        if (hideDone && isTaskDone(tk)) return;
+        addNode({ id: tk.id, type: 'task', name: tk.projectName || 'Aufgabe', done: isTaskDone(tk),
+                  stackId: tk.projectStackId || '', preds: (tk.predecessors || []).slice() });
+        if (L.checklist && tk.checklist) {
+            tk.checklist.forEach(ci => {
+                if (!ci.id) return;
+                if (hideDone && ci.done) return;
+                addNode({ id: ci.id, type: 'checklist', name: ci.title || 'Punkt', done: !!ci.done,
+                          stackId: tk.projectStackId || '', parentTask: tk.id, preds: (ci.predecessors || []).slice() });
+            });
+        }
     });
-
-    Object.keys(tempPredecessors).forEach(targetId => {
-        const preds = tempPredecessors[targetId];
-        preds.forEach(pId => {
-            if(nodes.has(targetId) && nodes.has(pId)) {
-                edges.push({ from: pId, to: targetId });
-            }
+    /* Stack-Checklisten (Milestones) */
+    appData.projectStacks.forEach(sk => {
+        if (!L.stack || !L.checklist || !sk.checklist) return;
+        sk.checklist.forEach(ci => {
+            if (!ci.id) return;
+            if (hideDone && ci.done) return;
+            addNode({ id: ci.id, type: 'milestone', name: ci.title || 'Meilenstein', done: !!ci.done,
+                      stackId: sk.id, parentStack: sk.id, preds: (ci.predecessors || []).slice() });
         });
     });
 
-    if(edges.length === 0) {
-        c.innerHTML = html + `<div style="padding:40px; text-align:center; color:var(--text-muted); background:var(--surface-color); border-radius:var(--radius); border:1px solid var(--border-color);">Keine Abhängigkeiten definiert. Verknüpfe Elemente in den Details.</div></div>`;
+    /* ---- Kopfzeile mit Ebenen-Schaltern ---- */
+    let html = `<div class="dep-wrap">
+        <div class="dep-toolbar">
+            <div class="dep-title"><i class="fas fa-diagram-project"></i> ${t('view_dependencies')}</div>
+            <div class="dep-legend">
+                <span><i class="dep-lg-start">&gt;</i> ${t('dep_start')}</span>
+                <span><i class="fas fa-lock dep-lg-lock"></i> ${t('dep_end')}</span>
+                <span class="dep-hint"><i class="fas fa-hand-pointer"></i> ${t('dep_drag_hint')}</span>
+            </div>
+            <div class="dep-levels">
+                <button class="dep-lvl ${L.stack?'on':''}" onclick="depToggleLevel('stack')"><i class="fas fa-folder"></i> Stack</button>
+                <button class="dep-lvl ${L.task?'on':''}" onclick="depToggleLevel('task')"><i class="fas fa-tasks"></i> ${t('tasks')}</button>
+                <button class="dep-lvl ${L.checklist?'on':''}" onclick="depToggleLevel('checklist')"><i class="fas fa-check-square"></i> ${t('view_checklists')}</button>
+            </div>
+        </div>`;
+
+    if (!nodes.length) {
+        html += `<div class="dep-empty"><i class="fas fa-diagram-project"></i><b>${t('dep_empty_title')}</b><span>${t('dep_empty_sub')}</span></div></div>`;
+        c.innerHTML = html;
         return;
     }
 
-    let targets = new Set(edges.map(e => e.to));
-    let roots = Array.from(nodes.keys()).filter(id => !targets.has(id) && edges.some(e => e.from === id));
-    
-    if(roots.length === 0 && edges.length > 0) roots = [edges[0].from];
-
-    html += `<div style="overflow-x:auto; padding-bottom: 20px; display:flex; flex-direction:column; gap:20px;">`;
-
-    const renderNodeTree = (nodeId, level, visited) => {
-        if(visited.has(nodeId)) return ''; 
-        visited.add(nodeId);
-        
-        const node = nodes.get(nodeId);
-        const children = edges.filter(e => e.from === nodeId).map(e => e.to);
-        
-        let icon = node.type === 'stack' ? 'fa-folder' : (node.type === 'task' ? 'fa-tasks' : 'fa-check-square');
-        let bg = node.isDone ? 'rgba(16, 185, 129, 0.05)' : 'var(--surface-color)';
-        let border = node.isDone ? 'var(--success)' : (node.isLocked ? 'var(--warning)' : 'var(--primary-color)');
-        let opacity = node.isDone ? '0.7' : '1';
-        let lockIcon = (!node.isDone && node.isLocked) ? '<i class="fas fa-lock" style="color:var(--warning); margin-right:5px;"></i>' : '';
-
-        let clickFn = '';
-        if(node.type === 'stack') clickFn = `openStackModal('${node.id}')`;
-        else if(node.type === 'task') clickFn = `openModal('${node.id}')`;
-        else if(node.type === 'task-checklist') {
-            const parentTask = appData.tasks.find(t => t.checklist && t.checklist.some(c => c.id === node.id));
-            if(parentTask) clickFn = `openModal('${parentTask.id}')`;
-        }
-        else if(node.type === 'milestone') {
-            const parentStack = appData.projectStacks.find(s => s.checklist && s.checklist.some(m => m.id === node.id));
-            if(parentStack) clickFn = `openStackModal('${parentStack.id}')`;
-        }
-        
-        let res = `<div style="display:flex; align-items:flex-start; margin-top: ${level === 0 ? '0' : '15px'};">`;
-        
-        if(level > 0) {
-            res += `<div style="width: 30px; height: 20px; border-left: 2px solid var(--border-color); border-bottom: 2px solid var(--border-color); border-bottom-left-radius: 8px; margin-right: 10px; margin-top: -10px;"></div>`;
-        }
-
-        res += `<div style="background:${bg}; border: 1px solid ${border}; padding: 10px 15px; border-radius: var(--radius); opacity:${opacity}; min-width: 200px; max-width: 350px; box-shadow: var(--shadow); position:relative; cursor:${clickFn?'pointer':'default'}; transition:0.2s;" onclick="${clickFn}">
-            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; font-weight:bold; display:flex; justify-content:space-between; align-items:center;">
-                ${node.type}
-                <div style="display:flex; gap:5px;">
-                    ${level > 0 ? `<button class="secondary icon-btn" style="padding:0; height:auto; color:var(--danger);" onclick="event.stopPropagation(); toggleDependency('${nodeId}', '${Array.from(visited)[visited.size-2]}', false);" title="Verknüpfung lösen"><i class="fas fa-unlink"></i></button>` : ''}
-                    <button class="secondary icon-btn" style="padding:0; height:auto; color:var(--primary-color);" onclick="event.stopPropagation(); openDependencyModal('${node.id}', '${node.name}')" title="Neu verknüpfen"><i class="fas fa-link"></i></button>
-                </div>
-            </div>
-            <div style="font-weight:bold; font-size:13px; word-wrap:break-word;"><i class="fas ${icon}" style="color:${border}; margin-right:5px;"></i> ${lockIcon}${node.name}</div>
-        </div>`;
-
-        if(children.length > 0) {
-            res += `<div style="margin-left: 20px; display:flex; flex-direction:column; position:relative;">`;
-            res += `<div style="position:absolute; left: -10px; top: 15px; bottom: 15px; width: 2px; background: var(--border-color);"></div>`;
-            children.forEach(cId => {
-                res += renderNodeTree(cId, level + 1, new Set(visited));
-            });
-            res += `</div>`;
-        }
-        res += `</div>`;
-        return res;
+    /* ---- Layout auf freier Fläche: Spalten nach Abhängigkeitstiefe (Längengrad), Zeilen frei ---- */
+    const depthCache = {};
+    const calcDepth = (id, seen) => {
+        if (depthCache[id] !== undefined) return depthCache[id];
+        seen = seen || new Set();
+        if (seen.has(id)) return 0;
+        seen.add(id);
+        const n = byId[id];
+        if (!n || !n.preds.length) return (depthCache[id] = 0);
+        let mx = 0;
+        n.preds.forEach(p => { if (byId[p]) mx = Math.max(mx, calcDepth(p, seen) + 1); });
+        return (depthCache[id] = mx);
     };
+    nodes.forEach(n => n.depth = calcDepth(n.id));
 
-    roots.forEach(rId => {
-        html += `<div style="background:var(--bg-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); box-shadow:inset 0 2px 4px rgba(0,0,0,0.02);">`;
-        html += renderNodeTree(rId, 0, new Set());
-        html += `</div>`;
+    /* nach Tiefe gruppieren */
+    const cols = {};
+    let maxDepth = 0;
+    nodes.forEach(n => { (cols[n.depth] = cols[n.depth] || []).push(n); maxDepth = Math.max(maxDepth, n.depth); });
+
+    const COL_W = 250, NODE_H = 74, V_GAP = 22, H_PAD = 30, V_PAD = 30;
+    let maxRows = 0;
+    Object.keys(cols).forEach(d => { maxRows = Math.max(maxRows, cols[d].length); });
+    const canvasW = H_PAD * 2 + (maxDepth + 1) * COL_W;
+    const canvasH = V_PAD * 2 + maxRows * (NODE_H + V_GAP);
+
+    /* Position je Knoten festlegen */
+    Object.keys(cols).forEach(d => {
+        cols[d].forEach((n, i) => {
+            n.x = H_PAD + n.depth * COL_W;
+            n.y = V_PAD + i * (NODE_H + V_GAP);
+        });
     });
 
-    html += `</div></div>`;
+    const NODE_W = 200;
+    /* ---- Kanten (SVG) zeichnen: von Vorgänger (rechts) zu Abhängigem (links) ---- */
+    let edges = '';
+    nodes.forEach(n => {
+        n.preds.forEach(pid => {
+            const p = byId[pid];
+            if (!p) return;
+            const x1 = p.x + NODE_W, y1 = p.y + NODE_H / 2;
+            const x2 = n.x, y2 = n.y + NODE_H / 2;
+            const mx = (x1 + x2) / 2;
+            edges += `<path class="dep-edge dep-edge-${n.type}" d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" marker-end="url(#depArrow)"></path>`;
+        });
+    });
+
+    const typeIcon = { stack: 'fa-folder', task: 'fa-tasks', checklist: 'fa-check-square', milestone: 'fa-flag' };
+
+    /* ---- Knoten-Karten ---- */
+    let nodeHtml = '';
+    nodes.forEach(n => {
+        const hasPreds = n.preds.filter(p => byId[p]).length > 0;
+        const isDependedOn = nodes.some(o => o.preds.includes(n.id));
+        const locked = (n.type === 'task' || n.type === 'stack') ? isEntityLocked(n.id) : false;
+        const cls = ['dep-gnode', 'type-' + n.type, n.done ? 'done' : '', locked ? 'locked' : '',
+                     !hasPreds ? 'is-start' : '', !isDependedOn ? 'is-end' : ''].filter(Boolean).join(' ');
+        const click = n.type === 'stack' ? `openStackModal('${n.id}')` : (n.type === 'task' ? `openModal('${n.id}')` : '');
+        nodeHtml += `<div class="${cls}" style="left:${n.x}px; top:${n.y}px; width:${NODE_W}px; height:${NODE_H}px"
+            data-depid="${n.id}" data-deptype="${n.type}" draggable="true"
+            ondragstart="depDragStart(event,'${n.id}','${n.type}')" ondragend="depDragEnd(event)"
+            ondragover="depDragOver(event)" ondragleave="depDragLeave(event)" ondrop="depDrop(event,'${n.id}','${n.type}')"
+            ${click ? `onclick="${click}"` : ''}>
+            ${!hasPreds ? `<span class="dep-gport in start" title="${t('dep_start')}">&gt;</span>` : `<span class="dep-gport in"></span>`}
+            <span class="dep-gport out ${locked ? 'locked' : ''}" title="${locked ? t('dep_end') : ''}">${locked ? '<i class=\"fas fa-lock\"></i>' : ''}</span>
+            <div class="dep-gnode-ic"><i class="fas ${typeIcon[n.type]}"></i></div>
+            <div class="dep-gnode-body">
+                <span class="dep-gnode-name">${escapeHtmlToday(n.name)}</span>
+                <span class="dep-gnode-type">${n.type === 'stack' ? 'Stack' : (n.type === 'task' ? t('task_title') : t('view_checklists'))}</span>
+            </div>
+            ${n.done ? '<i class="fas fa-check-circle dep-gnode-done"></i>' : (locked ? '<i class="fas fa-lock dep-gnode-lock"></i>' : '')}
+        </div>`;
+    });
+
+    html += `<div class="dep-canvas-wrap"><div class="dep-canvas" style="width:${canvasW}px; height:${canvasH}px">
+        <svg class="dep-edges" width="${canvasW}" height="${canvasH}">
+            <defs><marker id="depArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L8,3 L0,6 Z" fill="var(--wk-graphite-2)"></path></marker></defs>
+            ${edges}
+        </svg>
+        ${nodeHtml}
+    </div></div>`;
+
+    html += `</div>`;
     c.innerHTML = html;
 }
+
+let depDragSource = null;
+
+function depDragStart(ev, id, type) {
+    depDragSource = { id, type };
+    ev.dataTransfer.effectAllowed = 'link';
+    try { ev.dataTransfer.setData('text/plain', id); } catch(e) {}
+    if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.add('dep-dragging');
+    document.body.classList.add('dep-linking');
+    ev.stopPropagation();
+}
+
+function depDragEnd(ev) {
+    if (ev.currentTarget && ev.currentTarget.classList) ev.currentTarget.classList.remove('dep-dragging');
+    document.body.classList.remove('dep-linking');
+    document.querySelectorAll('.dep-drop-ok, .dep-drop-bad').forEach(e => e.classList.remove('dep-drop-ok','dep-drop-bad'));
+    depDragSource = null;
+}
+
+function depDragOver(ev) {
+    if (!depDragSource) return;
+    const tgt = ev.currentTarget;
+    const tId = tgt.getAttribute('data-depid');
+    if (tId === depDragSource.id) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'link';
+    if (!tgt.classList.contains('dep-drop-ok') && !tgt.classList.contains('dep-drop-bad'))
+        tgt.classList.add('dep-drop-ok');
+}
+
+function depDragLeave(ev) {
+    ev.currentTarget.classList.remove('dep-drop-ok','dep-drop-bad');
+}
+
+/* Element (Aufgabe, Stack, Checkliste, Meilenstein) anhand id finden */
+function depFindEntity(id) {
+    let tk = appData.tasks.find(x => x.id === id);
+    if (tk) return { obj: tk, name: tk.projectName, kind: 'task' };
+    let sk = appData.projectStacks.find(x => x.id === id);
+    if (sk) return { obj: sk, name: sk.name, kind: 'stack' };
+    for (const parent of appData.tasks) {
+        if (parent.checklist) { const ci = parent.checklist.find(x => x.id === id); if (ci) return { obj: ci, name: ci.title, kind: 'checklist' }; }
+    }
+    for (const parent of appData.projectStacks) {
+        if (parent.checklist) { const ci = parent.checklist.find(x => x.id === id); if (ci) return { obj: ci, name: ci.title, kind: 'milestone' }; }
+    }
+    return null;
+}
+
+/* Zyklusprüfung über das einheitliche predecessors-Modell */
+function depWouldCycle(targetId, predId) {
+    const visited = new Set();
+    const walk = (cur) => {
+        if (cur === targetId) return true;
+        if (visited.has(cur)) return false;
+        visited.add(cur);
+        const e = depFindEntity(cur);
+        if (!e || !e.obj.predecessors) return false;
+        return e.obj.predecessors.some(walk);
+    };
+    return walk(predId);
+}
+
+function depDrop(ev, targetId, targetType) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.currentTarget.classList.remove('dep-drop-ok','dep-drop-bad');
+    document.body.classList.remove('dep-linking');
+    const src = depDragSource;
+    depDragSource = null;
+    if (!src || src.id === targetId) return;
+
+    const target = depFindEntity(targetId);
+    const source = depFindEntity(src.id);
+    if (!target || !source) return;
+
+    if (!target.obj.predecessors) target.obj.predecessors = [];
+    if (target.obj.predecessors.includes(src.id)) { showToast(t('dep_exists'), 'info'); return; }
+    if (depWouldCycle(targetId, src.id)) { showToast(t('dep_cycle'), 'warning'); return; }
+
+    /* Ziel hängt von Quelle ab (jede Kombination aus Stack/Aufgabe/Checkpunkt erlaubt) */
+    target.obj.predecessors.push(src.id);
+    if (typeof tempPredecessors === 'object') tempPredecessors[targetId] = [...target.obj.predecessors];
+    saveToLocal(true);
+    showToast(t('dep_linked').replace('{a}', source.name || '').replace('{b}', target.name || ''), 'success');
+    renderView();
+}
+
+function depRemovePred(id, predId) {
+    const e = depFindEntity(id);
+    if (!e || !e.obj.predecessors) return;
+    const i = e.obj.predecessors.indexOf(predId);
+    if (i > -1) {
+        e.obj.predecessors.splice(i, 1);
+        if (typeof tempPredecessors === 'object') tempPredecessors[id] = [...e.obj.predecessors];
+        saveToLocal(true);
+        renderView();
+    }
+}
+
+function depToggleLevel(key) {
+    if (typeof window.depLevels === 'undefined') window.depLevels = { stack: true, task: true, checklist: true };
+    const next = !window.depLevels[key];
+    const others = Object.keys(window.depLevels).filter(k => k !== key).some(k => window.depLevels[k]);
+    if (!next && !others) return;
+    window.depLevels[key] = next;
+    renderView();
+}
+
 
 // NOTIZEN VIEW
 
@@ -3341,8 +3548,15 @@ function renderKanban(c) {
             dropTaskToColumn(e, col.id);
         };
 
-        let colTasks = tasks.filter(t_obj => t_obj.status === col.id);
-        if (col.id === 'done') { colTasks.sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0)); }
+        // Spalte „Abgeschlossen" zeigt IMMER alle erledigten Aufgaben,
+        // auch wenn der Filter „Abgeschlossene ausblenden" aktiv ist.
+        let colTasks;
+        if (col.id === 'done') {
+            colTasks = appData.tasks.filter(t_obj => isTaskDone(t_obj) && kanbanPassesUserFilters(t_obj));
+            colTasks.sort((a,b) => (b.completedAt || 0) - (a.completedAt || 0));
+        } else {
+            colTasks = tasks.filter(t_obj => t_obj.status === col.id);
+        }
         colTasks.forEach(task => { cardsDiv.appendChild(createTaskCard(task)); });
 
         const quickAdd = document.createElement('div'); quickAdd.className = 'kanban-quick-add'; quickAdd.innerHTML = `<input type="text" placeholder="+ ${t('quick_add')}" onkeypress="if(event.key==='Enter') quickAddTask(this, '${col.id}')">`;
@@ -3417,6 +3631,7 @@ function createTaskCard(task) {
     const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
 
     let actionBtns = '';
+    actionBtns += `<button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
     if(!isCompleted) {
         if(isPaused) actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
         else actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
@@ -3442,13 +3657,50 @@ function createTaskCard(task) {
         </div>`;
     } else {
         // Standardansicht ohne Pausiert-Label
-        let topElements = '';
-        if(task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if(stack) topElements += `<div class="stack-badge"><i class="fas fa-folder"></i> ${stack.name}</div><br>`; }
-        if(task.stakeholderId) { const sh = appData.stakeholders.find(s => s.id === task.stakeholderId); if(sh) topElements += `<div class="stakeholder-badge" style="background-color: ${sh.color}"><i class="fas fa-user"></i> ${sh.name}</div>`; }
-        const rAvg = getAvgRating(task.rating); const ratingHtml = rAvg > 0 && isCompleted ? `<span style="font-size:11px; color:var(--warning); font-weight:bold; margin-left:10px;"><i class="fas fa-star"></i> ${rAvg}</span>` : '';
-        const timeBarHtml = `<div style="margin-top:8px;"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between;"><span>${t('actual')}: ${spent}h</span><span>${t('target')}: ${est}h</span></div><div class="time-pb-container"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></div>`;
+        const timeBarHtml = (parseFloat(est) > 0 || parseFloat(spent) > 0) ? `<div class="wk-effort"><div class="wk-effort-head"><span><i class="far fa-clock"></i> ${t('actual')} <b>${spent}h</b></span><span>${t('target')} <b>${est}h</b></span></div><div class="wk-effort-bar"><i class="${isOver?'over':''}" style="width:${Math.min(100,pct)}%"></i></div></div>` : '';
+        // Abgeschlossene Aufgaben: nur der Aufgabenname
+        if (isCompleted) {
+            // Abgeschlossen: Name, Bucket, Stakeholder + nur zwei Aktionen (Wiedereröffnen, Zeit buchen)
+            let doneSh = '';
+            if (task.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === task.stakeholderId); if (sh) doneSh = `<span class="wk-c-sh" style="--shc:${sh.color}"><i class="fas fa-user-tie"></i> ${escapeHtmlToday(sh.name)}</span>`; }
+            const doneBucket = task.bucket ? `<span class="wk-c-bucket"><i class="fas fa-box-open"></i> ${escapeHtmlToday(task.bucket)}</span>` : '';
+            const doneActions = `<button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`
+                + `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-rotate-left"></i></button>`;
+            card.innerHTML = `<div class="wk-card done">
+                <div class="wk-card-done-main">
+                    <div class="task-title done" title="${task.projectName || ''}"><i class="fas fa-check-circle wk-done-ic"></i> ${escapeHtmlToday(task.projectName || 'Unbenannt')}</div>
+                    ${(doneSh || doneBucket) ? `<div class="wk-card-done-tags">${doneBucket}${doneSh}</div>` : ''}
+                </div>
+                <div class="wk-card-actions">${doneActions}</div>
+            </div>`;
+        } else {
+            // Einheitliche Kachel für alle offenen Spalten
+            let stackBadge = '';
+            if (task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if (stack) stackBadge = `<span class="wk-c-stack" style="--sc:${stack.color || 'var(--text-muted)'}"><i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}</span>`; }
+            let shBadge = '';
+            if (task.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === task.stakeholderId); if (sh) shBadge = `<span class="wk-c-sh" style="--shc:${sh.color}"><i class="fas fa-user-tie"></i> ${escapeHtmlToday(sh.name)}</span>`; }
+            const bucketBadge = task.bucket ? `<span class="wk-c-bucket"><i class="fas fa-box-open"></i> ${escapeHtmlToday(task.bucket)}</span>` : '';
+            const clDone = (task.checklist || []).filter(x => x.done).length, clTot = (task.checklist || []).length;
+            const clInfo = clTot ? `<span class="wk-c-cl"><i class="fas fa-check-square"></i> ${clDone}/${clTot}</span>` : '';
+            const filesInfo = (task.files && task.files.length) ? `<span class="wk-c-files"><i class="fas fa-paperclip"></i> ${task.files.length}</span>` : '';
+            const dueInfo = task.dueDate ? `<span class="wk-c-due"><i class="far fa-calendar-alt"></i> ${task.dueDate}</span>` : '';
 
-        card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:flex-start;"><div>${topElements}<div style="font-size:11px; color:var(--text-muted); margin:5px 0;">${task.bucket || ''}</div></div><div style="display:flex; gap:5px; flex-shrink:0;">${actionBtns}</div></div><div class="task-title">${lockedIcon}${task.projectName || 'Unbenannt'} ${ratingHtml}</div>${generateProgressBarHTML(progress)}<div style="font-size:11px; margin-top:5px; color:var(--text-muted); display:flex; gap:10px;"><span><i class="fas fa-check-square"></i> ${progress}%</span>${task.files && task.files.length > 0 ? `<span><i class="fas fa-paperclip"></i> ${task.files.length}</span>` : ''}</div>${timeBarHtml}<div class="task-meta"><div style="display:flex; gap:5px; align-items:center;"><span class="badge ${task.priority}">${prioLabels[task.priority]}</span>${avatarHtml}</div><span><i class="far fa-calendar-alt"></i> ${task.dueDate || '-'}</span></div>`;
+            card.innerHTML = `<div class="wk-card">
+                <div class="wk-card-top">
+                    <div class="wk-card-tags">${stackBadge}${shBadge}${bucketBadge}</div>
+                    <div class="wk-card-actions">${actionBtns}</div>
+                </div>
+                <div class="task-title">${lockedIcon}${escapeHtmlToday(task.projectName || 'Unbenannt')}</div>
+                ${timeBarHtml}
+                <div class="wk-card-foot">
+                    <div class="wk-card-foot-l">
+                        <span class="badge ${task.priority}">${prioLabels[task.priority]}</span>
+                        ${clInfo}${filesInfo}${dueInfo}
+                    </div>
+                    <div class="wk-card-foot-r">${avatarHtml}</div>
+                </div>
+            </div>`;
+        }
     }
     return card;
 }
@@ -3584,7 +3836,7 @@ function renderList(c) {
        weil die Nachrüstung nur beim Laden gespeicherter Stände greift. */
     if(!appData.settings.listColumns) appData.settings.listColumns = { assignee: true, stakeholder: true, bucket: false, status: true, priority: true, startDate: false, dueDate: true, recurrence: false, timeSpent: false, description: false, checklist: false, files: false, notes: false, progress: true };
     const cols = appData.settings.listColumns;
-    
+    try {
     let html = `
     <div style="margin-bottom: 15px; display: flex; justify-content: flex-end;">
         <div class="dropdown click-only">
@@ -3672,6 +3924,10 @@ function renderList(c) {
     document.addEventListener('click', function closeListFilter(e) {
         if(!e.target.closest('.dropdown.click-only')) { const dd = document.querySelector('.dropdown.click-only .dropdown-content'); if(dd) dd.style.display = 'none'; document.removeEventListener('click', closeListFilter); }
     });
+    } catch (err) {
+        console.error('renderList error:', err);
+        c.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-muted);"><i class="fas fa-triangle-exclamation" style="font-size:28px; color:var(--warning); display:block; margin-bottom:12px;"></i><b style="color:var(--text-main);">Die Liste konnte nicht geladen werden.</b><div style="margin-top:6px; font-size:13px;">${(err && err.message) ? err.message : ''}</div><button style="margin-top:16px;" onclick="switchView(&#39;kanban&#39;)">Zur Kanban-Ansicht</button></div>`;
+    }
 }
 
 function generateListRow(task, isIndented) {
@@ -3962,16 +4218,29 @@ function quickTrackTime(taskId) {
     switchView('time');
     setTimeout(() => {
         const sel = document.getElementById('tt_task');
-        if(sel) { sel.value = taskId; }
+        if(sel) {
+            /* Ist die Aufgabe abgeschlossen, fehlt sie in der Auswahl – dann
+               fügen wir sie einmalig hinzu, damit trotzdem gebucht werden kann. */
+            if (![...sel.options].some(o => o.value === taskId)) {
+                const tk = appData.tasks.find(x => x.id === taskId);
+                if (tk) {
+                    const opt = document.createElement('option');
+                    opt.value = taskId;
+                    opt.textContent = (isTaskDone(tk) ? '✓ ' : '') + tk.projectName;
+                    sel.appendChild(opt);
+                }
+            }
+            sel.value = taskId;
+        }
         const hrs = document.getElementById('tt_hours');
         if(hrs) { hrs.focus(); hrs.select(); }
-    }, 100);
+    }, 120);
 }
 
 function renderSchedule(c) {
     let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
         <div style="display:flex; gap:5px; overflow-x:auto; padding-bottom:5px; flex:1;">
-            <button class="secondary ${scheduleMode==='list'?'active':''}" onclick="scheduleMode='list'; safeRenderSchedule()"><i class="fas fa-list"></i> ${t('view_list')}</button>
+            <button class="secondary ${scheduleMode==='list'?'active':''}" onclick="scheduleMode='list'; safeRenderSchedule()"><i class="fas fa-clock-rotate-left"></i> ${t('sched_history')}</button>
             <button class="secondary ${scheduleMode==='day'?'active':''}" onclick="scheduleMode='day'; safeRenderSchedule()"><i class="fas fa-calendar-day"></i> ${t('day')}</button>
             <button class="secondary ${scheduleMode==='week'?'active':''}" onclick="scheduleMode='week'; safeRenderSchedule()"><i class="fas fa-calendar-week"></i> ${t('week')}</button>
             <button class="secondary ${scheduleMode==='month'?'active':''}" onclick="scheduleMode='month'; safeRenderSchedule()"><i class="fas fa-calendar-alt"></i> ${t('month')}</button>
@@ -4037,6 +4306,11 @@ function renderSchedule(c) {
         });
     });
 
+    // Abwesenheiten (Urlaub, Krank, Feiertag, Kompensation) als Ereignisse mitführen
+    (appData.absences || []).forEach(a => {
+        events.push({ date: ttParse(a.date), type: 'absence', data: a, parent: null, span: 'single' });
+    });
+
     const isDay = scheduleMode === 'day';
     const isWeek = scheduleMode === 'week'; 
     const isMonth = scheduleMode === 'month'; 
@@ -4097,7 +4371,7 @@ function renderSchedule(c) {
                     if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                     else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                     else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; }
+                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
                     
                     let spanText = '';
                     if(ev.span === 'start') spanText = '(Start)';
@@ -4202,7 +4476,7 @@ function renderSchedule(c) {
                 if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                 else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                 else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; }
+                else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
 
                 let topPos = item.level * 50 + 10;
                 let timeLabel = `${formatTimeFromMinutes(item.evStartMins)} - ${formatTimeFromMinutes(item.evEndMins)}`;
@@ -4243,7 +4517,7 @@ function renderSchedule(c) {
                     if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                     else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                     else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; }
+                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
                     
                     let actualStart = ev.data.startDate; let actualDue = ev.data.dueDate;
                     if(ev.type === 'milestone' || ev.type === 'task-checklist') { actualStart = null; actualDue = ev.data.dueDate ? ev.data.dueDate.split('T')[0] : null; }
@@ -4383,11 +4657,21 @@ function renderSchedule(c) {
         html += `<div style="max-width: 900px; margin: 0 auto; overflow-x: hidden;">`;
 
         const renderEnrichedCard = (ev) => {
+            /* Abwesenheiten (Urlaub, Krank, Feiertag, Kompensation) gesondert darstellen */
+            if (ev.type === 'absence') {
+                const a = ev.data;
+                return `<div class="agenda-card absence" style="--abs:${ttAbsColor(a.type)}" onclick="switchView('time')">
+                    <div class="agenda-ic" style="background:${ttAbsColor(a.type)}"><i class="fas ${ttAbsIcon(a.type)}"></i></div>
+                    <div class="agenda-body"><b>${ttAbsLabel(a.type)}</b>${a.note ? `<span class="agenda-sub">${escapeHtmlToday(a.note)}</span>` : ''}</div>
+                    <div class="agenda-hours">${ttNum(a.hours)} h</div>
+                </div>`;
+            }
             const isTaskType = ev.type === 'task' || ev.type === 'task-checklist';
             const actualTask = isTaskType ? (ev.type === 'task' ? ev.data : ev.parent) : null;
             const actualStack = !isTaskType ? (ev.type === 'stack' ? ev.data : ev.parent) : null;
+            if (!actualTask && !actualStack) return '';   /* Absturzschutz */
             
-            const isComp = isTaskType ? isTaskDone(actualTask) : actualStack.status === 'completed';
+            const isComp = isTaskType ? isTaskDone(actualTask) : (actualStack ? actualStack.status === 'completed' : false);
             if (hideDone && isComp) return '';
 
             const isPaused = isTaskType ? actualTask.isPaused : actualStack.status === 'paused';
@@ -4580,6 +4864,15 @@ function startTimelineDrag(e, type, id, action, idx) {
     if(!tlDragState.origStart && tlDragState.origEnd) tlDragState.origStart = tlDragState.origEnd;
     if(!tlDragState.origEnd && tlDragState.origStart) tlDragState.origEnd = tlDragState.origStart;
     
+    /* Balken-Element für die Live-Vorschau merken */
+    const handleEl = e.target.closest('.gantt-bar');
+    tlDragState.barEl = handleEl || null;
+    if (tlDragState.barEl) {
+        tlDragState.barLeft0 = parseFloat(tlDragState.barEl.style.left) || 0;
+        tlDragState.barWidth0 = parseFloat(tlDragState.barEl.style.width) || tlDragState.barEl.offsetWidth;
+        tlDragState.barEl.classList.add('gantt-bar-dragging');
+    }
+
     document.addEventListener('mousemove', handleTimelineMouseMove);
     document.addEventListener('mouseup', handleTimelineMouseUp);
     document.addEventListener('touchmove', handleTimelineMouseMove, {passive: false});
@@ -4610,6 +4903,25 @@ function handleTimelineMouseMove(e) {
     
     tlDragState.currentStart = newStart; tlDragState.currentEnd = newEnd;
 
+    /* Live-Vorschau: Balken direkt mitbewegen */
+    if (tlDragState.barEl) {
+        const ppd = appData.settings.tlPixelsPerDay;
+        const shift = daysDiff * ppd;
+        if (tlDragState.action === 'move') {
+            tlDragState.barEl.style.left = (tlDragState.barLeft0 + shift) + 'px';
+        } else if (tlDragState.action === 'start') {
+            let nl = tlDragState.barLeft0 + shift;
+            let nw = tlDragState.barWidth0 - shift;
+            if (nw < ppd) { nw = ppd; nl = tlDragState.barLeft0 + tlDragState.barWidth0 - ppd; }
+            tlDragState.barEl.style.left = nl + 'px';
+            tlDragState.barEl.style.width = nw + 'px';
+        } else if (tlDragState.action === 'end') {
+            let nw = tlDragState.barWidth0 + shift;
+            if (nw < ppd) nw = ppd;
+            tlDragState.barEl.style.width = nw + 'px';
+        }
+    }
+
     const preview = document.getElementById('timeline-drag-preview');
     const track = document.getElementById('timeline-track');
     if(preview && track) {
@@ -4631,6 +4943,7 @@ function handleTimelineMouseUp(e) {
     
     const preview = document.getElementById('timeline-drag-preview');
     if(preview) preview.style.display = 'none';
+    if(tlDragState.barEl) tlDragState.barEl.classList.remove('gantt-bar-dragging');
 
     if(tlDragState.currentStart !== undefined || tlDragState.currentEnd !== undefined) {
         const toDateStr = (ms) => {
@@ -4855,7 +5168,9 @@ function renderTimeline(c) {
 
     const trackWidth = Math.max(800, totalDays * appData.settings.tlPixelsPerDay);
 
-    let kwHtml = ''; let dayHtml = ''; let bgLinesHtml = '';
+    let kwHtml = ''; let dayHtml = ''; let bgLinesHtml = ''; let absBandsHtml = '';
+    const _absByDate = {};
+    (appData.absences || []).forEach(a => { _absByDate[a.date] = a; });
     const todayDateObj = new Date(); todayDateObj.setHours(0,0,0,0); const currentKW = getISOWeek(todayDateObj); const currentKWYear = todayDateObj.getFullYear();
     let iterDate = new Date(minDate); iterDate.setHours(0,0,0,0);
     
@@ -4873,6 +5188,12 @@ function renderTimeline(c) {
         if (iterDate.getDate() === 1 || (totalDays < 60 && dayOfWeek === 1)) {
            dayHtml += `<div class="timeline-axis-tick" style="left:${xPos}px; bottom:0; height:4px; transform: translateX(-50%);"></div>`;
            dayHtml += `<div class="timeline-axis-label" style="left:${xPos}px; bottom:4px; font-size:9px; transform: translateX(-50%);">${iterDate.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'})}</div>`;
+        }
+        const _iso = iterDate.getFullYear() + '-' + String(iterDate.getMonth()+1).padStart(2,'0') + '-' + String(iterDate.getDate()).padStart(2,'0');
+        const _abs = _absByDate[_iso];
+        if (_abs) {
+            const _c = ttAbsColor(_abs.type);
+            absBandsHtml += `<div class="gantt-abs-chip" title="${ttAbsLabel(_abs.type)}${_abs.note ? ' – ' + _abs.note.replace(/"/g,'&quot;') : ''}" onclick="switchView('time')" style="left:${xPos}px; width:${appData.settings.tlPixelsPerDay}px; --abs:${_c};"><i class="fas ${ttAbsIcon(_abs.type)}"></i></div>`;
         }
         iterDate.setDate(iterDate.getDate() + 1);
     }
@@ -5070,9 +5391,10 @@ function renderTimeline(c) {
 
     if(items.length > 0 || appData.timelineMarkers.length > 0) {
         html += `
-            <div class="timeline-track-container" style="overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 250px); position: relative;">
+            <div class="timeline-track-container" style="position: relative;">
                 <div style="min-width: ${trackWidth + 220}px; position: relative;">
                     
+                    ${absBandsHtml ? `<div class="gantt-abs-strip" style="display:flex; height:24px; position:relative; z-index:31; border-bottom:1px solid var(--border-color);"><div class="timeline-header-col" style="display:flex; align-items:center; padding:0 15px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);"><i class="fas fa-plane-departure" style="margin-right:5px;"></i>Abwesenheit</div><div style="position:relative; width:${trackWidth}px;">${absBandsHtml}</div></div>` : ''}
                     <div style="display: flex; height: 35px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 30; background: var(--surface-color);">
                         <div class="timeline-header-col" style="display: flex; align-items: flex-end; padding: 5px 15px; font-weight: bold; font-size:11px;">Projekt / Aufgabe</div>
                         <div style="position: relative; width: ${trackWidth}px;">
@@ -5192,6 +5514,7 @@ function stopTimer(taskId) {
     const nInput = document.getElementById(`timer_note_${taskId}`); const note = nInput ? nInput.value.trim() : activeTimers[taskId].note;
     const date = new Date().toISOString().split('T')[0];
     appData.timeLogs.push({ id: generateId(), taskId, hours: rH, date, note });
+    { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(rH)).replace('{n}', _tk ? _tk.projectName : '')); }
     
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
@@ -5216,6 +5539,7 @@ const ABSENCE_TYPES = {
 
 let ttMonthOffset = 0;
 let ttSelectedDays = [];
+let ttSelectedDay = null;   /* zuletzt gewählter Einzeltag für die manuelle Erfassung */
 let ttLastClickedDay = null;
 let ttHalfDay = false;
 
@@ -5346,6 +5670,7 @@ function ttToggleDay(iso, ev) {
         if (idx > -1) ttSelectedDays.splice(idx, 1); else ttSelectedDays.push(iso);
     }
     ttLastClickedDay = iso;
+    ttSelectedDay = iso;
     refreshTimeAccount();
 }
 
@@ -5417,6 +5742,20 @@ function ttGoToIso(iso) {
 }
 
 // --- Zeitraum-Modal (Urlaub am Stück) ---
+function ttJumpToManual() {
+    const chosen = (typeof ttSelectedDay !== 'undefined' && ttSelectedDay) ? ttSelectedDay : null;
+    const dateEl = document.getElementById('tt_date');
+    if (dateEl && chosen) dateEl.value = chosen;
+    const box = document.getElementById('tt_manual_box');
+    if (box) {
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        box.classList.add('tt-flash');
+        setTimeout(function(){ box.classList.remove('tt-flash'); }, 1200);
+        const firstField = document.getElementById('tt_hours') || document.getElementById('tt_task');
+        if (firstField) setTimeout(function(){ firstField.focus(); }, 350);
+    }
+}
+
 function ttOpenAbsenceRange(presetType) {
     const today = ttTodayIso();
     let from = today, to = today;
@@ -5484,7 +5823,10 @@ function renderTimeAccount() {
                     <button class="secondary icon-btn" onclick="ttNextMonth()" title="${t('tt_next')}"><i class="fas fa-chevron-right"></i></button>
                     <button class="secondary" onclick="ttGoToday()" style="font-size:12px; padding:6px 10px;">${t('today')}</button>
                 </div>
-                <button onclick="ttOpenAbsenceRange('vacation')" style="font-size:13px;"><i class="fas fa-plus"></i> ${t('tt_add_absence')}</button>
+                <span class="tt-head-cta">
+                    <button class="secondary" onclick="ttOpenAbsenceRange('vacation')" style="font-size:13px;"><i class="fas fa-plus"></i> ${t('tt_add_absence')}</button>
+                    <button onclick="ttJumpToManual()" style="font-size:13px;"><i class="fas fa-plus"></i> ${t('tt_add_time')}</button>
+                </span>
             </div>
         </div>`;
 
@@ -5566,6 +5908,42 @@ function renderTimeAccount() {
             <button class="secondary" style="font-size:12px;" onclick="ttRemoveSelection()"><i class="fas fa-eraser"></i> ${t('tt_remove_abs')}</button>
             <button class="secondary" style="font-size:12px;" onclick="ttClearSelection()"><i class="fas fa-times"></i> ${t('cancel')}</button>
         </div>`;
+    }
+
+    // Detail der gewählten Tage: was wurde gebucht (inkl. Notizen)?
+    if (ttSelectedDays.length > 0) {
+        const sortedSel = ttSelectedDays.slice().sort();
+        let anyEntry = false;
+        let detailHtml = `<div class="tt-detail"><h4><i class="fas fa-list-check"></i> ${t('tt_detail_title')} (${ttSelectedDays.length})</h4>`;
+        sortedSel.forEach(iso => {
+            const info = ttDayInfo(iso);
+            const logs = (appData.timeLogs || []).filter(l => l.date === iso);
+            const abs = (appData.absences || []).filter(a => a.date === iso);
+            if (!logs.length && !abs.length) return;
+            anyEntry = true;
+            detailHtml += `<div class="tt-detail-day">
+                <div class="tt-detail-head"><b>${ttFmtShort(iso)}</b><span>${ttNum(info.total)} h</span></div>`;
+            abs.forEach(a => {
+                detailHtml += `<div class="tt-detail-row abs" style="--tt-abs:${ttAbsColor(a.type)}">
+                    <i class="fas ${ttAbsIcon(a.type)}"></i>
+                    <span class="tt-detail-main"><b>${ttAbsLabel(a.type)}</b>${a.note ? `<u>${ttEsc(a.note)}</u>` : ''}</span>
+                    <span class="tt-detail-h">${ttNum(a.hours)} h</span>
+                </div>`;
+            });
+            logs.forEach(l => {
+                const task = (appData.tasks || []).find(x => x.id === l.taskId);
+                const stack = task ? (appData.projectStacks || []).find(st => st.id === task.projectStackId) : null;
+                detailHtml += `<div class="tt-detail-row">
+                    <span class="tt-detail-h">${ttNum(l.hours)} h</span>
+                    <span class="tt-detail-main"><b>${ttEsc(task ? task.projectName : t('tt_deleted_task'))}</b>${l.note ? `<u>${ttEsc(l.note)}</u>` : (stack ? `<u>${ttEsc(stack.name)}</u>` : '')}</span>
+                    <button class="tt-detail-del" onclick="deleteTimeLog('${l.id}')" title="${t('delete')}"><i class="fas fa-times"></i></button>
+                </div>`;
+            });
+            detailHtml += `</div>`;
+        });
+        detailHtml += `</div>`;
+        if (anyEntry) html += detailHtml;
+        else html += `<div class="tt-detail"><p class="tt-detail-empty"><i class="fas fa-circle-info"></i> ${t('tt_detail_empty')}</p></div>`;
     }
 
     // Offene Tage – 1-Klick-Buchung
@@ -5680,6 +6058,7 @@ function addManualTimeLog() {
     if(!taskId || !hours || !date) return showToast('Bitte Aufgabe, Datum und Stunden ausfüllen.', 'error');
     
     appData.timeLogs.push({ id: generateId(), taskId, hours, date, note });
+    { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(hours)).replace('{n}', _tk ? _tk.projectName : '')); }
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
         task.spentTime = (parseFloat(task.spentTime || 0) + hours).toFixed(2); 
@@ -5961,15 +6340,40 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null) {
 
     async function renderRTFToPDF(htmlStr, x, y, maxWidth) {
         if(!htmlStr || htmlStr.trim()==='' || htmlStr==='<br>') return y;
-        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.innerHTML = htmlStr; document.body.appendChild(tempDiv);
+        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.innerHTML = htmlStr; document.body.appendChild(tempDiv);
         try {
-            const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true }); document.body.removeChild(tempDiv);
-            const imgData = canvas.toDataURL('image/png'); const imgHeight = (canvas.height * maxWidth) / canvas.width;
-            if (y + 15 > pageHeight) { doc.addPage(); y = 20; }
-            let heightLeft = imgHeight; let position = y;
-            doc.addImage(imgData, 'PNG', x, position, maxWidth, imgHeight); heightLeft -= (pageHeight - position);
-            while (heightLeft > 0) { position = heightLeft - imgHeight; doc.addPage(); doc.addImage(imgData, 'PNG', x, position, maxWidth, imgHeight); heightLeft -= pageHeight; }
-            return position + imgHeight + 5;
+            const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, windowWidth: 720 });
+            if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
+
+            const bottomMargin = 12;
+            /* Skalierung: Quell-Pixel → mm im PDF */
+            const pxPerMm = canvas.width / maxWidth;
+
+            if (y + 12 > pageHeight) { doc.addPage(); y = 20; }
+            let srcY = 0;                        /* aktuelle Position in Quell-Pixeln */
+            let destY = y;                       /* aktuelle Position im PDF (mm) */
+            const totalSrcH = canvas.height;
+
+            while (srcY < totalSrcH) {
+                const availMm = pageHeight - bottomMargin - destY;      /* verfügbarer Platz auf dieser Seite (mm) */
+                if (availMm < 8) { doc.addPage(); destY = 20; continue; }
+                let sliceSrcH = Math.min(totalSrcH - srcY, availMm * pxPerMm);   /* Höhe des Ausschnitts in Quell-Pixeln */
+
+                /* Ausschnitt in ein eigenes Canvas kopieren */
+                const slice = document.createElement('canvas');
+                slice.width = canvas.width; slice.height = Math.ceil(sliceSrcH);
+                const sctx = slice.getContext('2d');
+                sctx.fillStyle = '#ffffff'; sctx.fillRect(0, 0, slice.width, slice.height);
+                sctx.drawImage(canvas, 0, srcY, canvas.width, sliceSrcH, 0, 0, canvas.width, sliceSrcH);
+
+                const sliceMmH = sliceSrcH / pxPerMm;
+                doc.addImage(slice.toDataURL('image/png'), 'PNG', x, destY, maxWidth, sliceMmH);
+
+                srcY += sliceSrcH;
+                destY += sliceMmH;
+                if (srcY < totalSrcH) { doc.addPage(); destY = 20; }
+            }
+            return destY + 5;
         } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText("Fehler beim Laden des formatieren Textes.", x, y, maxWidth); }
     }
 
@@ -6132,7 +6536,167 @@ function getThemes() {
 }
 function saveThemes(themes) { localStorage.setItem('proman_themes', JSON.stringify(themes)); }
 
+function _presetList(kind) {
+    return kind === 'stack' ? (appData.stackPresets = appData.stackPresets || []) : (appData.taskPresets = appData.taskPresets || []);
+}
+
+function renderPresetsPanel() {
+    const box = document.getElementById('presets_container');
+    if (!box) return;
+    const section = (kind, title, icon) => {
+        const list = _presetList(kind);
+        let h = `<div class="preset-section">
+            <div class="preset-sec-head"><h3><i class="fas ${icon}"></i> ${title}</h3>
+                <button class="secondary" onclick="addPreset('${kind}')"><i class="fas fa-plus"></i> ${t('preset_new')}</button>
+            </div>`;
+        if (!list.length) {
+            h += `<div class="preset-empty">${t('preset_none')}</div>`;
+        } else {
+            h += `<div class="preset-list">`;
+            list.forEach(p => {
+                h += `<div class="preset-card ${p.isDefault ? 'is-default' : ''}">
+                    <div class="preset-card-top">
+                        <input class="preset-name" value="${(p.name||'').replace(/"/g,'&quot;')}" onchange="renamePreset('${kind}','${p.id}', this.value)" placeholder="${t('preset_name_ph')}">
+                        ${p.isDefault ? `<span class="preset-default-badge"><i class="fas fa-star"></i> ${t('preset_default')}</span>` : `<button class="preset-mini" onclick="setDefaultPreset('${kind}','${p.id}')" title="${t('preset_make_default')}"><i class="far fa-star"></i></button>`}
+                        <button class="preset-mini danger" onclick="deletePreset('${kind}','${p.id}')" title="${t('delete')}"><i class="fas fa-trash"></i></button>
+                    </div>
+                    <div class="preset-fields">
+                        <label>${t('bucket')}</label>
+                        <select onchange="updatePresetField('${kind}','${p.id}','bucket',this.value)">
+                            <option value="">${t('preset_keep')}</option>
+                            ${appData.buckets.map(bk => `<option value="${bk}" ${p.bucket===bk?'selected':''}>${bk}</option>`).join('')}
+                        </select>
+                        <label>${t('priority')}</label>
+                        <select onchange="updatePresetField('${kind}','${p.id}','priority',this.value)">
+                            <option value="" ${!p.priority?'selected':''}>${t('preset_keep')}</option>
+                            <option value="high" ${p.priority==='high'?'selected':''}>${t('prio_high')}</option>
+                            <option value="medium" ${p.priority==='medium'?'selected':''}>${t('prio_med')}</option>
+                            <option value="low" ${p.priority==='low'?'selected':''}>${t('prio_low')}</option>
+                        </select>
+                        <label>${t('no_stakeholder').replace('Kein ','').replace('No ','').replace('Aucune ','')||'Stakeholder'}</label>
+                        <select onchange="updatePresetField('${kind}','${p.id}','stakeholderId',this.value)">
+                            <option value="">${t('preset_keep')}</option>
+                            ${appData.stakeholders.map(sh => `<option value="${sh.id}" ${p.stakeholderId===sh.id?'selected':''}>${sh.name}</option>`).join('')}
+                        </select>
+                        <label>${t('view_checklists')}</label>
+                        <textarea class="preset-cl" rows="3" placeholder="${t('preset_cl_ph')}" onchange="updatePresetField('${kind}','${p.id}','checklist',this.value)">${(p.checklist||[]).join('\n')}</textarea>
+                        <label>${t('notes') || 'Notiz'}</label>
+                        <textarea class="preset-note" rows="2" placeholder="${t('preset_note_ph')}" onchange="updatePresetField('${kind}','${p.id}','note',this.value)">${(p.note||'').replace(/</g,'&lt;')}</textarea>
+                    </div>
+                </div>`;
+            });
+            h += `</div>`;
+        }
+        h += `</div>`;
+        return h;
+    };
+    box.innerHTML = section('task', t('preset_task_title'), 'fa-tasks') + section('stack', t('preset_stack_title'), 'fa-folder');
+}
+
+function addPreset(kind) {
+    const list = _presetList(kind);
+    const p = { id: 'pr_' + Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+                name: t('preset_untitled'), bucket: '', priority: '', stakeholderId: '', checklist: [], note: '',
+                isDefault: list.length === 0 };
+    list.push(p);
+    saveToLocal(true);
+    renderPresetsPanel();
+}
+
+function renamePreset(kind, id, val) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.name = val.trim() || t('preset_untitled'); saveToLocal(true);
+}
+
+function updatePresetField(kind, id, field, val) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    if (field === 'checklist') p.checklist = val.split('\n').map(s => s.trim()).filter(Boolean);
+    else p[field] = val;
+    saveToLocal(true);
+}
+
+function setDefaultPreset(kind, id) {
+    _presetList(kind).forEach(p => p.isDefault = (p.id === id));
+    saveToLocal(true);
+    renderPresetsPanel();
+}
+
+function deletePreset(kind, id) {
+    let list = _presetList(kind);
+    const wasDefault = (list.find(x => x.id === id) || {}).isDefault;
+    const idx = list.findIndex(x => x.id === id);
+    if (idx > -1) list.splice(idx, 1);
+    if (wasDefault && list.length) list[0].isDefault = true;
+    saveToLocal(true);
+    renderPresetsPanel();
+}
+
+/* Wendet die Standard-Vorlage auf ein frisch erstelltes Objekt an */
+function populatePresetPicker(kind) {
+    const list = _presetList(kind);
+    const row = document.getElementById(kind === 'stack' ? 's_preset_row' : 't_preset_row');
+    const sel = document.getElementById(kind === 'stack' ? 's_preset_select' : 't_preset_select');
+    if (!row || !sel) return;
+    if (!list.length) { row.style.display = 'none'; return; }
+    row.style.display = 'block';
+    sel.innerHTML = `<option value="">${t('preset_pick')}</option>` +
+        list.map(p => `<option value="${p.id}">${(p.name || t('preset_untitled'))}${p.isDefault ? ' ★' : ''}</option>`).join('');
+    sel.value = '';
+}
+
+function applyPresetToForm(kind, presetId) {
+    if (!presetId) return;
+    const p = _presetList(kind).find(x => x.id === presetId);
+    if (!p) return;
+    if (kind === 'task') {
+        if (p.priority) { const el = document.getElementById('t_priority'); if (el) el.value = p.priority; }
+        if (p.bucket) { const el = document.getElementById('t_bucket'); if (el) el.value = p.bucket; }
+        if (p.stakeholderId) { const el = document.getElementById('t_stakeholder'); if (el) el.value = p.stakeholderId; }
+        if (p.note) { const rte = document.getElementById('t_desc_rte'); if (rte) rte.innerHTML = p.note.replace(/\n/g, '<br>'); }
+        if (p.checklist && p.checklist.length) {
+            const container = document.getElementById('t_checklist_container');
+            if (container) { container.innerHTML = ''; p.checklist.forEach(title => { const nid = generateId(); renderTaskChecklistItem(container, title, false, '', '', nid); }); }
+        }
+    } else {
+        if (p.stakeholderId) { const el = document.getElementById('s_stakeholder'); if (el) el.value = p.stakeholderId; }
+        if (p.bucket) { const el = document.getElementById('s_bucket'); if (el) el.value = p.bucket; }
+        if (p.note) { const rte = document.getElementById('s_notes_rte'); if (rte) rte.innerHTML = p.note.replace(/\n/g, '<br>'); }
+        if (p.checklist && p.checklist.length) {
+            const scont = document.getElementById('s_checklist_container');
+            if (scont) {
+                scont.innerHTML = '';
+                p.checklist.forEach(title => {
+                    const div = document.createElement('div'); div.className = 'checklist-item';
+                    const nid = generateId(); div.setAttribute('data-id', nid);
+                    div.innerHTML = buildChecklistItemHTML(title, false, '', '', nid);
+                    addModalClDragHandlers(div); scont.appendChild(div);
+                });
+            }
+        }
+    }
+    showToast(t('preset_applied').replace('{n}', p.name || t('preset_untitled')), 'success');
+}
+
+function applyPresetDefaults(obj, kind) {
+
+    const list = _presetList(kind);
+    const p = list.find(x => x.isDefault);
+    if (!p) return obj;
+    if (p.bucket) obj.bucket = p.bucket;
+    if (p.priority) obj.priority = p.priority;
+    if (p.stakeholderId) obj.stakeholderId = p.stakeholderId;
+    if (p.checklist && p.checklist.length) {
+        obj.checklist = (obj.checklist || []).concat(p.checklist.map(txt => ({
+            id: 'cl_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+            title: txt, done: false
+        })));
+    }
+    if (p.note) obj.notes = (obj.notes ? obj.notes + '\n' : '') + p.note;
+    return obj;
+}
+
 function openThemeEditorTab() {
+    if(!document.getElementById("set-theme")) return;   /* Theme-Editor entfernt */
     const lightTheme = (appData.settings.customTheme || {}).light || {};
     const darkTheme  = (appData.settings.customTheme || {}).dark  || {};
     const glassTheme = (appData.settings.customTheme || {}).glass || {};
@@ -6423,7 +6987,13 @@ function renderToday(c) {
     const overdue = all.filter(t => t.dueDate && t.dueDate < todayIso)
                        .sort((a,b) => (a.dueDate||'').localeCompare(b.dueDate||''));
     const dueToday = all.filter(t => t.dueDate === todayIso);
-    const soon = all.filter(t => t.dueDate && t.dueDate > todayIso && t.dueDate <= ttShiftIso(todayIso, 7))
+    /* Wochengrenzen für „Diese Woche" / „Nächste Woche" */
+    const _todayD = ttParse(todayIso); const _dowT = (_todayD.getDay() + 6) % 7; /* Mo=0 */
+    const endThisWeekIso = ttShiftIso(todayIso, 6 - _dowT);       /* bis Sonntag dieser Woche */
+    const endNextWeekIso = ttShiftIso(endThisWeekIso, 7);        /* Sonntag nächster Woche */
+    const soon = all.filter(t => t.dueDate && t.dueDate > todayIso && t.dueDate <= endThisWeekIso)
+                    .sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const nextWeek = all.filter(t => t.dueDate && t.dueDate > endThisWeekIso && t.dueDate <= endNextWeekIso)
                     .sort((a,b) => a.dueDate.localeCompare(b.dueDate));
 
     const running = (typeof activeTimers === 'object' && activeTimers)
@@ -6448,23 +7018,133 @@ function renderToday(c) {
         return u ? u.name.split(' ')[0] : '';
     })();
 
+    /* Kennzahlen für die grafische Übersicht */
+    const doneAll = appData.tasks.filter(t => isTaskDone(t)).length;
+    const totalAll = appData.tasks.length;
+    const donePct = totalAll ? Math.round(doneAll / totalAll * 100) : 0;
+    const _now = new Date(); const _dow = (_now.getDay() + 6) % 7;
+    const weekStartIso = ttShiftIso(todayIso, -_dow);
+    let doneThisWeek = 0;
+    const weekStartMs = ttParse(weekStartIso).getTime();
+    appData.tasks.forEach(t => { if (isTaskDone(t) && t.completedAt && t.completedAt >= weekStartMs) doneThisWeek++; });
+    let weekSoll = 0, weekIst = 0;
+    for (let i = 0; i <= _dow; i++) { const iso = ttShiftIso(weekStartIso, i); const di = ttDayInfo(iso); weekSoll += di.target; weekIst += di.total; }
+    const weekPct = weekSoll ? Math.min(100, Math.round(weekIst / weekSoll * 100)) : 0;
+    const openCount = overdue.length + dueToday.length + soon.length;
+
     let html = `<div class="wk-today">`;
 
-    /* Held: gebuchte Zeit als physische Schiene */
-    html += `<section class="wk-hero">
-        <span class="wk-hero-fill" style="width:${pct}%"></span>
-        <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
-        <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h ${t('today_booked')}</small></div>
-        <p class="wk-hero-note">${info.missing > 0.01
-            ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
-            : t('today_complete').replace('{n}', overdue.length + dueToday.length)}</p>
-        <div class="wk-hero-acts">
-            <button class="wk-hero-cta" onclick="switchView('time')"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
-            <button class="wk-hero-ghost" onclick="openModal()"><i class="fas fa-plus"></i> ${t('new_task')}</button>
+    /* Held: gebuchte Zeit als physische Schiene — volle Breite */
+    const ring = (p, label, sub, cls) => `<div class="wk-stat"><div class="wk-stat-ring ${cls||''}" style="--p:${p}"><span>${p}<u>%</u></span></div><div class="wk-stat-txt"><b>${label}</b><u>${sub}</u></div></div>`;
+    html += `<section class="wk-hero compact">
+        <div class="wk-hero-left">
+            <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
+            <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
+            <div class="wk-hero-track"><i style="width:${pct}%"></i></div>
+            <p class="wk-hero-note">${info.missing > 0.01
+                ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
+                : t('today_complete').replace('{n}', overdue.length + dueToday.length)}</p>
+            <div class="wk-hero-acts">
+                <button class="wk-hero-cta" onclick="switchView('time')"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
+                <button class="wk-hero-ghost" onclick="openModal()"><i class="fas fa-plus"></i> ${t('new_task')}</button>
+            </div>
+        </div>
+        <div class="wk-hero-stats">
+            ${ring(weekPct, t('today_week_quota'), ttNum(weekIst) + ' / ' + ttNum(weekSoll) + ' h', weekPct>=100?'ok':'')}
+            ${ring(donePct, t('today_done_share'), doneAll + ' / ' + totalAll + ' ' + t('tasks'), 'accent')}
+            <div class="wk-stat wide"><div class="wk-stat-nums">
+                <span><b>${doneThisWeek}</b><u>${t('today_done_week')}</u></span>
+                <span><b>${openCount}</b><u>${t('today_open')}</u></span>
+                <span><b>${overdue.length}</b><u>${t('today_overdue')}</u></span>
+            </div></div>
+        </div>
+        <div class="wk-hero-ticker">
+            <div class="wk-ticker-head"><i class="fas fa-wave-square"></i> ${t('today_activity')}</div>
+            ${(appData.activityLog && appData.activityLog.length)
+                ? `<ul class="wk-ticker-list">${appData.activityLog.slice(0, 6).map(a =>
+                    `<li><span class="wk-ticker-ic"><i class="fas ${a.icon || 'fa-circle'}"></i></span><span class="wk-ticker-txt">${escapeHtmlToday(a.text)}</span><time>${ttRelTime(a.ts)}</time></li>`
+                  ).join('')}</ul>`
+                : `<div class="wk-ticker-empty">${t('today_no_activity')}</div>`}
         </div>
     </section>`;
 
-    /* laufende Timer */
+    /* ── Buchungen der letzten 7 Tage nach Bucket (farblich) ── */
+    const bucketPalette = ['#cca300', '#22262B', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#B96A2B'];
+    const sevenAgo = ttParse(ttShiftIso(todayIso, -6));
+    const bucketHours = {};
+    (appData.timeLogs || []).forEach(l => {
+        if (!l.date) return;
+        const d = ttParse(l.date); if (d < sevenAgo) return;
+        const task = appData.tasks.find(x => x.id === l.taskId);
+        const bk = (task && task.bucket) ? task.bucket : t('no_bucket');
+        bucketHours[bk] = (bucketHours[bk] || 0) + (parseFloat(l.hours) || 0);
+    });
+    const bucketRows = Object.keys(bucketHours).map((bk, i) => ({ name: bk, hours: bucketHours[bk], col: bucketPalette[i % bucketPalette.length] }))
+        .filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours);
+    const maxBk = Math.max(1, ...bucketRows.map(r => r.hours));
+    const trendBars = bucketRows.length
+        ? bucketRows.map(r => `<div class="wk-tr-col" title="${escapeHtmlToday(r.name)}: ${ttNum(r.hours)} h"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.round(r.hours / maxBk * 100)}%;background:${r.col}"></span></div><u title="${escapeHtmlToday(r.name)}">${escapeHtmlToday(r.name.length > 6 ? r.name.slice(0,6)+'…' : r.name)}</u></div>`).join('')
+        : `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
+
+    /* Statusverteilung */
+    const byStatus = { todo:0, inProgress:0, review:0 };
+    appData.tasks.forEach(t => { if (byStatus[t.status] !== undefined && !isTaskDone(t)) byStatus[t.status]++; });
+    const stTot = Math.max(1, byStatus.todo + byStatus.inProgress + byStatus.review);
+    const stSeg = (k, col, lbl) => byStatus[k] ? `<span class="wk-dist-seg" style="width:${byStatus[k]/stTot*100}%;background:${col}" title="${lbl}: ${byStatus[k]}"></span>` : '';
+
+    /* Prioritätenverteilung offener Aufgaben */
+    const byPrio = { high:0, medium:0, low:0 };
+    appData.tasks.forEach(t => { if (!isTaskDone(t) && byPrio[t.priority] !== undefined) byPrio[t.priority]++; });
+    const prTot = Math.max(1, byPrio.high + byPrio.medium + byPrio.low);
+
+    html += `<section class="wk-graphs">
+        <div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('today_trend')}</b><u>${t('today_last7')}</u></div>
+            <div class="wk-trend">${trendBars}</div>
+        </div>
+        <div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('today_status_dist')}</b><u>${stTot} ${t('today_open')}</u></div>
+            <div class="wk-dist">${stSeg('todo','#B9BFB6','Offen')}${stSeg('inProgress','var(--primary-color)','In Arbeit')}${stSeg('review','#E8A317','Prüfung')}</div>
+            <div class="wk-dist-legend"><span><i style="background:#B9BFB6"></i>${byStatus.todo}</span><span><i style="background:var(--primary-color)"></i>${byStatus.inProgress}</span><span><i style="background:#E8A317"></i>${byStatus.review}</span></div>
+        </div>
+        <div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('today_prio_dist')}</b><u>${prTot} ${t('today_open')}</u></div>
+            <div class="wk-prio">
+                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--danger)">${t('prio_high')}</span><div class="wk-prio-track"><i style="width:${byPrio.high/prTot*100}%;background:var(--danger)"></i></div><b>${byPrio.high}</b></div>
+                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--warning)">${t('prio_med')}</span><div class="wk-prio-track"><i style="width:${byPrio.medium/prTot*100}%;background:var(--warning)"></i></div><b>${byPrio.medium}</b></div>
+                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--success)">${t('prio_low')}</span><div class="wk-prio-track"><i style="width:${byPrio.low/prTot*100}%;background:var(--success)"></i></div><b>${byPrio.low}</b></div>
+            </div>
+        </div>
+    </section>`;
+
+    /* Zwei Spalten: Hauptspalte (Aufgaben), Seitenspalte (Timer + Zeitkonto) */
+    html += `<div class="wk-today-grid">`;
+
+    /* ── Hauptspalte ── */
+    html += `<div class="wk-today-main">`;
+
+    const urgent = overdue.concat(dueToday);
+    html += `<div class="wk-strip-h"><b>${t('today_urgent')}</b><span class="wk-count">${urgent.length}</span><span class="wk-rule"></span>
+        <button class="wk-linkbtn" onclick="switchView('kanban')">${t('today_all_tasks')}</button></div>`;
+    if (urgent.length) {
+        html += `<div class="wk-today-list" id="wkTodayUrgent"></div>`;
+    } else {
+        html += `<div class="wk-empty"><i class="fas fa-check-circle"></i><b>${t('today_none_urgent')}</b><span>${t('today_none_urgent_sub')}</span></div>`;
+    }
+
+    if (soon.length) {
+        html += `<div class="wk-strip-h"><b>${t('today_this_week')}</b><span class="wk-count">${soon.length}</span><span class="wk-rule"></span></div>
+        <div class="wk-today-list" id="wkTodaySoon"></div>`;
+    }
+    if (nextWeek.length) {
+        html += `<div class="wk-strip-h"><b>${t('today_next_week')}</b><span class="wk-count">${nextWeek.length}</span><span class="wk-rule"></span></div>
+        <div class="wk-today-list" id="wkTodayNext"></div>`;
+    }
+    html += `</div>`; /* /wk-today-main */
+
+    /* ── Seitenspalte ── */
+    html += `<div class="wk-today-side">`;
+
     if (running.length) {
         html += `<div class="wk-strip-h"><b>${t('today_running')}</b><span class="wk-count">${running.length}</span><span class="wk-rule"></span></div>
         <div class="wk-run">`;
@@ -6478,27 +7158,10 @@ function renderToday(c) {
         html += `</div>`;
     }
 
-    /* fällig / überfällig */
-    const urgent = overdue.concat(dueToday);
-    html += `<div class="wk-strip-h"><b>${t('today_urgent')}</b><span class="wk-count">${urgent.length}</span><span class="wk-rule"></span>
-        <button class="wk-linkbtn" onclick="switchView('kanban')">${t('today_all_tasks')}</button></div>`;
-    if (urgent.length) {
-        html += `<div class="wk-today-list" id="wkTodayUrgent"></div>`;
-    } else {
-        html += `<div class="wk-empty"><i class="fas fa-check-circle"></i><b>${t('today_none_urgent')}</b><span>${t('today_none_urgent_sub')}</span></div>`;
-    }
-
-    /* diese Woche */
-    if (soon.length) {
-        html += `<div class="wk-strip-h"><b>${t('today_this_week')}</b><span class="wk-count">${soon.length}</span><span class="wk-rule"></span></div>
-        <div class="wk-today-list" id="wkTodaySoon"></div>`;
-    }
-
-    /* nicht gebuchte Tage */
+    html += `<div class="wk-strip-h"><b>${t('today_unbooked')}</b><span class="wk-count">${openDays.length}</span><span class="wk-rule"></span>
+        <button class="wk-linkbtn" onclick="switchView('time')">${t('view_time')}</button></div>`;
     if (openDays.length) {
-        html += `<div class="wk-strip-h"><b>${t('today_unbooked')}</b><span class="wk-count">${openDays.length}</span><span class="wk-rule"></span>
-            <button class="wk-linkbtn" onclick="switchView('time')">${t('view_time')}</button></div>`;
-        openDays.slice(-4).reverse().forEach(d => {
+        openDays.slice(-5).reverse().forEach(d => {
             html += `<div class="wk-quickrow">
                 <span class="wk-qd">${ttFmtFull(d.iso)}<u>${t('tt_missing')}: ${ttNum(d.missing)} h ${t('tt_of')} ${ttNum(d.target)} h</u></span>
                 <span class="wk-qacts">
@@ -6508,7 +7171,12 @@ function renderToday(c) {
                 </span>
             </div>`;
         });
+    } else {
+        html += `<div class="wk-empty small"><i class="fas fa-check-circle"></i><b>${t('today_all_booked')}</b></div>`;
     }
+    html += `</div>`; /* /wk-today-side */
+
+    html += `</div>`; /* /wk-today-grid */
 
     html += `</div>`;
     c.innerHTML = html;
@@ -6520,11 +7188,21 @@ function renderToday(c) {
     };
     fill('wkTodayUrgent', urgent);
     fill('wkTodaySoon', soon);
+    fill('wkTodayNext', nextWeek);
 }
 
 /* kleine Helfer für die Heute-Ansicht */
 function escapeHtmlToday(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function ttShiftIso(iso, days){ const d = ttParse(iso); d.setDate(d.getDate()+days); return ttIso(d); }
+function ttRelTime(ts){
+    if(!ts) return '';
+    const diff = Date.now() - ts; const min = Math.floor(diff/60000);
+    if(min < 1) return t('rel_now') || 'gerade eben';
+    if(min < 60) return min + ' min';
+    const h = Math.floor(min/60); if(h < 24) return h + ' h';
+    const d = Math.floor(h/24); if(d < 7) return d + ' d';
+    return new Date(ts).toLocaleDateString();
+}
 function ttFmtFull(iso){
     const d = ttParse(iso);
     const wd = { de:['So','Mo','Di','Mi','Do','Fr','Sa'], en:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], fr:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] }[ttLang()] || ['So','Mo','Di','Mi','Do','Fr','Sa'];

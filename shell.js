@@ -25,9 +25,6 @@
         { v: 'schedule', l: 'Kalender', i: 'fa-calendar-alt' },
         { v: 'timeline', l: 'Gantt',    i: 'fa-stream' }
     ]},
-    { k: 'zeit', label: 'Zeit', icon: 'fa-clock', lenses: [
-        { v: 'time', l: 'Zeitkonto', i: 'fa-clock' }
-    ]},
     { k: 'wissen', label: 'Wissen', icon: 'fa-sticky-note', lenses: [
         { v: 'notes',      l: 'Notizen',     i: 'fa-sticky-note' },
         { v: 'checklists', l: 'Checklisten', i: 'fa-check-square' }
@@ -36,6 +33,9 @@
         { v: 'stakeholder',  l: 'Stakeholder',    i: 'fa-users' },
         { v: 'buckets',      l: 'Buckets',        i: 'fa-box-open' },
         { v: 'dependencies', l: 'Abhängigkeiten', i: 'fa-project-diagram' }
+    ]},
+    { k: 'zeit', label: 'Zeit', icon: 'fa-clock', lenses: [
+        { v: 'time', l: 'Zeitkonto', i: 'fa-clock' }
     ]}
   ];
 
@@ -75,11 +75,12 @@
     rail.className = 'wk-rail';
     rail.setAttribute('aria-label', 'Bereiche');
     rail.innerHTML =
-      `<span class="wk-logo" aria-hidden="true">P</span>` +
+      `<span class="wk-logo" aria-hidden="true">pm</span>` +
       PLACES.map(p => `<button class="wk-rail-item" data-wkplace="${p.k}">
           <i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('') +
       `<span class="wk-spacer"></span>
-       <button class="wk-rail-user" onclick="openSettings()" title="Profil & Einstellungen" id="wkRailUser"></button>`;
+       <button class="wk-rail-new" id="wkRailNew" title="Neu anlegen" aria-label="Neu anlegen"><i class="fas fa-plus"></i></button>
+       <button class="wk-rail-export" id="wkRailExport" title="Export & Backup" aria-label="Export & Backup"><i class="fas fa-file-export"></i></button>`;
     document.body.insertBefore(rail, document.body.firstChild);
 
     /* Linsenschiene unter der Kopfzeile */
@@ -98,6 +99,19 @@
     tabbar.innerHTML = PLACES.map(p => `<button class="wk-tab" data-wkplace="${p.k}">
         <span class="wk-tab-ind"></span><i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('');
     document.body.appendChild(tabbar);
+
+    /* Namenskürzel in der Kopfzeile — öffnet die Einstellungen.
+       Auf dem Telefon der einzige Weg dorthin, deshalb immer sichtbar. */
+    const bar = document.querySelector('.topbar-actions');
+    if (bar && !document.getElementById('wkUserChip')) {
+      const chip = document.createElement('button');
+      chip.className = 'wk-userchip';
+      chip.id = 'wkUserChip';
+      chip.title = 'Profil & Einstellungen';
+      chip.setAttribute('aria-label', 'Profil & Einstellungen');
+      chip.onclick = function () { openSettings(); };
+      bar.appendChild(chip);
+    }
 
     /* Aktionsknopf: eine kurze Auswahl zwischen Aufgabe und Stapel */
     const fabMenu = document.createElement('div');
@@ -120,7 +134,7 @@
       const l = ev.target.closest('[data-wklens]');
       if (l) { switchView(l.dataset.wklens); return; }
 
-      const fab = ev.target.closest('#wkFab, .mobile-fab');
+      const fab = ev.target.closest('#wkFab, .mobile-fab, #wkRailNew');
       if (fab) { ev.preventDefault(); ev.stopPropagation(); toggleFab(); return; }
       const opt = ev.target.closest('[data-wknew]');
       if (opt) {
@@ -130,6 +144,44 @@
       }
       if (!ev.target.closest('#wkFabMenu')) closeFab();
     });
+
+    /* Zieh-Rückmeldung: hebt die gezogene Karte sichtbar ab,
+       ohne in die vorhandenen Drag-Handler einzugreifen. */
+    document.addEventListener('dragstart', ev => {
+      const card = ev.target.closest && ev.target.closest('.task-card, .draggable-item');
+      if (card) card.classList.add('dragging');
+    }, true);
+    document.addEventListener('dragend', ev => {
+      document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    }, true);
+
+    /* Export-Menü aus der Kopfzeile ans untere Ende der Schiene versetzen */
+    const exp = document.getElementById('exportDropdown');
+    const railExport = document.getElementById('wkRailExport');
+    if (exp && railExport) {
+      const menu = exp.querySelector('.dropdown-content');
+      if (menu) {
+        menu.classList.add('wk-rail-menu');
+        document.body.appendChild(menu);           /* aus dem Kopf lösen */
+        exp.style.display = 'none';                 /* alten Auslöser verbergen */
+        railExport.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const open = menu.classList.toggle('wk-open');
+          if (open) {
+            const r = railExport.getBoundingClientRect();
+            menu.style.left = (r.right + 8) + 'px';
+            menu.style.bottom = (window.innerHeight - r.bottom) + 'px';
+            menu.style.top = 'auto'; menu.style.right = 'auto';
+          }
+        });
+        document.addEventListener('click', ev => {
+          if (!ev.target.closest('.wk-rail-menu') && !ev.target.closest('#wkRailExport'))
+            menu.classList.remove('wk-open');
+        });
+        /* nach Auswahl schliessen */
+        menu.addEventListener('click', () => setTimeout(() => menu.classList.remove('wk-open'), 50));
+      }
+    }
 
     window.addEventListener('resize', moveMagnet);
   }
@@ -167,12 +219,18 @@
       }
     }
 
-    /* Benutzerzeichen in der Schiene spiegeln */
-    const src = $('#active_user_icon'), dst = $('#wkRailUser');
-    if (src && dst) {
-      const txt = (src.textContent || '').trim();
-      dst.textContent = txt ? txt.slice(0, 2).toUpperCase() : 'PM';
-    }
+    /* Benutzerzeichen in Schiene und Kopfzeile spiegeln */
+    const src = $('#active_user_icon');
+    const initials = (() => {
+      try {
+        const u = (appData.users || []).find(u => u.id === appData.settings.currentUserId);
+        if (u && u.name) return u.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      } catch (e) {}
+      const txt = src ? (src.textContent || '').trim() : '';
+      return txt ? txt.slice(0, 2).toUpperCase() : 'PM';
+    })();
+    const railU = $('#wkRailUser'); if (railU) railU.textContent = initials;
+    const chipU = $('#wkUserChip'); if (chipU) chipU.textContent = initials;
   }
 
   function moveMagnet() {

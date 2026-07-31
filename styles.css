@@ -4,10 +4,10 @@
     --surface-color: #ffffff;
     --text-main: #1f2937;
     --text-muted: #6b7280;
-    --primary-color: #0070f2; 
-    --primary-hover: #005bb5;
-    --primary-light: rgba(0, 112, 242, 0.1);
-    --primary-lightest: rgba(0, 112, 242, 0.05);
+    --primary-color: #cca300;
+    --primary-hover: #856a23;
+    --primary-light: rgba(204, 163, 0, 0.1);
+    --primary-lightest: rgba(204, 163, 0, 0.05);
     --border-color: #e5e7eb;
     --danger: #ef4444;
     --success: #10b981;

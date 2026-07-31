@@ -18,10 +18,12 @@
   --surface-color:#FFFFFF;
   --text-main:#22262B;
   --text-muted:#5A626C;
-  --primary-color:#0F5FDC;
-  --primary-hover:#0B49A8;
-  --primary-light:rgba(15,95,220,.10);
-  --primary-lightest:rgba(15,95,220,.05);
+  --primary-color:#cca300;              /* interaktiv = Gold */
+  --primary-hover:#856a23;
+  --primary-light:rgba(34,38,43,.08);
+  --primary-lightest:rgba(34,38,43,.05);
+  --accent:#FFC93C;                     /* Signal = Magnetgelb */
+  --accent-ink:#22262B;
   --border-color:#D6DAD4;
   --danger:#D9342B;
   --success:#1F9463;
@@ -50,6 +52,10 @@
   --wk-graphite:#0F1216;
   --wk-graphite-2:#242A31;
   --glass-dropdown:rgba(29,33,38,.96);
+  --primary-color:#E9EBE7;              /* im Dunkeln: helles Graphitweiss statt Blau */
+  --primary-hover:#FFFFFF;
+  --primary-light:rgba(255,255,255,.10);
+  --primary-lightest:rgba(255,255,255,.05);
 }
 
 body{ font-family:var(--ff-ui); }
@@ -74,8 +80,8 @@ h1,h2,h3,h4{ font-family:var(--ff-ui); letter-spacing:-.2px; }
 }
 .wk-logo{
   width:38px;height:38px;border-radius:11px;background:var(--wk-magnet);color:#22262B;
-  display:grid;place-items:center;font-weight:800;font-size:16px;border:none;cursor:pointer;
-  margin-bottom:18px;font-family:var(--ff-ui);
+  display:grid;place-items:center;font-weight:800;font-size:14px;border:none;cursor:default;
+  margin-bottom:18px;font-family:var(--ff-ui);text-transform:lowercase;letter-spacing:-.5px;
 }
 .wk-rail-item{
   width:68px;padding:9px 0 7px;border-radius:12px;border:none;background:none;cursor:pointer;
@@ -199,7 +205,7 @@ h1,h2,h3,h4{ font-family:var(--ff-ui); letter-spacing:-.2px; }
 }
 
 /* Knöpfe */
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item){
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl){
   border-radius:12px;
 }
 
@@ -246,11 +252,11 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Knöpfe: Graphit als Grundfarbe, Magnet als Signal ── */
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab){
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab){
   background:var(--wk-graphite) !important;color:#fff !important;border:1px solid var(--wk-graphite) !important;
   border-radius:12px !important;font-weight:600;font-family:var(--ff-ui);
 }
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
   background:var(--wk-graphite-2) !important;
 }
 .secondary{
@@ -339,7 +345,7 @@ input:focus, select:focus, textarea:focus{
 /* ── Aufklapp-Menüs ── */
 .dropdown-content{
   border-radius:var(--radius) !important;border:1px solid var(--border-color) !important;
-  box-shadow:0 14px 40px -14px rgba(0,0,0,.4) !important;overflow:hidden;
+  box-shadow:0 14px 40px -14px rgba(0,0,0,.4) !important;
 }
 .dropdown-content a{font-family:var(--ff-ui)}
 .dropdown-content a:hover{background:var(--primary-lightest) !important}
@@ -465,14 +471,1040 @@ input:focus, select:focus, textarea:focus{
 
 /* Auf Tablet/Desktop öffnet der Aktionsknopf ein Menü an der Schiene */
 @media (min-width:600px){
-  .wk-fab-menu{left:calc(var(--wk-rail) + 14px);right:auto;bottom:24px;transform-origin:bottom left}
+  .wk-fab-menu{left:calc(var(--wk-rail) + 12px);right:auto;bottom:70px;transform-origin:bottom left}
   .wk-fab-menu.on{transform:none}
+  /* Auf der Schiene übernimmt #wkRailNew — der schwebende Knopf entfällt */
+  .mobile-fab{display:none !important}
 }
 
-/* Aktionsknopf auch auf grösseren Geräten sichtbar, unten an der Schiene */
-@media (min-width:600px){
-  .mobile-fab{
-    display:flex !important;left:calc((var(--wk-rail) - 52px)/2);right:auto;
-    bottom:20px;width:52px;height:52px;
+/* Schienen-Knöpfe unten: Neu (gefüllt) + Export (offen) */
+.wk-rail-export{
+  width:44px;height:44px;border-radius:14px;background:transparent;color:#9AA3AE;
+  border:1px solid #333B44;cursor:pointer;display:grid;place-items:center;font-size:16px;
+  margin-bottom:12px;transition:.16s;
+}
+.wk-rail-export:hover{color:#EDEFEB;border-color:#4A525C;background:rgba(255,255,255,.05)}
+
+/* Verschobenes Export-Menü, an der Schiene aufklappend */
+.wk-rail-menu{
+  position:fixed;z-index:1100;min-width:230px;
+  background:var(--surface-color);border:1px solid var(--border-color);border-radius:var(--radius);
+  box-shadow:0 14px 40px -14px rgba(0,0,0,.45);padding:6px;
+  opacity:0;pointer-events:none;transform:translateY(8px) scale(.97);transform-origin:bottom left;
+  transition:.22s cubic-bezier(.2,.85,.25,1);display:block !important;
+}
+.wk-rail-menu.wk-open{opacity:1;pointer-events:auto;transform:none}
+.wk-rail-menu a{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;
+  font-size:13px;color:var(--text-main);text-decoration:none;cursor:pointer;transition:.14s;
+}
+.wk-rail-menu a:hover{background:var(--bg-color)}
+.wk-rail-menu a i{width:18px;text-align:center;color:var(--text-muted)}
+.wk-rail-menu hr{border:none;border-top:1px solid var(--border-color);margin:5px 8px}
+
+/* ═══════════════════════════════════════════════════════════════
+   FARB-FEINSCHLIFF — ausnahmslos Graphit/Gelb, kein Blau
+   ═══════════════════════════════════════════════════════════════ */
+
+/* „Aktiv" hebt sich mit dem gelben Magneten ab, nicht mit Blau */
+.secondary.active,
+.nav-item.active,
+button.active:not(.wk-lens):not(.secondary):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl){
+  background:var(--accent) !important;color:var(--accent-ink) !important;
+  border-color:var(--accent) !important;
+}
+[data-theme="dark"] .secondary.active,
+[data-theme="dark"] .nav-item.active{
+  background:var(--accent) !important;color:#22262B !important;
+}
+
+/* Verweise/Links: Graphit mit gelbem Unterstrich statt blauer Schrift */
+.wk-linkbtn{color:var(--text-main) !important;position:relative}
+.wk-linkbtn::after{content:'';position:absolute;left:8px;right:8px;bottom:3px;height:2px;
+  background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .2s}
+.wk-linkbtn:hover{text-decoration:none !important}
+.wk-linkbtn:hover::after{transform:scaleX(1)}
+
+/* Fortschrittsbalken, Zeitschienen: Graphit als Füllung */
+.pb-bar, .pb-container > div:not([class]){background:var(--wk-graphite) !important}
+[data-theme="dark"] .pb-bar{background:var(--accent) !important}
+
+/* Checkboxen/Radios in Graphit statt Systemblau */
+input[type="checkbox"], input[type="radio"]{accent-color:var(--wk-graphite)}
+[data-theme="dark"] input[type="checkbox"],[data-theme="dark"] input[type="radio"]{accent-color:var(--accent)}
+
+/* Fokusrahmen in Graphit */
+:focus-visible{outline-color:var(--wk-graphite) !important}
+[data-theme="dark"] :focus-visible{outline-color:var(--accent) !important}
+
+/* Kanban-Karte in Bearbeitung: der Magnetstreifen (aus shell.js) trägt die
+   Bedeutung; ein evtl. blauer Rahmen wird neutralisiert */
+.task-card{border-color:var(--border-color) !important}
+.task-card:hover{border-color:var(--wk-graphite-2) !important}
+
+/* dep-badge: war blaustichig */
+.dep-badge{
+  background:var(--bg-color) !important;color:var(--text-main) !important;
+  border:1px solid var(--border-color) !important;
+}
+.dep-badge i{color:var(--text-muted) !important}
+
+/* Aktive Planer-Tabs (Kalender/Gantt), Sortierknöpfe */
+[style*="var(--primary-color)"]{}  /* Platzhalter: greift über Variable automatisch */
+
+/* ═══════════════════════════════════════════════════════════════
+   GANTT — auf dem Telefon in voller Höhe, horizontal scrollbar
+   Vorher deckelte max-height:calc(100vh-250px) die Ansicht, sodass
+   bei vielen Aufgaben nicht alle Zeilen sichtbar waren.
+   ═══════════════════════════════════════════════════════════════ */
+.timeline-track-container{
+  overflow-x:auto;
+  overflow-y:hidden;      /* Zeilen fliessen in voller Höhe, Seite scrollt vertikal */
+  max-height:none !important;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+}
+.timeline-track-container::-webkit-scrollbar{height:9px}
+.timeline-track-container::-webkit-scrollbar-thumb{background:#C9CEC7;border-radius:9px}
+[data-theme="dark"] .timeline-track-container::-webkit-scrollbar-thumb{background:#3A424C}
+
+/* Auf grossen Fenstern darf die Gantt-Fläche wieder einen eigenen
+   Scrollbereich haben, damit die Kopfzeile stehen bleibt. */
+@media (min-width:1024px){
+  .timeline-track-container{
+    overflow-y:auto;
+    max-height:calc(100vh - 240px) !important;
+  }
+  .timeline-track-container::-webkit-scrollbar{width:9px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MIKROINTERAKTIONEN — überall dort, wo etwas passiert
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Alles, was klickbar ist, gibt beim Antippen leicht nach */
+button, .task-card, .nav-item, .clickable-row, .wk-tab, .wk-rail-item,
+.wk-lens, .stack-card, .note-card, .tile, .chip, .wk-chip,
+.tt-day, .day, .wk-quickrow, .dep-badge{
+  transition:transform .16s cubic-bezier(.2,.8,.2,1), box-shadow .16s, background-color .16s, border-color .16s, color .16s;
+}
+button:active:not(.wk-lens):not(.wk-tab),
+.task-card:active, .stack-card:active, .note-card:active, .tile:active,
+.chip:active, .wk-chip:active, .wk-fab-opt:active, .btn:active{
+  transform:scale(.96);
+}
+.clickable-row:active{transform:scale(.995)}
+
+/* Karten heben sich beim Überfahren leicht an */
+.task-card:hover{transform:translateY(-2px);box-shadow:0 6px 18px -8px rgba(34,38,43,.28) !important}
+.stack-card:hover, .note-card:hover, .tile:hover{transform:translateY(-2px)}
+
+/* Sekundär- und Primärknöpfe: sanftes Anheben */
+button:not(.wk-tab):not(.wk-rail-item):not(.wk-lens):hover{transform:translateY(-1px)}
+button:not(.wk-tab):not(.wk-rail-item):not(.wk-lens):active{transform:translateY(0) scale(.97)}
+
+/* Tableiste: aktives Symbol federt kurz */
+.wk-tab[aria-current="page"] i{animation:wk-pop .32s cubic-bezier(.34,1.56,.5,1)}
+.wk-rail-item[aria-current="page"] i{animation:wk-pop .32s cubic-bezier(.34,1.56,.5,1)}
+@keyframes wk-pop{0%{transform:scale(1)}45%{transform:scale(1.22)}100%{transform:scale(1)}}
+
+/* Schienensymbole schieben sich beim Überfahren leicht hoch */
+.wk-rail-item:hover i{transform:translateY(-2px)}
+.wk-rail-item i{transition:transform .18s cubic-bezier(.34,1.5,.5,1)}
+
+/* Kopfzeilen-Icons drehen/wippen dezent */
+.topbar-actions .icon-btn:hover i{transform:scale(1.12)}
+.topbar-actions .icon-btn i{transition:transform .18s}
+.topbar-actions .icon-btn:active i{transform:scale(.9)}
+
+/* Namenskürzel in der Kopfzeile */
+.wk-userchip{
+  width:38px;height:38px;border-radius:50%;flex:0 0 auto;margin-left:2px;
+  background:var(--wk-graphite);color:#EDEFEB;border:none;cursor:pointer;
+  font-family:var(--ff-data);font-size:12px;font-weight:600;
+  display:grid;place-items:center;transition:transform .18s, box-shadow .18s;
+}
+.wk-userchip:hover{transform:scale(1.06);box-shadow:0 0 0 3px var(--accent)}
+.wk-userchip:active{transform:scale(.94)}
+[data-theme="dark"] .wk-userchip{background:#3A424C}
+
+/* Held auf „Heute": Zahl zählt sich beim Erscheinen kurz herauf */
+.wk-hero-num{animation:wk-rise .5s cubic-bezier(.2,.8,.2,1) both}
+.wk-hero-fill{animation:wk-grow .8s cubic-bezier(.2,.8,.2,1) both}
+@keyframes wk-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes wk-grow{from{width:0 !important}}
+
+.wk-hero-cta:hover{transform:translateY(-2px)}
+.wk-hero-cta:active{transform:translateY(0) scale(.97)}
+.wk-hero-ghost:hover{transform:translateY(-2px)}
+
+/* Sanftes Einschweben der Inhaltsfläche bei jedem Ansichtswechsel */
+#mainContainer{animation:wk-fade .34s cubic-bezier(.2,.8,.2,1)}
+@keyframes wk-fade{from{opacity:0}to{opacity:1}}
+
+/* Gestaffeltes Erscheinen der Heute-Karten */
+.wk-today-list .task-card, .wk-quickrow, .wk-run-card{
+  animation:wk-settle .34s cubic-bezier(.2,.8,.2,1) backwards;
+}
+.wk-today-list .task-card:nth-child(1),.wk-quickrow:nth-child(1){animation-delay:.03s}
+.wk-today-list .task-card:nth-child(2),.wk-quickrow:nth-child(2){animation-delay:.07s}
+.wk-today-list .task-card:nth-child(3),.wk-quickrow:nth-child(3){animation-delay:.11s}
+.wk-today-list .task-card:nth-child(4),.wk-quickrow:nth-child(4){animation-delay:.15s}
+.wk-today-list .task-card:nth-child(n+5){animation-delay:.18s}
+@keyframes wk-settle{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+
+/* Kalendertage der Zeiterfassung reagieren spürbar */
+.tt-day:hover, .day:hover{transform:translateY(-2px);z-index:2}
+.tt-day:active, .day:active{transform:scale(.93)}
+
+/* Prüfpunkt-Kästchen: Häkchen springt beim Abhaken */
+.cl-item.done .cl-box, .checklist-item.checked .checkbox{animation:wk-check .3s cubic-bezier(.34,1.56,.5,1)}
+@keyframes wk-check{0%{transform:scale(.7)}55%{transform:scale(1.18)}100%{transform:scale(1)}}
+
+/* Dialoge steigen sanft auf */
+.modal-overlay.active .modal-content{animation:wk-modal .34s cubic-bezier(.2,.85,.25,1)}
+@keyframes wk-modal{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+
+/* Plaketten/Chips: leichtes Wippen beim Überfahren */
+.badge:hover, .stack-badge:hover, .dep-badge:hover{transform:translateY(-1px)}
+
+/* Aufgabenkarte wird gezogen: hebt deutlich ab */
+.task-card.dragging, .draggable-item.dragging{
+  transform:scale(1.03) rotate(-1deg) !important;box-shadow:0 18px 40px -12px rgba(34,38,43,.5) !important;opacity:.95;
+}
+
+/* Rückmeldung (Toast) schwingt herein */
+.toast, #toast{animation:wk-toast .32s cubic-bezier(.34,1.4,.5,1)}
+@keyframes wk-toast{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+/* „Zeit manuell eintragen" leuchtet nach dem Sprung kurz auf */
+.tt-flash{animation:wk-flash 1.2s ease}
+@keyframes wk-flash{
+  0%{box-shadow:0 0 0 0 rgba(255,201,60,0)}
+  20%{box-shadow:0 0 0 3px var(--accent)}
+  100%{box-shadow:0 0 0 0 rgba(255,201,60,0)}
+}
+
+/* Kopf-Aktionsreihe der Zeiterfassung: zwei Knöpfe nebeneinander */
+.tt-head-cta{display:inline-flex;gap:8px;flex-wrap:wrap}
+
+/* FAB-Symbol pulst ganz dezent, damit es als Einstieg auffällt */
+.mobile-fab:not(.wk-fab-open){animation:wk-fabidle 3.5s ease-in-out infinite}
+@keyframes wk-fabidle{0%,100%{box-shadow:0 14px 40px -14px rgba(34,38,43,.5)}50%{box-shadow:0 14px 40px -10px rgba(34,38,43,.6)}}
+
+/* Wer Bewegung reduziert, bekommt sie nicht */
+@media (prefers-reduced-motion:reduce){
+  *, *::before, *::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GLAS ENTFERNEN + LETZTE BLAUTÖNE — Suche, Einstellungen, Menüs
+   Der alte Milchglas-Effekt wird durch feste Flächen ersetzt,
+   damit Dialoge und Aufklappmenüs klar in Gelb/Graphit stehen.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --glass-surface:var(--surface-color);
+  --glass-dropdown:var(--surface-color);
+  --glass-bg:var(--bg-color);
+  --glass-blur:none;
+  --glass-edge:0 1px 0 rgba(34,38,43,.04);
+  --glass-opacity:1;
+}
+[data-theme="dark"]{
+  --glass-surface:var(--surface-color);
+  --glass-dropdown:var(--surface-color);
+  --glass-bg:var(--bg-color);
+  --glass-blur:none;
+  --glass-edge:0 1px 0 rgba(0,0,0,.3);
+}
+
+/* Milchglas ausnahmslos abschalten */
+.modal-content,
+.dropdown-content,
+.topbar.search-active .filter-area,
+.topbar.search-active .filter-chips,
+.sidebar, .topbar{
+  backdrop-filter:none !important;-webkit-backdrop-filter:none !important;
+}
+.modal-content{
+  background:var(--surface-color) !important;
+  border:1px solid var(--border-color) !important;
+  box-shadow:0 24px 60px -20px rgba(0,0,0,.5) !important;
+}
+.dropdown-content{
+  background:var(--surface-color) !important;
+  box-shadow:0 14px 40px -14px rgba(0,0,0,.4) !important;
+}
+
+/* Suchdialog: Kopf in Graphit statt durchscheinend */
+#globalSearchInput{background:transparent !important}
+.modal-content .fa-search{color:var(--text-muted) !important}
+
+/* Blauer Umschlag/Schatten an Knöpfen weg — Graphit statt Blau */
+button:hover{box-shadow:none !important}
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
+  background:var(--wk-graphite-2) !important;box-shadow:0 4px 14px -8px rgba(34,38,43,.35) !important;
+}
+
+/* Alte Seitenleisten-Navigation (versteckt, aber Regel neutralisieren) */
+.nav-item:hover, .nav-item.active{
+  background:var(--accent) !important;color:var(--accent-ink) !important;
+  border-right:3px solid var(--wk-graphite) !important;
+}
+
+/* Icons oben rechts: nie blau, immer Graphit (im Dunkeln hell) */
+.topbar-actions .icon-btn,
+.topbar-actions .icon-btn i{color:var(--text-main) !important}
+.topbar-actions .icon-btn:hover{
+  border-color:var(--wk-graphite) !important;background:var(--bg-color) !important;
+}
+.topbar-actions .icon-btn:hover i{color:var(--wk-graphite) !important}
+[data-theme="dark"] .topbar-actions .icon-btn:hover i{color:var(--accent) !important}
+
+/* Benachrichtigungs-Punkt und Zähler in Signalrot/Gelb, nicht blau */
+.notif-badge, .notification-badge{background:var(--danger) !important;color:#fff !important}
+
+/* Filter-Chips aktiv: gelb */
+.filter-chip.active, .chip.active{background:var(--accent) !important;color:var(--accent-ink) !important;border-color:var(--accent) !important}
+
+/* Sämtliche fest verdrahteten Primär-Blautöne aus dem JS einfangen:
+   Elemente, die inline auf die alte Blaufarbe gesetzt sind, tragen
+   sie als style-Attribut — hier nicht direkt greifbar, aber die
+   Variable --primary-color ist bereits Graphit, sodass
+   style="color:var(--primary-color)" automatisch mitzieht. */
+[style*="var(--primary-color)"]{}
+
+/* Icons, die im JS fest auf var(--primary-color) gesetzt sind, sind
+   damit bereits Graphit. Zusätzlich die verbliebenen Font-Awesome-
+   Akzente in Listen/Sortierung: */
+.fa-bullseye{color:var(--wk-graphite) !important}
+[data-theme="dark"] .fa-bullseye{color:var(--accent) !important}
+
+/* ═══════════════════════════════════════════════════════════════
+   ZEITERFASSUNG — Detail der gewählten Tage (Buchungen + Notizen)
+   ═══════════════════════════════════════════════════════════════ */
+.tt-detail{
+  background:var(--surface-color);border:1px solid var(--border-color);border-radius:var(--radius);
+  padding:16px;margin-top:14px;box-shadow:var(--shadow);
+  animation:wk-settle .3s cubic-bezier(.2,.8,.2,1);
+}
+.tt-detail h4{font-size:14px;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.tt-detail h4 i{color:var(--wk-graphite)}
+[data-theme="dark"] .tt-detail h4 i{color:var(--accent)}
+.tt-detail-day{margin-bottom:14px}
+.tt-detail-day:last-child{margin-bottom:0}
+.tt-detail-head{
+  display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--ff-data);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-muted);padding-bottom:6px;border-bottom:1px solid var(--border-color);margin-bottom:8px;
+}
+.tt-detail-head b{color:var(--text-main);font-weight:700}
+.tt-detail-row{
+  display:flex;align-items:center;gap:12px;padding:8px 10px;margin-bottom:6px;
+  background:var(--bg-color);border-radius:var(--radius);transition:transform .14s;
+}
+.tt-detail-row:hover{transform:translateX(2px)}
+.tt-detail-row.abs{border-left:4px solid var(--tt-abs,var(--border-color))}
+.tt-detail-row.abs i{color:var(--tt-abs,var(--text-muted));width:18px;text-align:center}
+.tt-detail-h{
+  font-family:var(--ff-data);font-size:15px;font-weight:600;min-width:52px;color:var(--text-main);
+}
+.tt-detail-main{flex:1;min-width:0}
+.tt-detail-main b{display:block;font-size:13.5px;font-weight:600;line-height:1.25}
+.tt-detail-main u{
+  display:block;font-family:var(--ff-data);font-size:10.5px;color:var(--text-muted);
+  text-decoration:none;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tt-detail-del{
+  width:28px;height:28px;border-radius:8px;flex:0 0 auto;background:transparent !important;
+  border:none !important;color:var(--text-muted) !important;display:grid;place-items:center;cursor:pointer;
+}
+.tt-detail-del:hover{background:var(--danger) !important;color:#fff !important;transform:none !important}
+.tt-detail-empty{
+  display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:13px;padding:6px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEUTE — echtes Desktop-Layout (zwei Spalten unter dem Held)
+   ═══════════════════════════════════════════════════════════════ */
+.wk-today{max-width:1240px;margin:0 auto}
+.wk-today-grid{display:flex;flex-direction:column;gap:0}
+.wk-today-main, .wk-today-side{min-width:0}
+.wk-empty.small{padding:18px 16px}
+.wk-empty.small b{font-size:14px}
+
+/* Ab Tablet quer: Held voll, darunter zwei Spalten */
+@media (min-width:1024px){
+  .wk-today-grid{
+    display:grid;grid-template-columns:1fr 380px;gap:28px;align-items:start;
+  }
+  .wk-today-side{
+    position:sticky;top:8px;
+    background:var(--surface-color);border:1px solid var(--border-color);
+    border-radius:var(--radius);padding:6px 18px 18px;box-shadow:var(--shadow);
+  }
+  .wk-today-side .wk-strip-h{margin-top:18px}
+  .wk-today-side .wk-strip-h:first-child{margin-top:8px}
+  .wk-hero{padding:32px 32px 34px}
+  .wk-hero-num{font-size:64px}
+  .wk-hero-note{font-size:15px}
+  /* Aufgabenliste zweispaltig, damit die Fläche nicht leer wirkt */
+  .wk-today-main .wk-today-list{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:10px;
   }
 }
+
+/* Sehr breite Fenster: Hauptliste dreispaltig */
+@media (min-width:1600px){
+  .wk-today-grid{grid-template-columns:1fr 420px}
+  .wk-today-main .wk-today-list{grid-template-columns:repeat(3,1fr)}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KANBAN — klarer Aufwandsbalken (wie in der Heute-Ansicht)
+   ═══════════════════════════════════════════════════════════════ */
+.wk-effort{margin-top:8px}
+.wk-effort-head{
+  display:flex;justify-content:space-between;font-family:var(--ff-data);
+  font-size:10.5px;color:var(--text-muted);margin-bottom:4px;
+}
+.wk-effort-head b{color:var(--text-main);font-weight:600}
+.wk-effort-head i.far{margin-right:3px;opacity:.7}
+.wk-effort-bar{
+  height:6px;border-radius:6px;background:var(--bg-color);overflow:hidden;
+  border:1px solid var(--border-color);
+}
+.wk-effort-bar i{
+  display:block;height:100%;background:var(--wk-graphite);border-radius:6px;transition:width .3s;
+}
+[data-theme="dark"] .wk-effort-bar i{background:var(--accent)}
+.wk-effort-bar i.over{background:var(--danger)}
+
+/* ═══════════════════════════════════════════════════════════════
+   GANTT — Abwesenheiten als eigene Zeile oberhalb der KW-Leiste
+   ═══════════════════════════════════════════════════════════════ */
+.gantt-abs-strip{background:var(--bg-color)}
+.gantt-abs-chip{
+  position:absolute;top:3px;height:18px;border-radius:5px;
+  background:color-mix(in srgb, var(--abs) 22%, transparent);
+  border:1px solid var(--abs);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:transform .14s, filter .14s;z-index:2;
+}
+.gantt-abs-chip i{font-size:10px;color:var(--abs)}
+.gantt-abs-chip:hover{transform:translateY(-1px);filter:brightness(1.05);z-index:5}
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIZEN — linke Liste mit mehr Luft, klarere aktive Markierung
+   ═══════════════════════════════════════════════════════════════ */
+.notes-left-pane{width:360px !important;padding-left:8px !important;padding-right:22px !important;margin-left:6px !important}
+.notes-left-pane > div:first-child{  /* Sortier-Zeile */
+  gap:6px !important;margin-bottom:16px !important;
+}
+.notes-left-pane > div:first-child .secondary{
+  flex:1 1 auto;min-width:0;font-size:12px;padding:8px 10px;justify-content:center;
+}
+.notes-left-pane .draggable-item{
+  padding:12px 14px !important;margin-bottom:8px !important;border-radius:var(--radius) !important;
+  border:1px solid var(--border-color) !important;background:var(--surface-color) !important;
+  box-shadow:var(--shadow);transition:transform .14s, border-color .14s;
+}
+.notes-left-pane .draggable-item:hover{transform:translateX(2px);border-color:var(--wk-graphite-2) !important}
+/* aktive Notiz: gelber Streifen statt blasser Fläche */
+.notes-left-pane .draggable-item[style*="4px solid var(--primary-color)"],
+.notes-left-pane .draggable-item[style*="4px solid"]{
+  border-left-width:4px !important;
+}
+.notes-right-pane{padding-left:20px !important;padding-right:16px !important}
+
+@media (min-width:600px) and (max-width:1088px){
+  .notes-left-pane{width:300px !important}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MODAL-TABS — als Reiter lesen, nicht als schwarze Buttons
+   (Die globale Button-Grundfarbe hatte sie überdeckt.)
+   ═══════════════════════════════════════════════════════════════ */
+.modal-tab-btn, .stack-tab-btn{
+  background:transparent !important;color:var(--text-muted) !important;
+  border:none !important;border-bottom:3px solid transparent !important;border-radius:0 !important;
+  font-weight:600 !important;padding:14px 20px !important;transition:color .15s, border-color .15s !important;
+}
+.modal-tab-btn:hover, .stack-tab-btn:hover{
+  color:var(--text-main) !important;background:transparent !important;transform:none !important;
+  box-shadow:none !important;border-bottom-color:var(--border-color) !important;
+}
+.modal-tab-btn.active, .stack-tab-btn.active{
+  color:var(--text-main) !important;background:transparent !important;
+  border-bottom:3px solid var(--wk-magnet) !important;
+}
+[data-theme="dark"] .modal-tab-btn.active, [data-theme="dark"] .stack-tab-btn.active{
+  color:var(--accent) !important;border-bottom-color:var(--accent) !important;
+}
+.modal-tab-btn:active, .stack-tab-btn:active{transform:none !important}
+/* Reiter-Leiste bekommt eine ruhige Unterkante */
+.modal-tabs, .stack-tabs, .settings-tabs{
+  border-bottom:1px solid var(--border-color);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEUTE-HELD — kompakter, mit grafischer Übersicht rechts
+   ═══════════════════════════════════════════════════════════════ */
+.wk-hero.compact{
+  display:flex;gap:28px;align-items:stretch;padding:22px 26px;
+}
+.wk-hero.compact::after{display:none}
+.wk-hero-left{flex:1;min-width:0;display:flex;flex-direction:column}
+.wk-hero.compact .wk-hero-num{font-size:44px;margin-top:2px}
+.wk-hero.compact .wk-hero-num small{font-size:15px}
+.wk-hero-track{height:6px;border-radius:6px;background:#333B44;overflow:hidden;margin:10px 0 0;max-width:280px}
+.wk-hero-track i{display:block;height:100%;background:var(--wk-magnet);border-radius:6px;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.wk-hero.compact .wk-hero-note{margin-top:10px}
+.wk-hero.compact .wk-hero-acts{margin-top:auto;padding-top:16px}
+
+/* Statistik-Panel */
+.wk-hero-stats{
+  flex:0 0 300px;display:flex;flex-direction:column;gap:12px;justify-content:center;
+  border-left:1px solid #333B44;padding-left:26px;
+}
+.wk-stat{display:flex;align-items:center;gap:14px}
+.wk-stat-ring{
+  --p:0;flex:0 0 auto;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--wk-magnet) calc(var(--p)*1%), #333B44 0);
+}
+.wk-stat-ring.ok{background:conic-gradient(var(--success) calc(var(--p)*1%), #333B44 0)}
+.wk-stat-ring.accent{background:conic-gradient(#8AB4F8 calc(var(--p)*1%), #333B44 0)}
+.wk-stat-ring span{
+  width:44px;height:44px;border-radius:50%;background:var(--wk-graphite);display:grid;place-items:center;
+  font-family:var(--ff-data);font-size:15px;font-weight:600;color:#EDEFEB;
+}
+.wk-stat-ring u{font-size:9px;text-decoration:none;color:#9AA3AE;margin-left:1px}
+.wk-stat-txt b{display:block;font-size:13px;color:#EDEFEB;font-weight:600}
+.wk-stat-txt u{display:block;font-family:var(--ff-data);font-size:10.5px;text-decoration:none;color:#9AA3AE;margin-top:2px}
+.wk-stat.wide{border-top:1px solid #333B44;padding-top:12px;margin-top:2px}
+.wk-stat-nums{display:flex;gap:18px;width:100%}
+.wk-stat-nums span{display:flex;flex-direction:column}
+.wk-stat-nums b{font-family:var(--ff-data);font-size:20px;font-weight:600;color:#EDEFEB;line-height:1}
+.wk-stat-nums u{font-size:9.5px;text-decoration:none;color:#9AA3AE;text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+
+/* Auf schmalen Geräten: Statistik unter den Held, Ringe nebeneinander */
+@media (max-width:899px){
+  .wk-hero.compact{flex-direction:column;gap:18px;padding:20px}
+  .wk-hero-stats{flex:none;border-left:none;border-top:1px solid #333B44;padding-left:0;padding-top:18px;
+    flex-direction:row;flex-wrap:wrap;gap:16px}
+  .wk-stat{flex:1 1 40%}
+  .wk-stat.wide{flex:1 1 100%;border-top:1px solid #333B44;padding-top:14px}
+  .wk-hero-track{max-width:none}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ABHÄNGIGKEITEN — Node-System (Stack › Aufgaben › Checkliste)
+   ═══════════════════════════════════════════════════════════════ */
+.dep-wrap{max-width:1300px;margin:0 auto}
+.dep-toolbar{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;
+  padding-bottom:16px;border-bottom:1px solid var(--border-color);
+}
+.dep-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:9px}
+.dep-title i{color:var(--wk-graphite)}
+[data-theme="dark"] .dep-title i{color:var(--accent)}
+.dep-legend{display:flex;gap:16px;font-size:12px;color:var(--text-muted)}
+.dep-legend span{display:inline-flex;align-items:center;gap:6px}
+.dep-lg-start{
+  font-family:var(--ff-data);font-weight:800;font-style:normal;color:var(--wk-graphite);
+  background:var(--wk-magnet);width:18px;height:18px;border-radius:5px;display:inline-grid;place-items:center;font-size:12px;
+}
+.dep-lg-lock{color:var(--danger)}
+.dep-levels{display:flex;gap:6px;margin-left:auto}
+.dep-lvl{
+  display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+  padding:8px 13px;border-radius:999px !important;
+  background:var(--surface-color) !important;color:var(--text-muted) !important;
+  border:1px solid var(--border-color) !important;transition:.15s;
+}
+.dep-lvl.on{
+  background:var(--wk-graphite) !important;color:#fff !important;border-color:var(--wk-graphite) !important;
+}
+[data-theme="dark"] .dep-lvl.on{background:var(--accent) !important;color:#22262B !important;border-color:var(--accent) !important}
+.dep-lvl:hover{transform:translateY(-1px)}
+
+.dep-board{display:flex;flex-direction:column;gap:18px}
+
+/* Stack-Gruppe */
+.dep-group{
+  background:var(--bg-color);border:1px solid var(--border-color);border-radius:var(--radius);
+  overflow:hidden;
+}
+.dep-group.flat{background:transparent;border:none}
+.dep-group-head{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;
+  background:var(--surface-color);border-bottom:1px solid var(--border-color);
+  border-left:4px solid var(--gc,var(--text-muted));transition:.14s;
+}
+.dep-group-head:hover{background:var(--bg-color)}
+.dep-group-head i.fa-folder{color:var(--gc,var(--text-muted))}
+.dep-group-head b{font-size:15px}
+.dep-group-count{
+  font-family:var(--ff-data);font-size:10px;color:var(--text-muted);
+  background:var(--bg-color);padding:3px 8px;border-radius:999px;
+}
+.dep-group-done{color:var(--success);margin-left:auto}
+
+/* Waagerechte Kette */
+.dep-chain{
+  display:flex;align-items:stretch;gap:0;padding:18px 16px;overflow-x:auto;
+  scrollbar-width:thin;
+}
+.dep-chain::-webkit-scrollbar{height:8px}
+.dep-chain::-webkit-scrollbar-thumb{background:#C9CEC7;border-radius:8px}
+.dep-empty-chain{font-size:12px;color:var(--text-muted);font-style:italic}
+
+/* Startpfeil */
+.dep-start-arrow{
+  flex:0 0 auto;align-self:center;font-family:var(--ff-data);font-weight:800;font-size:20px;
+  color:#22262B;background:var(--wk-magnet);width:30px;height:30px;border-radius:8px;
+  display:grid;place-items:center;margin-right:8px;box-shadow:0 2px 0 rgba(0,0,0,.15);
+  animation:dep-pulse 2.2s ease-in-out infinite;
+}
+@keyframes dep-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+/* Verbindungsglied zwischen Knoten */
+.dep-link{flex:0 0 34px;align-self:center;display:flex;align-items:center;justify-content:center}
+.dep-link i{display:block;width:100%;height:2px;background:var(--border-color);position:relative}
+.dep-link i::after{
+  content:'';position:absolute;right:-1px;top:-3px;border:4px solid transparent;
+  border-left-color:var(--border-color);
+}
+
+/* Knoten */
+.dep-node{
+  flex:0 0 230px;background:var(--surface-color);border:1px solid var(--border-color);
+  border-radius:var(--radius);padding:12px 13px;cursor:pointer;transition:.16s;
+  border-top:3px solid var(--wk-graphite);display:flex;flex-direction:column;gap:8px;
+}
+.dep-node:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--wk-graphite-2)}
+.dep-node.done{border-top-color:var(--success);opacity:.72}
+.dep-node.locked{border-top-color:var(--danger)}
+.dep-node.start{border-top-color:var(--wk-magnet)}
+.dep-node.end{box-shadow:0 0 0 2px var(--danger) inset}
+.dep-node-head{display:flex;align-items:flex-start;gap:8px}
+.dep-node-head > i.fa-tasks{color:var(--text-muted);margin-top:2px;font-size:12px}
+.dep-node-name{flex:1;font-size:14px;font-weight:600;line-height:1.25}
+.dep-node-lock{color:var(--danger);font-size:13px}
+.dep-node-cl{display:flex;flex-direction:column;gap:4px;padding-left:2px}
+.dep-ci{
+  display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-muted);
+}
+.dep-ci i{font-size:9px;width:11px}
+.dep-ci.done{color:var(--success)}
+.dep-ci.done span{text-decoration:line-through}
+.dep-ci-sum{font-family:var(--ff-data);font-size:11px;color:var(--text-muted);display:inline-flex;align-items:center;gap:5px}
+.dep-node-foot{margin-top:auto}
+.dep-badge-st{
+  font-family:var(--ff-data);font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:6px;
+  display:inline-flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:.04em;
+}
+.dep-badge-st.ok{background:rgba(31,148,99,.12);color:var(--success)}
+.dep-badge-st.lock{background:rgba(217,52,43,.1);color:var(--danger)}
+.dep-badge-st.go{background:var(--wk-magnet);color:#22262B}
+
+.dep-empty{
+  display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;
+  padding:48px 20px;border:1px dashed var(--border-color);border-radius:var(--radius);
+}
+.dep-empty i{font-size:30px;color:#B9BFB6}
+.dep-empty b{font-size:16px}
+.dep-empty span{font-size:13px;color:var(--text-muted);max-width:40ch}
+
+@media (max-width:599px){
+  .dep-levels{margin-left:0;width:100%}
+  .dep-lvl{flex:1;justify-content:center}
+  .dep-node{flex-basis:200px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIZEN/CHECKLISTEN — Detailspalte auf schmalen Tablets bändigen
+   Die Steuerzeile eines Checklisten-Punkts lief bei ~1194 px über.
+   ═══════════════════════════════════════════════════════════════ */
+.notes-right-pane, .notes-right-pane *{min-width:0}
+.notes-right-pane .checklist-item{flex-wrap:wrap;gap:6px}
+.notes-right-pane .cl-controls{flex-wrap:wrap;justify-content:flex-end;max-width:100%}
+.notes-right-pane .cl-controls select,
+.notes-right-pane .cl-controls input{max-width:130px}
+@media (max-width:1280px){
+  .notes-right-pane .cl-controls{flex:1 1 100%;margin-top:6px;margin-left:0;justify-content:flex-start}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KANBAN-KACHEL — einheitlich in allen Spalten, wächst in der Höhe
+   ═══════════════════════════════════════════════════════════════ */
+.task-card{
+  height:auto !important;min-height:0 !important;overflow:visible !important;
+  padding:0 !important;   /* innere Struktur bringt eigenes Padding mit */
+}
+.wk-card{display:flex;flex-direction:column;gap:9px;padding:13px 14px 12px}
+.wk-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.wk-card-tags{display:flex;flex-wrap:wrap;gap:5px;flex:1;min-width:0}
+.wk-c-stack, .wk-c-sh, .wk-c-bucket{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--ff-data);
+  font-size:9.5px;font-weight:600;padding:3px 7px;border-radius:6px;white-space:nowrap;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;
+}
+.wk-c-stack{background:var(--bg-color);color:var(--text-muted);border:1px solid var(--border-color)}
+.wk-c-stack i{color:var(--sc,var(--text-muted))}
+.wk-c-sh{background:color-mix(in srgb, var(--shc) 14%, transparent);color:var(--shc)}
+.wk-c-bucket{background:var(--bg-color);color:var(--text-muted);border:1px solid var(--border-color)}
+.wk-card-actions{display:flex;gap:4px;flex-shrink:0}
+.wk-card .task-title{
+  font-size:14.5px;font-weight:600;line-height:1.3;margin:0;
+  white-space:normal;overflow:visible;word-break:break-word;   /* voller Titel, Umbruch statt Abschnitt */
+}
+.wk-card-foot{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding-top:9px;border-top:1px solid var(--bg-color);margin-top:1px;
+}
+.wk-card-foot-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;min-width:0}
+.wk-card-foot-l .badge{flex-shrink:0}
+.wk-c-cl, .wk-c-files, .wk-c-due{
+  display:inline-flex;align-items:center;gap:4px;font-family:var(--ff-data);
+  font-size:10.5px;color:var(--text-muted);white-space:nowrap;
+}
+.wk-card-foot-r{flex-shrink:0}
+
+/* Abgeschlossene Aufgaben: nur Name + Aktionen */
+.wk-card.done{flex-direction:row;align-items:center;gap:8px;padding:11px 13px}
+.wk-card.done .task-title.done{
+  flex:1;font-size:13.5px;font-weight:500;color:var(--text-muted);
+  text-decoration:line-through;text-decoration-thickness:1px;white-space:normal;word-break:break-word;
+}
+.wk-done-ic{color:var(--success);margin-right:5px;text-decoration:none;display:inline-block}
+.wk-card.done .wk-card-actions{order:2}
+
+/* Aufwandsbalken in der neuen Struktur */
+.wk-card .wk-effort{margin-top:0}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEUTE — zusätzliche Graphen (Trend, Statusverteilung, Prioritäten)
+   ═══════════════════════════════════════════════════════════════ */
+.wk-graphs{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.wk-graph-card{
+  background:var(--surface-color);border:1px solid var(--border-color);border-radius:var(--radius);
+  padding:15px 16px;box-shadow:var(--shadow);
+}
+.wk-graph-h{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px}
+.wk-graph-h b{font-size:13px;font-weight:700}
+.wk-graph-h u{font-family:var(--ff-data);font-size:10px;color:var(--text-muted);text-decoration:none}
+
+/* 7-Tage-Trend */
+.wk-trend{display:flex;align-items:flex-end;gap:8px;height:88px}
+.wk-tr-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.wk-tr-bar{position:relative;width:100%;max-width:26px;flex:1;background:var(--bg-color);border-radius:5px;display:flex;align-items:flex-end;overflow:hidden}
+.wk-tr-target{position:absolute;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,var(--border-color),var(--border-color) 2px,transparent 2px,transparent 4px);border-radius:5px}
+.wk-tr-fill{position:relative;width:100%;background:var(--wk-graphite);border-radius:5px;min-height:2px;transition:height .4s;z-index:1}
+.wk-tr-fill.full{background:var(--success)}
+[data-theme="dark"] .wk-tr-fill{background:var(--accent)}
+.wk-tr-col u{font-family:var(--ff-data);font-size:9.5px;color:var(--text-muted);text-decoration:none}
+
+/* Statusverteilung */
+.wk-dist{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--bg-color);margin-bottom:12px}
+.wk-dist-seg{height:100%;transition:width .4s}
+.wk-dist-legend{display:flex;flex-wrap:wrap;gap:12px}
+.wk-dist-legend span{display:inline-flex;align-items:center;gap:5px;font-family:var(--ff-data);font-size:11px;color:var(--text-muted)}
+.wk-dist-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+/* Prioritäten */
+.wk-prio{display:flex;flex-direction:column;gap:9px}
+.wk-prio-row{display:flex;align-items:center;gap:10px}
+.wk-prio-lbl{font-size:11px;font-weight:600;width:56px;flex-shrink:0}
+.wk-prio-track{flex:1;height:8px;border-radius:5px;background:var(--bg-color);overflow:hidden}
+.wk-prio-track i{display:block;height:100%;border-radius:5px;transition:width .4s;min-width:2px}
+.wk-prio-row b{font-family:var(--ff-data);font-size:13px;width:22px;text-align:right}
+
+@media (max-width:1023px){
+  .wk-graphs{grid-template-columns:1fr}
+}
+@media (min-width:600px) and (max-width:1023px){
+  .wk-graphs{grid-template-columns:repeat(2,1fr)}
+  .wk-graph-card:last-child{grid-column:1/-1}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ABHÄNGIGKEITEN — Drag&Drop zum Verknüpfen
+   ═══════════════════════════════════════════════════════════════ */
+.dep-hint{color:var(--text-muted);opacity:.85}
+.dep-hint i{color:var(--wk-graphite)}
+[data-theme="dark"] .dep-hint i{color:var(--accent)}
+
+.dep-node[draggable="true"], .dep-group-head[draggable="true"]{cursor:grab}
+.dep-node.dep-dragging, .dep-group-head.dep-dragging{opacity:.5;cursor:grabbing}
+
+/* Während des Ziehens alle möglichen Ziele dezent markieren */
+body.dep-linking .dep-node{outline:1px dashed transparent;transition:outline-color .15s, box-shadow .15s}
+body.dep-linking .dep-node:not(.dep-dragging){outline-color:var(--border-color)}
+
+/* gültiges Ziel */
+.dep-node.dep-drop-ok{
+  outline:2px solid var(--success) !important;
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--success) 20%, transparent) !important;
+  transform:translateY(-2px);
+}
+/* ungültiges Ziel */
+.dep-node.dep-drop-bad, .dep-group-head.dep-drop-bad{
+  outline:2px solid var(--danger) !important;cursor:no-drop;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KANBAN — endgültige Absicherung der automatischen Kachelhöhe
+   Keine Kachel und kein Innenelement darf Inhalt unten abschneiden.
+   ═══════════════════════════════════════════════════════════════ */
+.kanban-cards{align-items:stretch}
+.kanban-cards > .task-card{
+  height:auto !important;min-height:0 !important;max-height:none !important;
+  overflow:visible !important;flex:0 0 auto;align-self:stretch;
+}
+.kanban-cards > .task-card > .wk-card{height:auto;overflow:visible}
+.wk-card > *{overflow:visible}
+.wk-card .task-title{-webkit-line-clamp:unset !important;display:block;max-height:none !important}
+
+/* ═══════════════════════════════════════════════════════════════
+   KANBAN & GANTT — deutliche Einfüge-Vorschau beim Ziehen
+   ═══════════════════════════════════════════════════════════════ */
+/* Deutliche Einfügelinie statt zartem Schatten */
+.kanban-cards .task-card{position:relative}
+.task-card.drag-over-top::before,
+.task-card.drag-over-bottom::after{
+  content:'';position:absolute;left:-2px;right:-2px;height:4px;border-radius:4px;
+  background:var(--wk-magnet);box-shadow:0 0 0 2px color-mix(in srgb, var(--wk-magnet) 40%, transparent);
+  z-index:10;
+}
+.task-card.drag-over-top::before{top:-7px}
+.task-card.drag-over-bottom::after{bottom:-7px}
+/* kleiner „Fangpunkt" am linken Ende der Linie */
+.task-card.drag-over-top::before{background-image:radial-gradient(circle 5px at 4px 2px, var(--wk-graphite) 40%, transparent 42%)}
+.task-card.drag-over-bottom::after{background-image:radial-gradient(circle 5px at 4px 2px, var(--wk-graphite) 40%, transparent 42%)}
+.task-card.drag-over-top, .task-card.drag-over-bottom{box-shadow:var(--shadow) !important}
+.task-card.drag-over-merge{
+  outline:2px dashed var(--wk-magnet) !important;outline-offset:2px;
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--wk-magnet) 18%, transparent) !important;
+}
+/* die gezogene Karte selbst deutlich abheben (Geist) */
+.task-card.dragging, .task-card[draggable].is-dragging{opacity:.4}
+
+/* Leere Spalte, in die abgelegt werden kann */
+.kanban-column.drag-over-zone .kanban-cards{
+  outline:2px dashed var(--wk-magnet);outline-offset:-6px;border-radius:var(--radius);
+  background:color-mix(in srgb, var(--wk-magnet) 6%, transparent);
+}
+
+/* Abgeschlossen-Kachel mit Bucket/Stakeholder */
+.wk-card.done{flex-direction:row;align-items:center;gap:10px;padding:11px 13px}
+.wk-card-done-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.wk-card-done-tags{display:flex;flex-wrap:wrap;gap:5px}
+.wk-card.done .wk-card-actions{flex-shrink:0}
+
+/* ═══════════════════════════════════════════════════════════════
+   GANTT — Balken während des Ziehens deutlich als Vorschau zeigen
+   ═══════════════════════════════════════════════════════════════ */
+.gantt-bar-dragging{
+  outline:2px solid var(--wk-magnet) !important;
+  box-shadow:0 6px 20px -6px rgba(0,0,0,.4), 0 0 0 4px color-mix(in srgb, var(--wk-magnet) 25%, transparent) !important;
+  opacity:.9;z-index:20 !important;transition:none !important;
+}
+#timeline-drag-preview{
+  background:var(--wk-graphite) !important;color:#EDEFEB !important;
+  font-family:var(--ff-data);font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;
+  box-shadow:0 4px 14px -4px rgba(0,0,0,.5);border:1px solid var(--accent);white-space:nowrap;
+}
+
+/* Abhängigkeiten — Ohne-Stack-Gruppe und Checkpunkt-Verknüpfungen */
+.dep-group.nostack .dep-group-head{cursor:default;border-left-style:dashed}
+.dep-group.nostack .dep-group-head i.fa-inbox{color:var(--text-muted)}
+.dep-group-deps{
+  font-family:var(--ff-data);font-size:10px;color:var(--wk-graphite);
+  background:color-mix(in srgb, var(--wk-magnet) 25%, transparent);
+  padding:2px 7px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;
+}
+[data-theme="dark"] .dep-group-deps{color:var(--accent);background:rgba(255,201,60,.15)}
+.dep-ci[draggable="true"]{cursor:grab}
+.dep-ci.dep-dragging{opacity:.5}
+/* Stack-Kopf als gültiges Ziel markieren */
+.dep-group-head.dep-drop-ok{
+  outline:2px solid var(--success) !important;outline-offset:-2px;
+  background:color-mix(in srgb, var(--success) 12%, transparent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EINSTELLUNGEN — Voreinstellungen / Presets
+   ═══════════════════════════════════════════════════════════════ */
+.preset-section{margin-bottom:24px}
+.preset-sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.preset-sec-head h3{font-size:15px;display:flex;align-items:center;gap:8px;margin:0}
+.preset-sec-head h3 i{color:var(--wk-graphite)}
+[data-theme="dark"] .preset-sec-head h3 i{color:var(--accent)}
+.preset-empty{
+  padding:20px;text-align:center;color:var(--text-muted);font-size:13px;
+  border:1px dashed var(--border-color);border-radius:var(--radius);
+}
+.preset-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.preset-card{
+  background:var(--surface-color);border:1px solid var(--border-color);border-radius:var(--radius);
+  padding:14px;box-shadow:var(--shadow);
+}
+.preset-card.is-default{border-color:var(--wk-magnet);box-shadow:0 0 0 2px color-mix(in srgb, var(--wk-magnet) 30%, transparent)}
+.preset-card-top{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.preset-name{
+  flex:1;min-width:0;font-weight:600;font-size:14px;border:none;background:transparent;
+  border-bottom:2px solid transparent;padding:4px 2px;color:var(--text-main);
+}
+.preset-name:focus{outline:none;border-bottom-color:var(--wk-magnet)}
+.preset-default-badge{
+  font-size:10px;font-family:var(--ff-data);color:var(--wk-graphite);
+  background:color-mix(in srgb, var(--wk-magnet) 30%, transparent);
+  padding:3px 8px;border-radius:999px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+}
+[data-theme="dark"] .preset-default-badge{color:var(--accent);background:rgba(255,201,60,.15)}
+.preset-mini{
+  width:30px;height:30px;border-radius:8px;flex:0 0 auto;background:var(--bg-color) !important;
+  border:1px solid var(--border-color) !important;color:var(--text-muted) !important;
+  display:grid;place-items:center;cursor:pointer;padding:0 !important;
+}
+.preset-mini:hover{color:var(--wk-graphite) !important;transform:none !important}
+.preset-mini.danger:hover{background:var(--danger) !important;color:#fff !important;border-color:var(--danger) !important}
+.preset-fields{display:flex;flex-direction:column;gap:6px}
+.preset-fields label{font-size:11px;font-weight:600;color:var(--text-muted);margin-top:4px}
+.preset-fields select, .preset-fields textarea{
+  width:100%;padding:7px 9px;border:1px solid var(--border-color);border-radius:8px;
+  background:var(--bg-color);color:var(--text-main);font-size:12.5px;font-family:inherit;
+}
+.preset-fields textarea{resize:vertical;line-height:1.4}
+
+/* Buchungen nach Bucket — leere Meldung */
+.wk-tr-empty{display:flex;align-items:center;justify-content:center;width:100%;height:88px;color:var(--text-muted);font-size:12px}
+.wk-tr-col u{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Abhängigkeiten — Vorgänger-Chips (mehrere möglich) */
+.dep-node-preds{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.dep-pred-chip{
+  display:inline-flex;align-items:center;gap:4px;font-size:10px;font-family:var(--ff-data);
+  background:var(--bg-color);border:1px solid var(--border-color);border-radius:6px;padding:2px 5px 2px 6px;
+  color:var(--text-muted);max-width:100%;
+}
+.dep-pred-chip i{color:var(--wk-graphite);font-size:9px}
+[data-theme="dark"] .dep-pred-chip i{color:var(--accent)}
+.dep-pred-x{
+  border:none;background:transparent;color:var(--text-muted);cursor:pointer;font-size:14px;
+  line-height:1;padding:0 0 0 2px;margin:0;
+}
+.dep-pred-x:hover{color:var(--danger)}
+.dep-ci-link{color:var(--wk-graphite);font-size:8px;margin-left:3px}
+[data-theme="dark"] .dep-ci-link{color:var(--accent)}
+.dep-ci.has-pred{border:1px dashed var(--border-color);border-radius:5px;padding:2px 5px}
+.dep-ci.dep-drop-ok{outline:2px solid var(--success);outline-offset:1px;border-radius:5px}
+
+/* Preset-Auswahl in den Modals */
+.preset-picker{
+  background:color-mix(in srgb, var(--wk-magnet) 8%, transparent);
+  border:1px solid color-mix(in srgb, var(--wk-magnet) 40%, var(--border-color));
+  border-radius:var(--radius);padding:10px 12px;
+}
+.preset-picker .form-label{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.preset-picker .form-label i{color:var(--wk-graphite)}
+[data-theme="dark"] .preset-picker .form-label i{color:var(--accent)}
+.preset-picker select{width:100%}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEUTE-HELD — Aktivitäts-Ticker (dritte Spalte)
+   ═══════════════════════════════════════════════════════════════ */
+.wk-hero-ticker{
+  flex:0 0 260px;min-width:0;display:flex;flex-direction:column;gap:10px;
+  border-left:1px solid #333B44;padding-left:24px;
+}
+.wk-ticker-head{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:#9AA3AE;display:flex;align-items:center;gap:7px;
+}
+.wk-ticker-head i{color:var(--wk-magnet)}
+.wk-ticker-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px;overflow:hidden}
+.wk-ticker-list li{display:flex;align-items:flex-start;gap:9px;font-size:12px;line-height:1.35}
+.wk-ticker-ic{
+  flex:0 0 auto;width:22px;height:22px;border-radius:6px;display:grid;place-items:center;
+  background:#333B44;color:var(--wk-magnet);font-size:10px;margin-top:1px;
+}
+.wk-ticker-txt{flex:1;min-width:0;color:#EDEFEB;overflow:hidden;text-overflow:ellipsis}
+.wk-ticker-list time{flex:0 0 auto;font-family:var(--ff-data);font-size:10px;color:#9AA3AE;white-space:nowrap;margin-top:2px}
+.wk-ticker-empty{font-size:12px;color:#9AA3AE;font-style:italic;padding:8px 0}
+
+/* Held ist jetzt dreispaltig — Statistik etwas schmaler */
+.wk-hero.compact .wk-hero-stats{flex:0 0 250px}
+
+@media (max-width:1200px){
+  .wk-hero.compact{flex-wrap:wrap}
+  .wk-hero-ticker{flex:1 1 100%;border-left:none;border-top:1px solid #333B44;padding-left:0;padding-top:16px}
+}
+@media (max-width:899px){
+  .wk-hero.compact{flex-wrap:wrap}
+  .wk-hero-ticker{border-top:1px solid #333B44;padding-top:16px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ABHÄNGIGKEITEN — freier Node-Graph mit gezeichneten Verbindungen
+   ═══════════════════════════════════════════════════════════════ */
+.dep-canvas-wrap{
+  margin-top:18px;overflow:auto;border:1px solid var(--border-color);border-radius:var(--radius);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--border-color) 40%, transparent) 1px, transparent 1px) 0 0/26px 26px,
+    linear-gradient(0deg, color-mix(in srgb, var(--border-color) 40%, transparent) 1px, transparent 1px) 0 0/26px 26px,
+    var(--bg-color);
+  max-height:calc(100vh - 220px);
+}
+.dep-canvas{position:relative;min-width:100%}
+.dep-edges{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.dep-edge{fill:none;stroke:var(--wk-graphite-2);stroke-width:2;opacity:.55}
+.dep-edge-checklist{stroke-dasharray:5 4;opacity:.5}
+.dep-edge-milestone{stroke-dasharray:2 4}
+
+.dep-gnode{
+  position:absolute;background:var(--surface-color);border:1px solid var(--border-color);
+  border-radius:12px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;
+  padding:0 14px;cursor:grab;transition:box-shadow .15s, transform .15s, border-color .15s;
+  border-left:4px solid var(--wk-graphite);
+}
+.dep-gnode:hover{transform:translateY(-2px);box-shadow:0 8px 20px -8px rgba(0,0,0,.35);z-index:5}
+.dep-gnode.dep-dragging{opacity:.45;cursor:grabbing}
+.dep-gnode.type-stack{border-left-color:var(--primary-color)}
+.dep-gnode.type-task{border-left-color:var(--wk-graphite)}
+.dep-gnode.type-checklist{border-left-color:#7C6CE0;border-style:solid}
+.dep-gnode.type-milestone{border-left-color:#E8A317}
+.dep-gnode.done{opacity:.6}
+.dep-gnode.locked{border-left-color:var(--danger)}
+.dep-gnode.is-start{box-shadow:0 0 0 2px color-mix(in srgb, var(--wk-magnet) 45%, transparent), var(--shadow)}
+
+.dep-gnode-ic{
+  flex:0 0 auto;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+  background:var(--bg-color);color:var(--wk-graphite);font-size:14px;
+}
+[data-theme="dark"] .dep-gnode-ic{color:var(--accent)}
+.dep-gnode.type-stack .dep-gnode-ic{color:var(--primary-color)}
+.dep-gnode.type-checklist .dep-gnode-ic{color:#7C6CE0}
+.dep-gnode.type-milestone .dep-gnode-ic{color:#E8A317}
+.dep-gnode-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.dep-gnode-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dep-gnode-type{font-family:var(--ff-data);font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
+.dep-gnode-done{color:var(--success);flex:0 0 auto}
+.dep-gnode-lock{color:var(--danger);flex:0 0 auto}
+
+/* Anschlusspunkte */
+.dep-gport{
+  position:absolute;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;
+  display:grid;place-items:center;font-size:10px;
+}
+.dep-gport.in{left:-8px;background:var(--border-color)}
+.dep-gport.in.start{background:var(--wk-magnet);color:#22262B;font-family:var(--ff-data);font-weight:800;width:20px;height:20px;left:-10px}
+.dep-gport.out{right:-8px;background:var(--wk-graphite-2)}
+.dep-gport.out.locked{background:var(--danger);color:#fff;width:20px;height:20px;right:-10px}
+
+/* Drop-Ziel */
+.dep-gnode.dep-drop-ok{
+  outline:2px solid var(--success) !important;outline-offset:2px;
+  box-shadow:0 0 0 5px color-mix(in srgb, var(--success) 20%, transparent) !important;
+}
+body.dep-linking .dep-gnode:not(.dep-dragging){outline:1px dashed var(--border-color)}
