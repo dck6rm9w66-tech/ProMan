@@ -1117,8 +1117,8 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
 .dep-empty span{font-size:13px;color:var(--text-muted);max-width:40ch}
 
 @media (max-width:599px){
-  .dep-levels{margin-left:0;width:100%}
-  .dep-lvl{flex:1;justify-content:center}
+  .dep-levels{margin-left:0;width:100%;flex-wrap:wrap}
+  .dep-lvl{flex:1 1 auto;justify-content:center;min-width:0;font-size:11px;padding:6px 8px}
   .dep-node{flex-basis:200px}
 }
 
@@ -1562,3 +1562,18 @@ body.dep-linking .dep-gnode:not(.dep-dragging){outline:1px dashed var(--border-c
 .dep-gport.in.linked:hover{background:var(--danger);transform:translateY(-50%) scale(1.15)}
 .dep-gport.in.linked.locked{background:var(--danger)}
 .dep-gport.out.end{background:var(--wk-graphite-2)}
+
+/* Abhängigkeiten — Verbinden-Modus (Touch-freundlich) */
+.dep-connect-btn.on{
+  background:var(--wk-magnet) !important;color:#22262B !important;border-color:var(--wk-magnet) !important;
+}
+body.dep-connect-active .dep-canvas .dep-gnode{cursor:crosshair}
+.dep-gnode.dep-tap-src{
+  outline:3px solid var(--wk-magnet) !important;outline-offset:2px;
+  box-shadow:0 0 0 6px color-mix(in srgb, var(--wk-magnet) 30%, transparent) !important;z-index:6 !important;
+}
+/* Grössere Tap-Ziele auf Touch */
+@media (pointer:coarse){
+  .dep-gport.in.linked{width:26px;height:26px;left:-13px}
+  .dep-gnode{min-height:64px}
+}

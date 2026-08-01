@@ -43,9 +43,15 @@ let _activeSwipeItem = null;
 
 document.addEventListener('touchstart', function(e) {
     if(window.innerWidth > 1089) return;
+    /* Taps auf interaktive Bedienelemente NICHT als Swipe behandeln (z. B. Info-Button, Checkbox, Links) */
+    if(e.target.closest('.cl-info-btn, .cl-detail-toggle, button, input, a, select, textarea, [role="button"], .cl-checkbox, label')) {
+        _activeSwipeItem = null;
+        return;
+    }
     const swipeTarget = e.target.closest('.cl-swipe-container');
     if(swipeTarget) {
         _clTouchStartX = e.touches[0].clientX;
+        _clTouchCurrentX = _clTouchStartX;   /* WICHTIG: sonst „erbt" ein Tap den alten Wert und löst versehentlich Löschen aus */
         _activeSwipeItem = swipeTarget;
         _activeSwipeItem.style.transition = 'none';
     } else {
@@ -2951,9 +2957,10 @@ function renderDependenciesView(c) {
             <div class="dep-legend">
                 <span><i class="dep-lg-start">&gt;</i> ${t('dep_start')}</span>
                 <span><i class="fas fa-lock dep-lg-lock"></i> ${t('dep_end')}</span>
-                <span class="dep-hint"><i class="fas fa-hand-pointer"></i> ${t('dep_drag_hint')}</span>
+                <span class="dep-hint"><i class="fas fa-hand-pointer"></i> ${t('dep_drag_hint2')}</span>
             </div>
             <div class="dep-levels">
+                <button class="dep-lvl dep-connect-btn ${window.depConnectMode ? 'on' : ''}" onclick="depToggleConnectMode()"><i class="fas fa-link"></i> ${t('dep_connect_mode')}</button>
                 <button class="dep-lvl ${L.stack?'on':''}" onclick="depToggleLevel('stack')"><i class="fas fa-folder"></i> Stack</button>
                 <button class="dep-lvl ${L.task?'on':''}" onclick="depToggleLevel('task')"><i class="fas fa-tasks"></i> ${t('tasks')}</button>
                 <button class="dep-lvl ${L.checklist?'on':''}" onclick="depToggleLevel('checklist')"><i class="fas fa-check-square"></i> ${t('view_checklists')}</button>
@@ -3075,11 +3082,11 @@ function renderDependenciesView(c) {
         const cls = ['dep-gnode', 'type-' + n.type, n.done ? 'done' : '', locked ? 'locked' : '',
                      !hasPreds ? 'is-start' : '', !isDependedOn ? 'is-end' : ''].filter(Boolean).join(' ');
         const click = n.type === 'stack' ? `openStackModal('${n.id}')` : (n.type === 'task' ? `openModal('${n.id}')` : '');
-        nodeHtml += `<div class="${cls}" style="left:${n.x}px; top:${n.y}px; width:${NODE_W}px; height:${NODE_H}px"
+        nodeHtml += `<div class="${cls} ${window.depConnectMode && window.depTapSource === n.id ? 'dep-tap-src' : ''}" style="left:${n.x}px; top:${n.y}px; width:${NODE_W}px; height:${NODE_H}px"
             data-depid="${n.id}" data-deptype="${n.type}" draggable="true"
             ondragstart="depDragStart(event,'${n.id}','${n.type}')" ondragend="depDragEnd(event)"
             ondragover="depDragOver(event)" ondragleave="depDragLeave(event)" ondrop="depDrop(event,'${n.id}','${n.type}')"
-            ${click ? `onclick="${click}"` : ''}>
+            onclick="depNodeClick(event,'${n.id}','${n.type}')">
             ${!hasPreds
                 ? `<span class="dep-gport in start" title="${t('dep_start')}">&gt;</span>`
                 : `<span class="dep-gport in linked ${locked ? 'locked' : ''}" title="${t('dep_unlink_hint')}" onclick="event.stopPropagation(); depClearPreds('${n.id}')"><i class="fas fa-lock"></i></span>`}
@@ -3108,6 +3115,64 @@ function renderDependenciesView(c) {
 }
 
 let depDragSource = null;
+window.depConnectMode = window.depConnectMode || false;
+window.depTapSource = null;
+
+/* Verbinden-Modus umschalten (v.a. für Touch-Geräte, wo Drag&Drop nicht greift) */
+function depToggleConnectMode() {
+    window.depConnectMode = !window.depConnectMode;
+    window.depTapSource = null;
+    document.body.classList.toggle('dep-connect-active', window.depConnectMode);
+    if (window.depConnectMode) showToast(t('dep_connect_on'), 'info');
+    renderView();
+}
+
+/* Klick/Tap auf einen Knoten: im Verbinden-Modus zwei-Schritt-Verknüpfung, sonst Modal öffnen */
+function depNodeClick(ev, id, type) {
+    if (window.depConnectMode) {
+        ev.stopPropagation();
+        ev.preventDefault();
+        if (!window.depTapSource) {
+            /* erster Tap = Quelle wählen */
+            window.depTapSource = id;
+            const el = ev.currentTarget;
+            document.querySelectorAll('.dep-gnode.dep-tap-src').forEach(x => x.classList.remove('dep-tap-src'));
+            if (el && el.classList) el.classList.add('dep-tap-src');
+            showToast(t('dep_tap_target'), 'info');
+            return;
+        }
+        if (window.depTapSource === id) {
+            /* nochmal auf Quelle getippt = Auswahl aufheben */
+            window.depTapSource = null;
+            renderView();
+            return;
+        }
+        /* zweiter Tap = Ziel → Verknüpfung anlegen (Ziel hängt von Quelle ab) */
+        const srcId = window.depTapSource;
+        window.depTapSource = null;
+        depConnect(srcId, id);
+        return;
+    }
+    /* Normaler Modus: Stack/Aufgabe öffnen */
+    if (type === 'stack') openStackModal(id);
+    else if (type === 'task') openModal(id);
+}
+
+/* Verknüpfung zwischen zwei beliebigen Elementen herstellen (gemeinsame Logik für Drag & Tap) */
+function depConnect(srcId, targetId) {
+    if (!srcId || srcId === targetId) return;
+    const target = depFindEntity(targetId);
+    const source = depFindEntity(srcId);
+    if (!target || !source) return;
+    if (!target.obj.predecessors) target.obj.predecessors = [];
+    if (target.obj.predecessors.includes(srcId)) { showToast(t('dep_exists'), 'info'); return; }
+    if (depWouldCycle(targetId, srcId)) { showToast(t('dep_cycle'), 'warning'); return; }
+    target.obj.predecessors.push(srcId);
+    if (typeof tempPredecessors === 'object') tempPredecessors[targetId] = [...target.obj.predecessors];
+    saveToLocal(true);
+    showToast(t('dep_linked').replace('{a}', source.name || '').replace('{b}', target.name || ''), 'success');
+    renderView();
+}
 
 function depDragStart(ev, id, type) {
     depDragSource = { id, type };
@@ -3177,21 +3242,7 @@ function depDrop(ev, targetId, targetType) {
     const src = depDragSource;
     depDragSource = null;
     if (!src || src.id === targetId) return;
-
-    const target = depFindEntity(targetId);
-    const source = depFindEntity(src.id);
-    if (!target || !source) return;
-
-    if (!target.obj.predecessors) target.obj.predecessors = [];
-    if (target.obj.predecessors.includes(src.id)) { showToast(t('dep_exists'), 'info'); return; }
-    if (depWouldCycle(targetId, src.id)) { showToast(t('dep_cycle'), 'warning'); return; }
-
-    /* Ziel hängt von Quelle ab (jede Kombination aus Stack/Aufgabe/Checkpunkt erlaubt) */
-    target.obj.predecessors.push(src.id);
-    if (typeof tempPredecessors === 'object') tempPredecessors[targetId] = [...target.obj.predecessors];
-    saveToLocal(true);
-    showToast(t('dep_linked').replace('{a}', source.name || '').replace('{b}', target.name || ''), 'success');
-    renderView();
+    depConnect(src.id, targetId);
 }
 
 function depRemovePred(id, predId) {
