@@ -43,8 +43,10 @@ let _activeSwipeItem = null;
 
 document.addEventListener('touchstart', function(e) {
     if(window.innerWidth > 1089) return;
-    /* Taps auf interaktive Bedienelemente NICHT als Swipe behandeln (z. B. Info-Button, Checkbox, Links) */
-    if(e.target.closest('.cl-info-btn, .cl-detail-toggle, button, input, a, select, textarea, [role="button"], .cl-checkbox, label')) {
+    /* Nur die kleinen Bedien-Icons vom Swipe ausnehmen (Info, Checkbox, Griff, Löschen).
+       Das Titel-Textfeld NICHT ausnehmen — es füllt fast die ganze Zeile, sonst liesse sich
+       gar nicht mehr wischen. Ein reiner Tap löst dank Bewegungsschwelle ohnehin kein Löschen aus. */
+    if(e.target.closest('.cl-info-btn, .cl-done, .cl-drag, .cl-delete-btn, button, a, select')) {
         _activeSwipeItem = null;
         return;
     }
@@ -80,12 +82,12 @@ document.addEventListener('touchend', function(e) {
     
     if(diff < -50) {
         _activeSwipeItem.style.transform = `translateX(-100%)`;
-        const item = _activeSwipeItem.closest('.checklist-item');
+        const swipeEl = _activeSwipeItem;                 /* Referenz festhalten, da _activeSwipeItem gleich genullt wird */
+        const item = swipeEl.closest('.checklist-item');
         setTimeout(() => {
-            if(item) {
-                const delBtn = _activeSwipeItem.querySelector('.cl-delete-btn');
-                if(delBtn) delBtn.click();
-            }
+            const delBtn = swipeEl.querySelector('.cl-delete-btn');
+            if(delBtn) delBtn.click();
+            else if(item) item.remove();
         }, 200);
     } else {
         _activeSwipeItem.style.transform = 'translateX(0px)';
