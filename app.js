@@ -4019,9 +4019,11 @@ function createTaskCard(task) {
     const card = document.createElement('div'); const isCompleted = isTaskDone(task); const isPaused = task.isPaused;
     card.className = `task-card draggable-item ${isCompleted ? 'is-completed' : ''} ${isCompactMode ? 'compact' : ''}`; 
     card.dataset.id = task.id; 
-    /* Farbiger Randstreifen: Stakeholder-Farbe, sonst Prioritätsfarbe */
+    /* Farbiger Randstreifen: Statusfarbe > Stakeholder-Farbe > Prioritätsfarbe */
     { let _strip = 'var(--border-color)';
-      if (task.stakeholderId) { const _sh = appData.stakeholders.find(s => s.id === task.stakeholderId); if (_sh) _strip = _sh.color; }
+      /* Statusfarbe hat höchste Priorität */
+      if (task.status) { const _st = appData.statuses.find(s => s.id === task.status); if (_st && _st.color) _strip = _st.color; }
+      else if (task.stakeholderId) { const _sh = appData.stakeholders.find(s => s.id === task.stakeholderId); if (_sh) _strip = _sh.color; }
       else if (task.priority === 'high') _strip = 'var(--danger)';
       else if (task.priority === 'medium') _strip = 'var(--primary-color)';
       else if (task.priority === 'low') _strip = 'var(--success)';
@@ -7866,12 +7868,14 @@ function createTodayItemCard(it) {
     }
 
     const parentId = it.parent ? it.parent.id : '';
-    /* Streifenfarbe einer Aufgabe wie in createTaskCard herleiten (Stakeholder, sonst Priorität) */
-    /* Streifenfarbe = Farbe der Kanban-Spalte, in der die Aufgabe steht */
-    const STATUS_STRIP = { todo:'#B9BFB6', inProgress:'#0F5FDC', review:'#E8A317', done:'#1F9463' };
+    /* Streifenfarbe: Statusfarbe (dynamisch aus Einstellungen) */
     const taskStripColor = (tk) => {
-        if (!tk) return 'var(--border-color)';
-        return STATUS_STRIP[tk.status] || 'var(--border-color)';
+        if (!tk || !tk.status) return 'var(--border-color)';
+        const _st = appData.statuses.find(s => s.id === tk.status);
+        if (_st && _st.color) return _st.color;
+        /* Fallback auf Defaults */
+        const defaults = { done:'#1F9463', inProgress:'#0F5FDC' };
+        return defaults[tk.status] || 'var(--border-color)';
     };
     const meta = {
         stack:      { ic: 'fa-folder',       label: 'Stack',              strip: (it.obj && it.obj.color) ? it.obj.color : 'var(--primary-color)', click: `openStackModal('${it.obj.id}')` },
@@ -8214,14 +8218,22 @@ function ttHeuteBook(iso){
      Die Karten selbst werden weiterhin von createTaskCard()
      gebaut. Hier wird nur nachträglich die Streifenfarbe nach
      Status gesetzt — kein Eingriff in die Zeichenlogik.       */
-  const STRIP = { todo:'#B9BFB6', inProgress:'#0F5FDC', review:'#E8A317', done:'#1F9463' };
 
   function paintCards() {
     if (typeof appData === 'undefined' || !appData.tasks) return;
     document.querySelectorAll('.task-card[data-id]').forEach(el => {
       const task = appData.tasks.find(x => x.id === el.dataset.id);
       if (!task) return;
-      const c = STRIP[task.status] || (el.classList.contains('is-completed') ? STRIP.done : STRIP.todo);
+      /* Statusfarbe dynamisch aus Einstellungen, mit Fallback auf Defaults */
+      let c = 'var(--border-color)';
+      if (task.status) {
+        const st = appData.statuses.find(s => s.id === task.status);
+        if (st && st.color) c = st.color;
+        else {
+          const defaults = { done:'#1F9463', inProgress:'#0F5FDC' };
+          c = defaults[task.status] || 'var(--border-color)';
+        }
+      } else if (el.classList.contains('is-completed')) c = getStatusColor(appData.statuses.find(s => s.id === 'done'));
       el.style.setProperty('--card-strip', task.isPaused ? '#8A939E' : c);
     });
   }
@@ -8529,7 +8541,7 @@ function ttHeuteBook(iso){
 })();
 
 /* ---- Build-Kennung: erlaubt zu prüfen, ob wirklich der neue Stand geladen ist ---- */
-window.PROMAN_BUILD = '20260804-15';
+window.PROMAN_BUILD = '20260804-17';
 try { console.info('ProMan Build', window.PROMAN_BUILD); } catch(e) {}
 document.addEventListener('DOMContentLoaded', () => {
     try {
