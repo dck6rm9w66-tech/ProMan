@@ -13,9 +13,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css">
-    <!-- Gestaltungsschicht: überschreibt Themenvariablen, ergänzt die neue Wegführung -->
-    <link rel="stylesheet" href="werkstatt.css">
+    <link rel="stylesheet" href="styles.css?v=20260804-15">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (Upload ist jetzt im Theme-Editor) -->
@@ -408,7 +406,7 @@
                             </div>
                         </div>
                         
-                        <div><span class="form-label" data-i18n="t_est">Geschätzter Aufwand (Std)</span><input type="number" id="t_estTime" min="0" step="0.25"></div>
+                        <div><span class="form-label" data-i18n="t_est">Geschätzter Aufwand (Std)</span><input type="number" id="t_estTime" min="0" step="0.25"><small style="display:block; color:var(--text-muted); font-size:11px; margin-top:3px;">+ <span id="t_cl_duration_sum">0</span> Std aus Checkpunkten</small></div>
                         <div><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
                     </div>
 
@@ -714,6 +712,10 @@
                 
                 <!-- TAB: Allgemein -->
                 <div id="set-general" class="modal-tab-content active" style="padding: 20px 0;">
+                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
+                        <h4><i class="fas fa-compass"></i> Einführung</h4>
+                        <button class="secondary" style="margin-top:10px;" onclick="closeSettings(); if(window.startOnboarding) startOnboarding();"><i class="fas fa-play"></i> Product-Tour &amp; Einrichtung starten</button>
+                    </div>
                     
                     <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
                         <h4><i class="fas fa-globe"></i> <span data-i18n="set_lang">Sprache / Language</span></h4>
@@ -1018,6 +1020,7 @@
 
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
                             <button class="secondary" onclick="testCurrentWorkflow()" title="Prüft, auf wie viele Elemente die Bedingungen zutreffen, ohne Aktionen auszuführen."><i class="fas fa-flask" style="color:var(--primary-color);"></i> Workflow testen</button>
+                            <div id="wf_test_result" class="wf-test-result" style="display:none;"></div>
                             <div style="display:flex; gap:10px;">
                                 <button class="secondary" onclick="closeWfEditor()" data-i18n="wf_cancel">Abbrechen</button>
                                 <button onclick="saveWorkflow()" data-i18n="wf_save">Workflow Speichern</button>
@@ -1097,10 +1100,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js"></script>
-    <script src="app.js"></script>
-    <!-- Wegführung als Schicht darüber: baut Schiene, Tableiste und Linsenschiene -->
-    <script src="shell.js"></script>
+    <script src="i18n.js?v=20260804-15"></script>
+    <script src="app.js?v=20260804-15"></script>
 
 </body>
 </html>

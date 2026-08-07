@@ -120,6 +120,7 @@ const defaultViews = [
     { id: 'timeline',     name: 'Gantt-Diagramm',   icon: 'fa-stream',           hidden: true  },
     { id: 'notes',        name: 'Notizen',           icon: 'fa-sticky-note',      hidden: false },
     { id: 'checklists',   name: 'Checklisten',       icon: 'fa-check-square',     hidden: false },
+    { id: 'milestones',   name: 'Milestones',        icon: 'fa-flag',             hidden: false },
     { id: 'time',         name: 'Zeiterfassung',     icon: 'fa-clock',            hidden: false },
     { id: 'stakeholder',  name: 'Stakeholder',       icon: 'fa-users',            hidden: false },
     { id: 'buckets',      name: 'Buckets',           icon: 'fa-box-open',         hidden: false },
@@ -265,7 +266,7 @@ if(loadedData) {
     }
 
     if(!appData.settings.noteOrder) appData.settings.noteOrder = [];
-    if(!appData.settings.reminders) appData.settings.reminders = defaultData.settings.reminders;
+    if(!appData.settings.reminders || appData.settings.reminders.length < 2) appData.settings.reminders = defaultData.settings.reminders;
     if(!appData.settings.shortcuts) appData.settings.shortcuts = defaultData.settings.shortcuts;
     if(!appData.settings.autoDelete) appData.settings.autoDelete = defaultData.settings.autoDelete;
     if(!appData.settings.trashAutoDelete) appData.settings.trashAutoDelete = defaultData.settings.trashAutoDelete;
@@ -472,7 +473,9 @@ function updateDepDisplay() {
     const sId = document.getElementById('s_id') ? document.getElementById('s_id').value : null;
     
     const renderPill = (id, parentId) => `<span class="dep-badge" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;"><i class="fas fa-link"></i> <span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="Entfernen"><i class="fas fa-times"></i></span></span>`;
-    const renderClPill = (id, parentId) => `<span class="dep-badge dep-badge-cl" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;"><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="Entfernen"><i class="fas fa-times"></i></span></span>`;
+    const renderClPill = (id, parentId) => `<span class="dep-badge dep-badge-cl" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;" title="Hängt ab von ${getEntityName(id)}"><i class="fas fa-arrow-left" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="Entfernen"><i class="fas fa-times"></i></span></span>`;
+    /* Nachfolger-Pille (Anzeige am Endpunkt): „Voraussetzung für …", nicht hier löschbar */
+    const renderClSuccPill = (id) => `<span class="dep-badge dep-badge-cl dep-badge-succ" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%; opacity:.85;" title="Voraussetzung für ${getEntityName(id)}"><i class="fas fa-arrow-right" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span></span>`;
 
     if(tId && document.getElementById('t_deps_display')) {
         const preds = tempPredecessors[tId] || [];
@@ -488,11 +491,13 @@ function updateDepDisplay() {
         const depContainer = item.querySelector('.cl-deps-display');
         if(id && depContainer) {
             const preds = tempPredecessors[id] || [];
-            if(preds.length > 0) {
-                depContainer.innerHTML = preds.map(pId => renderClPill(pId, id)).join('');
-            } else {
-                depContainer.innerHTML = '';
-            }
+            /* Nachfolger: alle Punkte/Entitäten, die diesen Punkt als Vorgänger führen.
+               So ist die Abhängigkeit auch am Endpunkt sichtbar, nicht nur am Ausgangspunkt. */
+            const succs = Object.keys(tempPredecessors).filter(k => (tempPredecessors[k] || []).includes(id));
+            let html = '';
+            if (preds.length > 0) html += preds.map(pId => renderClPill(pId, id)).join('');
+            if (succs.length > 0) html += succs.map(sId => renderClSuccPill(sId)).join('');
+            depContainer.innerHTML = html;
         }
     });
 }
@@ -643,8 +648,13 @@ function openMobileFilterMenu() {
 }
 
 function openMobileExportMenu() {
-    const deskContent = document.querySelector('.topbar .dropdown[title="Export & Backup"] .dropdown-content').innerHTML;
-    document.getElementById('mobileExportContainer').innerHTML = deskContent;
+    /* Robust: über die stabile ID statt über das (durch i18n veränderbare) title-Attribut */
+    const src = document.getElementById('desktopExportContent')
+              || document.querySelector('.topbar .dropdown[title="Export & Backup"] .dropdown-content')
+              || document.querySelector('#exportDropdown .dropdown-content');
+    const container = document.getElementById('mobileExportContainer');
+    if (!src || !container) { showToast('Export-Menü nicht verfügbar.', 'error'); return; }
+    container.innerHTML = src.innerHTML;
     document.getElementById('mobileExportMenu').classList.add('active');
 }
 
@@ -1525,6 +1535,8 @@ function switchSettingsTab(tabId, btn) {
         target.style.display = (tabId === 'set-workflows' || tabId === 'set-theme') ? 'flex' : 'block'; 
     }
     if(tabId === 'set-theme') openThemeEditorTab();
+    /* Workflow-Tab: immer in der Listenansicht betreten und neu zeichnen */
+    if(tabId === 'set-workflows' && typeof renderWorkflows === 'function') { window.wfEditorActive = false; renderWorkflows(); }
 }
 
 function handleLogoUpload(e) {
@@ -1561,24 +1573,21 @@ function openSettings() {
     });
     document.getElementById('set_notif_email').value = appData.settings.notificationEmail || '';
     
-    document.getElementById('set_r1_active').checked = appData.settings.reminders[0].active;
-    document.getElementById('set_r1_val').value = appData.settings.reminders[0].value;
-    document.getElementById('set_r1_unit').value = appData.settings.reminders[0].unit;
+    const _rem = appData.settings.reminders || [{active:false,value:1,unit:'days'},{active:false,value:1,unit:'days'}];
+    if(_rem[0]){ document.getElementById('set_r1_active').checked = _rem[0].active; document.getElementById('set_r1_val').value = _rem[0].value; document.getElementById('set_r1_unit').value = _rem[0].unit; }
+    if(_rem[1]){ document.getElementById('set_r2_active').checked = _rem[1].active; document.getElementById('set_r2_val').value = _rem[1].value; document.getElementById('set_r2_unit').value = _rem[1].unit; }
 
-    document.getElementById('set_r2_active').checked = appData.settings.reminders[1].active;
-    document.getElementById('set_r2_val').value = appData.settings.reminders[1].value;
-    document.getElementById('set_r2_unit').value = appData.settings.reminders[1].unit;
+    const _sc = appData.settings.shortcuts || { newTask:'t', newStack:'s', search:'k' };
+    document.getElementById('set_sc_newTask').value = (_sc.newTask || 't').toUpperCase();
+    document.getElementById('set_sc_newStack').value = (_sc.newStack || 's').toUpperCase();
+    document.getElementById('set_sc_search').value = (_sc.search || 'k').toUpperCase();
 
-    document.getElementById('set_sc_newTask').value = appData.settings.shortcuts.newTask.toUpperCase();
-    document.getElementById('set_sc_newStack').value = appData.settings.shortcuts.newStack.toUpperCase();
-    document.getElementById('set_sc_search').value = appData.settings.shortcuts.search.toUpperCase();
-
-    const adComp = appData.settings.autoDelete;
+    const adComp = appData.settings.autoDelete || { unit:'never', value:30 };
     document.getElementById('set_ad_comp_unit').value = adComp.unit;
     document.getElementById('set_ad_comp_val').value = adComp.value;
     document.getElementById('set_ad_comp_val').style.display = adComp.unit === 'never' ? 'none' : 'block';
 
-    const adTrash = appData.settings.trashAutoDelete;
+    const adTrash = appData.settings.trashAutoDelete || { unit:'never', value:30 };
     document.getElementById('set_ad_trash_unit').value = adTrash.unit;
     document.getElementById('set_ad_trash_val').value = adTrash.value;
     document.getElementById('set_ad_trash_val').style.display = adTrash.unit === 'never' ? 'none' : 'block';
@@ -1595,9 +1604,10 @@ function openSettings() {
     if(_tfEl) _tfEl.value = appData.settings.timeTrackFrom || '';
 
     const activeTabBtn = document.querySelector('#settingsModal .modal-tab-btn.active') || document.querySelector('#settingsModal .modal-tab-btn');
-    const tabIdMatch = activeTabBtn.getAttribute('onclick').match(/'([^']+)'/);
-    if(tabIdMatch) switchSettingsTab(tabIdMatch[1], activeTabBtn);
+    if(activeTabBtn){ const oc = activeTabBtn.getAttribute('onclick') || ''; const tabIdMatch = oc.match(/'([^']+)'/); if(tabIdMatch) switchSettingsTab(tabIdMatch[1], activeTabBtn); }
     
+    /* Workflow-Bereich immer frisch in der Listenansicht öffnen */
+    window.wfEditorActive = false;
     renderSettings(); renderWorkflows();
 }
 
@@ -1707,16 +1717,18 @@ function renderSettings() {
     document.getElementById('settings_views_table').innerHTML = vHtml;
 
     // drag-and-drop Version der Status Spalten-Tabelle
-    let stHtml = `<tr><th width="30"></th><th>${t('title')}</th><th width="60">${t('action')}</th></tr>`;
+    let stHtml = `<tr><th width="30"></th><th>${t('title')}</th><th width="50">${t('color')}</th><th width="60">${t('action')}</th></tr>`;
     appData.statuses.forEach((s, i) => { 
         const isDoneCol = s.id === 'done';
         const titleStr = isDoneCol ? t('col_completed') + ' (System)' : s.title;
         const editStr = isDoneCol ? `<span style="opacity:0.6">${titleStr}</span>` : `<span class="editable-cell" ondblclick="editSetting(this, 'status', '${s.id}')" title="Doppelklick zum Bearbeiten">${s.title}</span>`;
         const delBtn = isDoneCol ? '' : `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteStatus('${s.id}')"><i class="fas fa-trash"></i></button>`;
+        const colorCell = `<input type="color" value="${getStatusColor(s)}" onchange="updateStatusColor('${s.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;" title="Farbe der Spalte">`;
         
         stHtml += `<tr class="draggable-item" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${i}'); event.dataTransfer.setData('type', 'settings-status');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleSettingsStatusDrop(event, this, ${i})">
             <td data-label="Drag" style="vertical-align: middle; padding-left:10px;"><i class="fas fa-grip-vertical" style="color:var(--text-muted); cursor:grab;"></i></td>
             <td data-label="Titel" style="vertical-align: middle;">${editStr}</td>
+            <td data-label="Farbe" style="vertical-align: middle;">${colorCell}</td>
             <td data-label="Aktion" style="flex-direction:row; vertical-align: middle;">${delBtn}</td>
         </tr>`; 
     });
@@ -1731,7 +1743,7 @@ function renderSettings() {
     let paletteHtml = ''; colors16.forEach(c => { paletteHtml += `<div class="color-swatch" style="background:${c}" onclick="selectShColor(this, '${c}')"></div>`; });
     document.getElementById('sh_color_palette').innerHTML = paletteHtml;
     
-    let bHtml = ''; appData.buckets.forEach(b => { bHtml += `<span class="badge" style="background:var(--border-color); color:var(--text-main); font-size:13px; font-weight:normal; padding:8px 12px;"><span class="editable-cell" ondblclick="editSetting(this, 'bucket', '${b}')">${b}</span> <i class="fas fa-times" style="margin-left:8px; cursor:pointer; color:var(--danger);" onclick="deleteBucket('${b}')"></i></span>`; });
+    let bHtml = ''; appData.buckets.forEach((b, _bi) => { const _bc = getBucketColor(b); bHtml += `<span class="badge" style="display:inline-flex; align-items:center; gap:8px; background:var(--border-color); color:var(--text-main); font-size:13px; font-weight:normal; padding:6px 10px;"><input type="color" value="${_bc}" title="Farbe für ${b}" onchange="setBucketColor('${b.replace(/'/g,"\\'")}', this.value)" style="width:22px; height:22px; padding:0; border:1px solid var(--border-color); border-radius:5px; cursor:pointer; background:transparent;"><span class="editable-cell" ondblclick="editSetting(this, 'bucket', '${b}')">${b}</span> <i class="fas fa-times" style="margin-left:4px; cursor:pointer; color:var(--danger);" onclick="deleteBucket('${b}')"></i></span>`; });
     document.getElementById('settings_bucket_list').innerHTML = bHtml;
 
     const clContainer = document.getElementById('settings_def_cl_table');
@@ -1762,12 +1774,40 @@ function renderSettings() {
     document.getElementById('set_current_user').innerHTML = curOpts;
 }
 
+function getStatusColor(s) {
+    if (s && s.color) return s.color;
+    if (s && s.id === 'done') return '#1F9463';
+    return '#333B44';
+}
+function updateStatusColor(id, color) {
+    const s = appData.statuses.find(x => x.id === id);
+    if (s) { s.color = color; saveToLocal(true); renderView(); }
+}
+
 function addStatus() { const n = document.getElementById('new_status_name').value.trim(); if(n) { appData.statuses.push({ id: generateId(), title: n }); document.getElementById('new_status_name').value = ''; renderSettings(); } }
 function moveStatus(i, dir) { if(i+dir>=0 && i+dir<appData.statuses.length) { const t_obj = appData.statuses[i]; appData.statuses[i] = appData.statuses[i+dir]; appData.statuses[i+dir] = t_obj; renderSettings(); } }
 function deleteStatus(id) { if(id === 'done') return showToast('Diese Systemspalte kann nicht gelöscht werden.', 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
 function selectShColor(el, color) { document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected')); el.classList.add('selected'); document.getElementById('new_sh_color').value = color; }
 function addStakeholder() { const n = document.getElementById('new_sh_name').value.trim(); const c = document.getElementById('new_sh_color').value; if(n) { appData.stakeholders.push({ id: generateId(), name: n, color: c }); document.getElementById('new_sh_name').value = ''; renderSettings(); } }
 function deleteStakeholder(id) { appData.stakeholders = appData.stakeholders.filter(s => s.id !== id); renderSettings(); }
+/* Bucket-Farben: benutzerdefiniert in appData.settings.bucketColors, sonst stabile Palette */
+const BUCKET_PALETTE = ['#cca300', '#0F5FDC', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#B96A2B', '#C2185B', '#5E7CE2'];
+function getBucketColor(name) {
+    if (!appData.settings) appData.settings = {};
+    const map = appData.settings.bucketColors || {};
+    if (map[name]) return map[name];
+    const idx = (appData.buckets || []).indexOf(name);
+    if (idx >= 0) return BUCKET_PALETTE[idx % BUCKET_PALETTE.length];
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+    return BUCKET_PALETTE[Math.abs(h) % BUCKET_PALETTE.length];
+}
+function setBucketColor(name, color) {
+    if (!appData.settings.bucketColors) appData.settings.bucketColors = {};
+    appData.settings.bucketColors[name] = color;
+    saveToLocal();
+    showToast(t('toast_saved'));
+}
+
 function addBucket() { const n = document.getElementById('new_bucket_name').value.trim(); if(n && !appData.buckets.includes(n)) { appData.buckets.push(n); document.getElementById('new_bucket_name').value = ''; renderSettings(); } }
 function deleteBucket(name) { appData.buckets = appData.buckets.filter(b => b !== name); renderSettings(); }
 function addDefClItem() { const n = document.getElementById('new_def_cl_name').value.trim(); if(n) { appData.defaultChecklist.push(n); document.getElementById('new_def_cl_name').value = ''; renderSettings(); } }
@@ -1783,11 +1823,53 @@ function deleteUser(id) {
 }
 
 // --- 5.1 WORKFLOW LOGIC ---
+/* Bringt einen gespeicherten Workflow in eine vollständige, sichere Form.
+   Unvollständige Einträge (ältere Versionen, Teil-Importe) haben bisher das
+   Rendern der GANZEN Liste abstürzen lassen – dadurch war kein Workflow sichtbar. */
+function wfNormalize(wf) {
+    const w = (wf && typeof wf === 'object') ? wf : {};
+    if (!w.id) w.id = generateId();
+    if (typeof w.name !== 'string') w.name = String(w.name || 'Workflow');
+    if (typeof w.trigger !== 'string') w.trigger = '';
+    if (w.triggerValue === undefined || w.triggerValue === null) w.triggerValue = '';
+    w.conditionLogic = (w.conditionLogic === 'OR') ? 'OR' : 'AND';
+    if (!Array.isArray(w.conditions)) w.conditions = [];
+    if (!Array.isArray(w.actions)) w.actions = [];
+    w.conditions = w.conditions.filter(c => c && typeof c === 'object').map(c => ({
+        field: String(c.field || ''), operator: String(c.operator || '='), value: (c.value === undefined || c.value === null) ? '' : c.value
+    }));
+    w.actions = w.actions.filter(a => a && typeof a === 'object').map(a => ({
+        type: String(a.type || ''), value: (a.value === undefined || a.value === null) ? '' : a.value
+    }));
+    w.active = (w.active === undefined) ? true : !!w.active;
+    return w;
+}
+/* Alle gespeicherten Workflows einmalig säubern und zurückgeben */
+function wfAll() {
+    if (!appData.settings) appData.settings = {};
+    if (!Array.isArray(appData.settings.workflows)) appData.settings.workflows = [];
+    appData.settings.workflows = appData.settings.workflows.map(wfNormalize);
+    return appData.settings.workflows;
+}
 function renderWorkflows() {
-    const list = document.getElementById('wf_list'); let html = '';
-    if(!appData.settings.workflows || appData.settings.workflows.length === 0) { html = `<p style="font-size:12px; color:var(--text-muted);">Keine Workflows vorhanden. Erstelle deinen ersten, um Abläufe zu automatisieren!</p>`; } 
+    const list = document.getElementById('wf_list');
+    if (!list) return;                       /* Ansicht (noch) nicht im DOM */
+    if (!appData.settings) appData.settings = {};
+    if (!Array.isArray(appData.settings.workflows)) appData.settings.workflows = [];
+    /* Solange der Editor nicht aktiv bearbeitet wird, ist die LISTE die Ansicht.
+       Das wird hier hart erzwungen, damit ein zuvor offen gelassener Editor die
+       gespeicherten Workflows nicht dauerhaft verdeckt. */
+    if (!window.wfEditorActive) {
+        const ed = document.getElementById('wf_editor');
+        if (ed) ed.style.display = 'none';
+        list.style.display = 'flex';
+    }
+    const _wfs = wfAll();
+    let html = '';
+    if(_wfs.length === 0) { html = `<p style="font-size:12px; color:var(--text-muted);">Keine Workflows vorhanden. Erstelle deinen ersten, um Abläufe zu automatisieren!</p>`; } 
     else {
-        appData.settings.workflows.forEach(wf => {
+        _wfs.forEach(wf => {
+          try {
             const statusClass = wf.active ? '' : 'inactive'; let triggerLabel = '';
             if(wf.trigger === 'task_created') triggerLabel = t('wf_t_t_created');
             if(wf.trigger === 'task_updated') triggerLabel = t('wf_t_t_updated');
@@ -1815,15 +1897,22 @@ function renderWorkflows() {
                 ${wf.conditions && wf.conditions.length > 0 ? `<div class="wf-row"><span class="wf-badge" style="background:var(--warning); color:white;">${wf.conditionLogic === 'AND' ? 'UND' : 'ODER'}</span> <span style="font-size:12px; color:var(--text-muted);">${wf.conditions.length} Bedingung(en)</span></div>` : ''}
                 <div class="wf-row"><span class="wf-badge" style="background:var(--success); color:white;">DANN</span> <span style="font-size:12px; color:var(--text-muted);">${wf.actions.length} Aktion(en)</span></div>
             </div>`;
+          } catch(err) {
+            console.error('Workflow konnte nicht dargestellt werden', wf, err);
+            html += `<div class="wf-card inactive"><h4 style="margin:0; font-size:14px;">${escapeHtmlToday(wf && wf.name ? wf.name : 'Workflow')}</h4><p style="font-size:12px; color:var(--danger); margin:4px 0 0;">Dieser Workflow ist beschädigt und kann nicht angezeigt werden.</p><div style="display:flex; gap:5px; margin-top:6px;"><button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf && wf.id ? wf.id : ''}')" title="Löschen"><i class="fas fa-trash"></i></button></div></div>`;
+          }
         });
     }
     list.innerHTML = html;
 }
 
 function openWfEditor(id = null) {
+    window.wfEditorActive = true;
     document.getElementById('wf_list').style.display = 'none'; document.getElementById('wf_editor').style.display = 'block';
     if(id) {
-        const wf = appData.settings.workflows.find(x => x.id === id);
+        const _found = wfAll().find(x => x.id === id);
+        if(!_found) { showToast('Workflow nicht gefunden.', 'error'); closeWfEditor(); return; }
+        const wf = wfNormalize(_found);
         document.getElementById('wf_edit_id').value = wf.id; document.getElementById('wf_edit_name').value = wf.name; document.getElementById('wf_edit_trigger').value = wf.trigger;
         renderWfTriggerValueOptions(wf.triggerValue); document.getElementById('wf_edit_cond_logic').value = wf.conditionLogic || 'AND';
         document.getElementById('wf_edit_conditions_list').innerHTML = ''; if(wf.conditions) wf.conditions.forEach(c => addWfConditionRow(c.field, c.operator, c.value));
@@ -1833,11 +1922,21 @@ function openWfEditor(id = null) {
         addWfActionRow(); 
     }
 }
-function closeWfEditor() { document.getElementById('wf_editor').style.display = 'none'; document.getElementById('wf_list').style.display = 'flex'; }
+function closeWfEditor() {
+    window.wfEditorActive = false;
+    const ed = document.getElementById('wf_editor'); if (ed) ed.style.display = 'none';
+    const li = document.getElementById('wf_list'); if (li) li.style.display = 'flex';
+}
 
 function renderWfTriggerValueOptions(preselect = '') {
     const trigger = document.getElementById('wf_edit_trigger').value; const valSelect = document.getElementById('wf_edit_trigger_val');
-    if(trigger === 'task_status_changed') { valSelect.style.display = 'block'; valSelect.innerHTML = appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join(''); } 
+    if(trigger === 'task_status_changed') {
+        valSelect.style.display = 'block';
+        /* Erste Option: JEDER Status. Ohne sie war immer der erste Status vorausgewählt,
+           wodurch der Workflow nur bei genau diesem Status feuerte und sonst wirkungslos blieb. */
+        valSelect.innerHTML = `<option value="" ${!preselect ? 'selected' : ''}>${t('wf_any_status')}</option>`
+            + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
+    }
     else { valSelect.style.display = 'none'; valSelect.innerHTML = ''; }
 }
 
@@ -2059,34 +2158,54 @@ function toggleWorkflow(id) { const wf = appData.settings.workflows.find(w => w.
 
 // TEST WORKFLOW (Simuliert Bedingungsprüfung ohne Aktionen auszuführen)
 function testCurrentWorkflow() {
-    const wfData = getWorkflowStateFromEditor();
-    if(!wfData.trigger) return showToast("Bitte wähle zuerst einen Auslöser.", "error");
-
-    let matchCountTasks = 0;
-    let matchCountStacks = 0;
-
-    const testEntity = (entity, type) => {
-        if(evaluateConditions(entity, wfData.conditions, wfData.conditionLogic)) {
-            if(type === 'task') matchCountTasks++;
-            if(type === 'stack') matchCountStacks++;
+    const box = document.getElementById('wf_test_result');
+    const show = (html, kind) => {
+        if (box) {
+            box.style.display = 'block';
+            box.className = 'wf-test-result ' + (kind || 'info');
+            box.innerHTML = html;
         }
     };
+    let wfData;
+    try { wfData = wfNormalize(getWorkflowStateFromEditor()); }
+    catch (err) { show('<b>Test fehlgeschlagen.</b><br>Die Regeln konnten nicht gelesen werden.', 'bad'); return; }
 
-    if(wfData.trigger.includes('task_') || wfData.trigger === 'entity_exists') {
-        appData.tasks.forEach(t => testEntity(t, 'task'));
-    }
-    if(wfData.trigger.includes('stack_') || wfData.trigger === 'entity_exists') {
-        appData.projectStacks.forEach(s => testEntity(s, 'stack'));
+    if (!wfData.trigger) { show('<b>Kein Auslöser gewählt.</b><br>Bitte zuerst unter „WENN" einen Auslöser wählen.', 'bad'); return; }
+
+    let hitTasks = [], hitStacks = [];
+    try {
+        if (wfData.trigger.indexOf('task_') === 0 || wfData.trigger === 'entity_exists') {
+            (appData.tasks || []).forEach(x => { if (evaluateConditions(x, wfData.conditions, wfData.conditionLogic)) hitTasks.push(x.projectName || 'Aufgabe'); });
+        }
+        if (wfData.trigger.indexOf('stack_') === 0 || wfData.trigger === 'entity_exists') {
+            (appData.projectStacks || []).forEach(x => { if (evaluateConditions(x, wfData.conditions, wfData.conditionLogic)) hitStacks.push(x.name || 'Stack'); });
+        }
+    } catch (err) {
+        show('<b>Test fehlgeschlagen.</b><br>Eine Bedingung ist ungültig: ' + escapeHtmlToday(String(err.message || err)), 'bad');
+        return;
     }
 
-    const total = matchCountTasks + matchCountStacks;
-    if(total > 0) {
-        showToast(`TEST ERFOLGREICH: Die Bedingungen treffen aktuell auf ${matchCountTasks} Aufgaben und ${matchCountStacks} Stacks zu.`, 'success');
+    const total = hitTasks.length + hitStacks.length;
+    const condTxt = wfData.conditions.length === 0
+        ? 'Ohne Bedingungen trifft der Workflow auf <b>alle</b> passenden Elemente zu.'
+        : `${wfData.conditions.length} Bedingung(en), verknüpft mit <b>${wfData.conditionLogic === 'OR' ? 'ODER' : 'UND'}</b>.`;
+    const actTxt = wfData.actions.length === 0
+        ? '<span style="color:var(--danger);">Achtung: Es ist noch keine Aktion definiert – der Workflow würde nichts bewirken.</span>'
+        : `${wfData.actions.length} Aktion(en) würden ausgeführt.`;
+
+    let list = '';
+    if (total > 0) {
+        const names = hitTasks.concat(hitStacks).slice(0, 8).map(n => escapeHtmlToday(n));
+        list = `<div style="margin-top:6px; font-size:11px; color:var(--text-muted);">${names.join(', ')}${total > 8 ? ' … (+' + (total - 8) + ')' : ''}</div>`;
+    }
+
+    /* Es wird IMMER ein Ergebnis angezeigt – auch wenn nichts zutrifft. */
+    if (total > 0) {
+        show(`<b>Test durchgeführt – ${total} Treffer.</b><br>${hitTasks.length} Aufgabe(n), ${hitStacks.length} Stack(s).<br>${condTxt}<br>${actTxt}${list}`, 'good');
     } else {
-        showToast(`TEST ERGEBNIS: Die Bedingungen treffen aktuell auf KEIN bestehendes Element zu.`, 'warning');
+        show(`<b>Test durchgeführt – keine Treffer.</b><br>Aktuell trifft kein bestehendes Element auf die Bedingungen zu.<br>${condTxt}<br>${actTxt}`, 'warn');
     }
 }
-
 
 // --- WORKFLOW ENGINE ---
 let _wfExecutionLock = false; 
@@ -2259,12 +2378,14 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
 }
 
 function triggerWorkflows(eventName, context) {
-    if(!appData.settings.workflows || _wfExecutionLock) return;
-    
-    // WICHTIG: entity_exists reiht sich automatisch bei allen Änderungen ein!
-    const activeWfs = appData.settings.workflows.filter(w => 
-        w.active && (w.trigger === eventName || w.trigger === 'entity_exists')
-    );
+    if(_wfExecutionLock) return;
+    /* Fehler in einem Workflow dürfen NIE die auslösende Aktion (z. B. eine
+       Statusänderung im Kanban oder im Modal) abbrechen. Daher ist der gesamte
+       Ablauf abgesichert. */
+    let activeWfs;
+    try {
+        activeWfs = wfAll().filter(w => w.active && (w.trigger === eventName || w.trigger === 'entity_exists'));
+    } catch(err) { console.error('Workflows konnten nicht gelesen werden', err); return; }
     
     if(activeWfs.length === 0) return;
 
@@ -2276,13 +2397,16 @@ function triggerWorkflows(eventName, context) {
         let entity = context.task || context.stack || null; if(!entity) return;
         let typeStr = context.task ? 'task' : 'stack';
 
-        if(evaluateConditions(entity, wf.conditions, wf.conditionLogic)) {
+        let matches = false;
+        try { matches = evaluateConditions(entity, wf.conditions, wf.conditionLogic); }
+        catch(err) { console.error('Workflow-Bedingung fehlerhaft', wf && wf.name, err); return; }
+        if(matches) {
             _wfExecutionLock = true;
             try {
-                const res = executeWorkflowActions(wf.actions, entity, typeStr, eventName);
+                const res = executeWorkflowActions(wf.actions, entity, typeStr, eventName) || {};
                 if(res.viewNeedsUpdate) globalViewNeedsUpdate = true;
                 if(res.structureChanged) globalStructureChanged = true;
-            } catch(err) { console.error("Workflow Execution Error", err); }
+            } catch(err) { console.error('Workflow-Aktion fehlerhaft', wf && wf.name, err); }
             _wfExecutionLock = false;
         }
     });
@@ -2351,10 +2475,24 @@ function executeMerge() {
 // --- DRAG & DROP HELPERS ---
 function handleCardDragOver(e, el, allowMerge) {
     e.preventDefault(); e.stopPropagation(); const rect = el.getBoundingClientRect(); const y = e.clientY - rect.top;
+    if (allowMerge && y > rect.height * 0.25 && y < rect.height * 0.75) {
+        if (!el.classList.contains('drag-over-merge')) el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over');
+        el.classList.remove('drag-over-top', 'drag-over-bottom'); el.classList.add('drag-over-merge');
+        return;
+    }
+    /* Hysterese: erst umschalten, wenn der Cursor deutlich über die Mitte hinaus ist.
+       Verhindert das Flackern zwischen oben/unten direkt an der Mittellinie. */
+    const isTop = el.classList.contains('drag-over-top');
+    const isBottom = el.classList.contains('drag-over-bottom');
+    const upperTrip = rect.height * 0.42;
+    const lowerTrip = rect.height * 0.58;
+    let target;
+    if (isTop && y < lowerTrip) target = 'drag-over-top';
+    else if (isBottom && y > upperTrip) target = 'drag-over-bottom';
+    else target = (y < rect.height / 2) ? 'drag-over-top' : 'drag-over-bottom';
+    if ((target === 'drag-over-top' && isTop) || (target === 'drag-over-bottom' && isBottom)) return; /* keine Änderung */
     el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-merge', 'drag-over');
-    if (allowMerge && y > rect.height * 0.25 && y < rect.height * 0.75) { el.classList.add('drag-over-merge'); } 
-    else if (y < rect.height / 2) { el.classList.add('drag-over-top'); } 
-    else { el.classList.add('drag-over-bottom'); }
+    el.classList.add(target);
 }
 function handleCardDragLeave(el) { el.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-merge', 'drag-over'); }
 
@@ -2402,21 +2540,26 @@ function handleSettingsDefClDrop(e, el, targetIdx) {
 }
 
 function addModalClDragHandlers(div) {
-    div.classList.add('draggable-item'); div.draggable = true;
-    div.ondragstart = function(e) { e.dataTransfer.setData('text/plain', 'modal-cl'); this.classList.add('modal-dragging'); };
-    div.ondragover = function(e) { e.preventDefault(); e.stopPropagation(); handleCardDragOver(e, this, false); };
-    div.ondragleave = function(e) { handleCardDragLeave(this); };
-    div.ondrop = function(e) {
-        e.preventDefault(); e.stopPropagation(); handleCardDragLeave(this); const dragging = document.querySelector('.modal-dragging');
-        if(dragging && dragging !== this) { const insertAfter = this.classList.contains('drag-over-bottom'); if(insertAfter) this.parentNode.insertBefore(dragging, this.nextSibling); else this.parentNode.insertBefore(dragging, this); }
-    };
-    div.ondragestart = function(e) { this.classList.remove('modal-dragging'); handleCardDragLeave(this); };
+    /* Natives HTML5-Drag deaktiviert – Sortierung läuft über das zeigerbasierte
+       Sortable (siehe IIFE am Dateiende). Nur der Griff .cl-drag startet das Ziehen. */
+    div.classList.add('draggable-item');
+    div.draggable = false;
 }
 
-function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '') {
-    let d = '', time = ''; if (dueDate) { if (dueDate.includes('T')) [d, time] = dueDate.split('T'); else d = dueDate; }
-    let userOpts = `<option value="">-- Benutzer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===assigneeId?'selected':''}>${u.name}</option>`).join('');
-    
+function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null) {
+    let sd = '', stime = ''; if (startDate) { if (startDate.includes('T')) [sd, stime] = startDate.split('T'); else sd = startDate; }
+    /* Dauer in Minuten → Dezimalstunden (Standard 60 Min = 1 Stunde) */
+    let durMin = (duration === null || duration === undefined || duration === '') ? 0 : parseInt(duration, 10);
+    if (isNaN(durMin) || durMin < 0) durMin = 60;
+    const durHours = Math.round((durMin / 60) * 100) / 100;   /* z. B. 1.5 */
+
+    /* Schmale Avatar-Auswahl: Button zeigt aktuelles Kürzel/Bild, Popup listet alle Benutzer */
+    const curUser = appData.users.find(u => u.id === assigneeId);
+    const curAvatar = assigneeId && curUser ? getAvatarHtml(assigneeId, 'avatar-sm', '') : '<span class="cl-assignee-empty"><i class="fas fa-user"></i></span>';
+    const userMenuItems = `<button type="button" class="cl-assignee-opt" data-uid="" onclick="clPickAssignee(this,'')"><span class="cl-assignee-empty"><i class="fas fa-user-slash"></i></span><span>—</span></button>`
+        + appData.users.map(u => `<button type="button" class="cl-assignee-opt" data-uid="${u.id}" onclick="clPickAssignee(this,'${u.id}')">${getAvatarHtml(u.id, 'avatar-sm', '')}<span>${escapeHtmlToday ? escapeHtmlToday(u.name) : u.name}</span></button>`).join('');
+    const startHasTime = !!stime;
+
     return `
     <div class="cl-swipe-bg"><i class="fas fa-trash"></i></div>
     <div class="cl-swipe-container" tabindex="-1">
@@ -2431,14 +2574,75 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '') 
             </div>
         </div>
         <div class="cl-controls">
-            <select class="cl-assignee">${userOpts}</select>
-            <input type="date" class="cl-date" value="${d}" title="Datum">
-            <input type="time" class="cl-time" value="${time}" title="Uhrzeit (Optional)">
+            <input type="hidden" class="cl-assignee" value="${assigneeId}">
+            <div class="cl-assignee-pick">
+                <button type="button" class="cl-assignee-btn" title="Zuständig" onclick="event.stopPropagation(); this.parentNode.classList.toggle('open')">${curAvatar}</button>
+                <div class="cl-assignee-menu">${userMenuItems}</div>
+            </div>
+            <span class="cl-datespan cl-startspan">
+                <input type="date" class="cl-start-date" value="${sd}" title="Startdatum" onchange="clStartChanged(this)">
+                <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="Startzeit (optional)" onchange="clStartChanged(this)">
+            </span>
+            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="Dauer in Stunden (z. B. 1.5 = 1 Std 30 Min)" onchange="clSumDuration()"><span class="cl-durunit">Std</span></span>
             <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="Löschen"><i class="fas fa-trash"></i></button>
         </div>
     </div>
     <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>`;
+}
+
+/* Summe der Checkpunkt-Zeiten (in Stunden) für die Anzeige des geschätzten Gesamtaufwands */
+function clDurationTotalHours(containerId) {
+    const cont = document.getElementById(containerId); if (!cont) return 0;
+    let total = 0;
+    cont.querySelectorAll('.checklist-item').forEach(item => {
+        const hrs = parseFloat(item.querySelector('.cl-dur-hours')?.value || '0') || 0;
+        total += hrs;
+    });
+    return total;
+}
+
+/* Zuständigen aus der Avatar-Auswahl übernehmen */
+function clPickAssignee(btn, uid) {
+    const row = btn.closest('.checklist-item'); if (!row) return;
+    const hidden = row.querySelector('.cl-assignee'); if (hidden) hidden.value = uid || '';
+    const showBtn = row.querySelector('.cl-assignee-btn');
+    if (showBtn) showBtn.innerHTML = uid ? getAvatarHtml(uid, 'avatar-sm', '') : '<span class="cl-assignee-empty"><i class="fas fa-user"></i></span>';
+    const pick = btn.closest('.cl-assignee-pick'); if (pick) pick.classList.remove('open');
+}
+
+/* Start-Datum-Picker öffnen (nativer Datepicker) */
+function clOpenStart(btn) {
+    /* Nicht mehr benötigt: Start-Datum/-Zeit sind jetzt direkt sichtbare Felder,
+       deren native Picker an der richtigen Stelle erscheinen. */
+    const row = btn && btn.closest ? btn.closest('.checklist-item') : null;
+    const d = row ? row.querySelector('.cl-start-date') : null;
+    if (d && typeof d.showPicker === 'function') { try { d.showPicker(); } catch (e) {} }
+}
+
+/* Start-Datum/-Zeit geändert → Label aktualisieren, Zeitfeld einblenden sobald Datum da ist */
+function clStartChanged(input) {
+    const row = input.closest('.checklist-item'); if (!row) return;
+    const d = row.querySelector('.cl-start-date'); const tm = row.querySelector('.cl-start-time');
+    /* Zeitfeld erscheint erst, sobald ein Datum gesetzt ist (sonst ausgeblendet). */
+    if (tm) tm.classList.toggle('cl-hidden', !(d && d.value));
+    if (d && !d.value && tm) tm.value = '';
+}
+
+/* Aktualisiert das geschätzte-Aufwand-Feld (Summe der Checkpunkt-Zeiten) im gerade offenen Modal */
+function clSumDuration() {
+    /* Aufgaben-Modal */
+    if (document.getElementById('taskModal') && document.getElementById('taskModal').classList.contains('active')) {
+        const hrs = clDurationTotalHours('t_checklist_container');
+        const el = document.getElementById('t_cl_duration_sum');
+        if (el) el.textContent = ttNum(hrs);
+    }
+    /* Stack-Modal */
+    if (document.getElementById('stackModal') && document.getElementById('stackModal').classList.contains('active')) {
+        const hrs = clDurationTotalHours('s_checklist_container');
+        const el = document.getElementById('s_cl_duration_sum');
+        if (el) el.textContent = ttNum(hrs);
+    }
 }
 
 function openStackModal(id = null) {
@@ -2483,7 +2687,7 @@ function openStackModal(id = null) {
         if(s.checklist) s.checklist.forEach(c => { 
             const div = document.createElement('div'); div.className = 'checklist-item'; 
             div.setAttribute('data-id', c.id);
-            div.innerHTML = buildChecklistItemHTML(c.title, c.done, c.dueDate, c.assigneeId, c.id); 
+            div.innerHTML = buildChecklistItemHTML(c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null)); 
             addModalClDragHandlers(div); container.appendChild(div); 
         });
         
@@ -2511,10 +2715,10 @@ function openStackModal(id = null) {
             if (_sp.note) { const _srte = document.getElementById('s_notes_rte'); if (_srte) _srte.innerHTML = _sp.note.replace(/\n/g, '<br>'); }
             if (_sp.checklist && _sp.checklist.length) {
                 const _scont = document.getElementById('s_checklist_container');
-                _sp.checklist.forEach(title => {
+                _presetClNorm(_sp.checklist).forEach(ci => {
                     const div = document.createElement('div'); div.className = 'checklist-item';
                     const nid = generateId(); div.setAttribute('data-id', nid);
-                    div.innerHTML = buildChecklistItemHTML(title, false, '', '', nid);
+                    div.innerHTML = buildChecklistItemHTML(ci.title, false, '', '', nid, '', ci.duration || null);
                     addModalClDragHandlers(div); _scont.appendChild(div);
                 });
             }
@@ -2537,14 +2741,27 @@ function saveStack() {
         
         const clItems = document.querySelectorAll('#s_checklist_container .checklist-item');
         const checklist = Array.from(clItems).map((item, index) => {
-            const dateVal = item.querySelector('.cl-date')?.value || ''; const timeVal = item.querySelector('.cl-time')?.value || '';
-            let finalDate = dateVal; if(timeVal && !finalDate) finalDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            let finalDue = finalDate; if(finalDue && timeVal) finalDue += 'T' + timeVal;
+            const sDateVal = item.querySelector('.cl-start-date')?.value || ''; const sTimeVal = item.querySelector('.cl-start-time')?.value || '';
+            const durHours = parseFloat(item.querySelector('.cl-dur-hours')?.value || '0') || 0;
+            const durationMin = Math.round(durHours * 60);
+            /* Start (Datum + optional Uhrzeit) zusammensetzen; Ende = Start + Dauer automatisch berechnen */
+            let finalStart = sDateVal; if(finalStart && sTimeVal) finalStart += 'T' + sTimeVal;
+            let finalDue = '';
+            if(finalStart){
+                const _st = sTimeVal || '09:00';
+                const _base = new Date(sDateVal + 'T' + _st);
+                if(!isNaN(_base.getTime())){
+                    const _end = new Date(_base.getTime() + durationMin * 60000);
+                    const _p = n => String(n).padStart(2,'0');
+                    finalDue = _end.getFullYear() + '-' + _p(_end.getMonth()+1) + '-' + _p(_end.getDate()) + 'T' + _p(_end.getHours()) + ':' + _p(_end.getMinutes());
+                    if(!sTimeVal) finalStart = sDateVal + 'T' + _st;
+                }
+            }
             
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', dueDate: finalDue, predecessors: cPreds }
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds }
         });
 
         // Diff Checklist für Historie
@@ -2621,13 +2838,15 @@ function populateTaskDropdowns() {
 }
 function toggleCustomRecurrence() { document.getElementById('custom_recurrence_div').style.display = (document.getElementById('t_recurrence').value === 'custom') ? 'flex' : 'none'; }
 
-function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='') {
+function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null) {
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     if(id) div.setAttribute('data-id', id);
-    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id); addModalClDragHandlers(div); container.appendChild(div);
+    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration); addModalClDragHandlers(div); container.appendChild(div);
 }
 
-function openModal(taskId = null) {
+function openTaskToCheckpoint(taskId, checkpointId) { openModal(taskId, checkpointId); }
+
+function openModal(taskId = null, _scrollToCpId = null) {
     populateTaskDropdowns(); document.getElementById('taskModal').classList.add('active'); switchTaskTab('tab-general', document.querySelector('#taskModal .modal-tab-btn')); 
     const container = document.getElementById('t_checklist_container'); container.innerHTML = '';
     document.getElementById('t_file_list').innerHTML = ''; document.getElementById('t_files').value = ''; document.getElementById('t_filepath').value = ''; currentTempFiles = [];
@@ -2662,11 +2881,12 @@ function openModal(taskId = null) {
         document.getElementById('t_start_date').value = tStartDate; document.getElementById('t_start_time').value = tStartTime;
         document.getElementById('t_due_date').value = tDueDate; document.getElementById('t_due_time').value = tDueTime;
         
-        document.getElementById('t_estTime').value = t_obj.estimatedTime || ''; document.getElementById('t_spentTime').value = t_obj.spentTime || ''; document.getElementById('t_desc_rte').innerHTML = t_obj.description || ''; document.getElementById('t_notes').value = t_obj.notes || '';
+        document.getElementById('t_estTime').value = (t_obj.estimatedTimeBase !== undefined ? t_obj.estimatedTimeBase : (t_obj.estimatedTime || '')); document.getElementById('t_spentTime').value = t_obj.spentTime || ''; document.getElementById('t_desc_rte').innerHTML = t_obj.description || ''; document.getElementById('t_notes').value = t_obj.notes || '';
         
-        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id)); 
+        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null))); 
         if(t_obj.files) { currentTempFiles = [...t_obj.files]; renderFileList(); }
         updateDepDisplay();
+        clSumDuration();
     } else {
         document.getElementById('modalTitle').innerText = t('task_new'); document.getElementById('taskId').value = ''; document.getElementById('btnDeleteTask').style.display = 'none'; document.getElementById('dropdownShareTask').style.display = 'none';
         renderInteractiveRating('t_interactive_rating', null);
@@ -2681,16 +2901,33 @@ function openModal(taskId = null) {
             const _sh = document.getElementById('t_stakeholder'); if (_sh && _tp.stakeholderId) _sh.value = _tp.stakeholderId;
             const _bk = document.getElementById('t_bucket'); if (_bk && _tp.bucket) _bk.value = _tp.bucket;
         }
-        const _presetCl = (_tp && _tp.checklist && _tp.checklist.length) ? _tp.checklist : appData.defaultChecklist;
-        _presetCl.forEach(title => {
+        const _presetCl = (_tp && _tp.checklist && _tp.checklist.length) ? _presetClNorm(_tp.checklist) : _presetClNorm(appData.defaultChecklist);
+        _presetCl.forEach(ci => {
             const newId = generateId();
-            renderTaskChecklistItem(container, title, false, '', '', newId);
+            renderTaskChecklistItem(container, ci.title, false, '', '', newId, '', ci.duration || null);
         });
         if (_tp && _tp.note) { const _rte = document.getElementById('t_desc_rte'); if (_rte) _rte.innerHTML = _tp.note.replace(/\n/g, '<br>'); }
         document.getElementById('t_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
         setTimeout(() => document.getElementById('t_project').focus(), 100);
     }
     actionsContainer.innerHTML = actionsHtml;
+
+    /* Wenn ein bestimmter Checklistenpunkt angesteuert wurde: Tab "Checkliste & Dateien" öffnen und dorthin scrollen */
+    if (_scrollToCpId) {
+        setTimeout(() => {
+            const detailBtn = document.querySelector('#taskModal .modal-tab-btn[onclick*="tab-detail"]');
+            switchTaskTab('tab-detail', detailBtn);
+            const container = document.getElementById('t_checklist_container');
+            if (container) {
+                const target = container.querySelector('.checklist-item[data-id="' + _scrollToCpId + '"]');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    target.classList.add('cl-highlight');
+                    setTimeout(() => target.classList.remove('cl-highlight'), 2200);
+                }
+            }
+        }, 150);
+    }
 }
 
 function closeModal() { document.getElementById('taskModal').classList.remove('active'); }
@@ -2742,13 +2979,6 @@ function copyRawPath(path) {
     } else { const tempInput = document.createElement("input"); tempInput.value = path; document.body.appendChild(tempInput); tempInput.select(); document.execCommand("copy"); document.body.removeChild(tempInput); showToast('Pfad kopiert!'); }
 }
 
-function quickAddTask(inputEl, statusId) {
-    const val = inputEl.value.trim(); if(!val) return;
-    let defaultCl = []; if(appData.defaultChecklist && appData.defaultChecklist.length > 0) { defaultCl = appData.defaultChecklist.map(t_obj => ({ id: generateId(), done: false, title: t_obj, dueDate: '', assigneeId: '', predecessors: [] })); }
-    const taskData = { id: generateId(), projectStackId: '', projectName: val, stakeholderId: '', bucket: '', status: statusId, priority: 'medium', recurrence: 'none', customRecurrence: null, startDate: '', dueDate: '', estimatedTime: '', spentTime: '', description: '', notes: '', checklist: defaultCl, files: [], assigneeId: appData.settings.currentUserId || '', predecessors: [] };
-    appData.tasks.push(taskData); triggerWorkflows('task_created', { task: taskData }); saveToLocal(); inputEl.value = ''; showToast('Aufgabe schnell hinzugefügt.');
-}
-
 function saveTask() {
     try {
         const id = document.getElementById('taskId').value || generateId(); const titleInput = document.getElementById('t_project').value.trim();
@@ -2758,14 +2988,27 @@ function saveTask() {
 
         const clItems = document.querySelectorAll('#t_checklist_container .checklist-item');
         const checklist = Array.from(clItems).map((item, index) => {
-            const dateVal = item.querySelector('.cl-date')?.value || ''; const timeVal = item.querySelector('.cl-time')?.value || '';
-            let finalDate = dateVal; if(timeVal && !finalDate) finalDate = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-            let finalDue = finalDate; if(finalDue && timeVal) finalDue += 'T' + timeVal;
+            const sDateVal = item.querySelector('.cl-start-date')?.value || ''; const sTimeVal = item.querySelector('.cl-start-time')?.value || '';
+            const durHours = parseFloat(item.querySelector('.cl-dur-hours')?.value || '0') || 0;
+            const durationMin = Math.round(durHours * 60);
+            /* Start (Datum + optional Uhrzeit) zusammensetzen; Ende = Start + Dauer automatisch berechnen */
+            let finalStart = sDateVal; if(finalStart && sTimeVal) finalStart += 'T' + sTimeVal;
+            let finalDue = '';
+            if(finalStart){
+                const _st = sTimeVal || '09:00';
+                const _base = new Date(sDateVal + 'T' + _st);
+                if(!isNaN(_base.getTime())){
+                    const _end = new Date(_base.getTime() + durationMin * 60000);
+                    const _p = n => String(n).padStart(2,'0');
+                    finalDue = _end.getFullYear() + '-' + _p(_end.getMonth()+1) + '-' + _p(_end.getDate()) + 'T' + _p(_end.getHours()) + ':' + _p(_end.getMinutes());
+                    if(!sTimeVal) finalStart = sDateVal + 'T' + _st;
+                }
+            }
             
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', dueDate: finalDue, predecessors: cPreds };
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds };
         });
 
         // Diff Checklist für Historie
@@ -2791,7 +3034,7 @@ function saveTask() {
             recurrence: t_rec, customRecurrence: t_rec === 'custom' ? { num: getVal('t_rec_num'), type: getVal('t_rec_type') } : null, 
             startDate: getCombinedDateTime('t_start_date', 't_start_time'), 
             dueDate: getCombinedDateTime('t_due_date', 't_due_time'), 
-            estimatedTime: getVal('t_estTime'), spentTime: getVal('t_spentTime'), description: document.getElementById('t_desc_rte').innerHTML, notes: finalNotes, checklist: checklist, files: currentTempFiles,
+            estimatedTimeBase: getVal('t_estTime'), estimatedTime: (function(){ const base = parseFloat(getVal('t_estTime')) || 0; const cpMin = (checklist||[]).reduce((s,c)=> s + (parseInt(c.duration,10)||0), 0); const total = base + cpMin/60; return (base || cpMin) ? String(Number(total.toFixed(2))) : ''; })(), spentTime: getVal('t_spentTime'), description: document.getElementById('t_desc_rte').innerHTML, notes: finalNotes, checklist: checklist, files: currentTempFiles,
             predecessors: tempPredecessors[id] || []
         };
         
@@ -2870,7 +3113,8 @@ function renderView() {
     else if (currentView === 'schedule') renderSchedule(c);
     else if (currentView === 'timeline') renderTimeline(c);
     else if (currentView === 'stacks') renderStacks(c);
-    else if (currentView === 'checklists') renderChecklists(c);
+    else if (currentView === 'checklists') renderChecklists(c, 'checklists');
+    else if (currentView === 'milestones') renderChecklists(c, 'milestones');
     else if (currentView === 'time') renderTimeTracking(c);
     else if (currentView === 'dependencies') renderDependenciesView(c);
     applyTranslations();
@@ -2924,19 +3168,19 @@ function renderDependenciesView(c) {
 
     appData.projectStacks.forEach(sk => {
         if (!L.stack) return;
-        addNode({ id: sk.id, type: 'stack', name: sk.name || 'Stack', done: sk.status === 'completed',
+        addNode({ id: sk.id, type: 'stack', name: sk.name || 'Stack', done: sk.status === 'completed', obj: sk,
                   color: sk.color || 'var(--text-muted)', stackId: sk.id, preds: (sk.predecessors || []).slice() });
     });
     appData.tasks.forEach(tk => {
         if (!L.task) return;
         if (hideDone && isTaskDone(tk)) return;
-        addNode({ id: tk.id, type: 'task', name: tk.projectName || 'Aufgabe', done: isTaskDone(tk),
+        addNode({ id: tk.id, type: 'task', name: tk.projectName || 'Aufgabe', done: isTaskDone(tk), obj: tk,
                   stackId: tk.projectStackId || '', preds: (tk.predecessors || []).slice() });
         if (L.checklist && tk.checklist) {
             tk.checklist.forEach(ci => {
                 if (!ci.id) return;
                 if (hideDone && ci.done) return;
-                addNode({ id: ci.id, type: 'checklist', name: ci.title || 'Punkt', done: !!ci.done,
+                addNode({ id: ci.id, type: 'checklist', name: ci.title || 'Punkt', done: !!ci.done, obj: ci,
                           stackId: tk.projectStackId || '', parentTask: tk.id, preds: (ci.predecessors || []).slice() });
             });
         }
@@ -2947,7 +3191,7 @@ function renderDependenciesView(c) {
         sk.checklist.forEach(ci => {
             if (!ci.id) return;
             if (hideDone && ci.done) return;
-            addNode({ id: ci.id, type: 'milestone', name: ci.title || 'Meilenstein', done: !!ci.done,
+            addNode({ id: ci.id, type: 'milestone', name: ci.title || 'Meilenstein', done: !!ci.done, obj: ci,
                       stackId: sk.id, parentStack: sk.id, preds: (ci.predecessors || []).slice() });
         });
     });
@@ -2963,9 +3207,14 @@ function renderDependenciesView(c) {
             </div>
             <div class="dep-levels">
                 <button class="dep-lvl dep-connect-btn ${window.depConnectMode ? 'on' : ''}" onclick="depToggleConnectMode()"><i class="fas fa-link"></i> ${t('dep_connect_mode')}</button>
-                <button class="dep-lvl ${L.stack?'on':''}" onclick="depToggleLevel('stack')"><i class="fas fa-folder"></i> Stack</button>
-                <button class="dep-lvl ${L.task?'on':''}" onclick="depToggleLevel('task')"><i class="fas fa-tasks"></i> ${t('tasks')}</button>
-                <button class="dep-lvl ${L.checklist?'on':''}" onclick="depToggleLevel('checklist')"><i class="fas fa-check-square"></i> ${t('view_checklists')}</button>
+                <label class="dep-sort"><i class="fas fa-sort"></i>
+                    <select onchange="depSetSort(this.value)">
+                        <option value="manual" ${(window.depSortKey||'manual')==='manual'?'selected':''}>${t('sort_manual')}</option>
+                        <option value="name" ${window.depSortKey==='name'?'selected':''}>${t('sort_name')}</option>
+                        <option value="due" ${window.depSortKey==='due'?'selected':''}>${t('sort_due')}</option>
+                        <option value="priority" ${window.depSortKey==='priority'?'selected':''}>${t('sort_priority')}</option>
+                    </select>
+                </label>
             </div>
         </div>`;
 
@@ -3004,38 +3253,129 @@ function renderDependenciesView(c) {
 
     /* Innerhalb jeder Spalte nach Stack-Gruppe, dann Aufgabe sortieren → optische Cluster */
     const typeRank = { stack: 0, milestone: 1, task: 2, checklist: 3 };
+    const _sortKey = window.depSortKey || 'manual';
+    const _prioRank = { high: 0, medium: 1, low: 2 };
+    const sortCompare = (a, b) => {
+        if (_sortKey === 'name') return String(a.name||'').localeCompare(String(b.name||''));
+        if (_sortKey === 'due') { const ad = (a.obj && a.obj.dueDate) || '\uffff'; const bd = (b.obj && b.obj.dueDate) || '\uffff'; return String(ad).localeCompare(String(bd)); }
+        if (_sortKey === 'priority') { const ap = _prioRank[a.obj && a.obj.priority] ?? 1; const bp = _prioRank[b.obj && b.obj.priority] ?? 1; return ap - bp; }
+        return 0;   /* manual: Reihenfolge unverändert */
+    };
     Object.keys(cols).forEach(d => {
         cols[d].sort((a, b) => {
             if (groupRank[groupKey(a)] !== groupRank[groupKey(b)]) return groupRank[groupKey(a)] - groupRank[groupKey(b)];
+            /* Bei aktiver Sortierung innerhalb der Gruppe direkt danach sortieren (Checkpunkte bleiben durch subKey bei ihrer Aufgabe) */
+            if (_sortKey !== 'manual') {
+                const sa = subKey(a), sb = subKey(b);
+                if (sa !== sb) { const c = sortCompare(a, b); if (c !== 0) return c; return String(sa).localeCompare(String(sb)); }
+                if ((typeRank[a.type] || 9) !== (typeRank[b.type] || 9)) return (typeRank[a.type] || 9) - (typeRank[b.type] || 9);
+                return sortCompare(a, b);
+            }
             const sa = subKey(a), sb = subKey(b);
             if (sa !== sb) return String(sa).localeCompare(String(sb));
             return (typeRank[a.type] || 9) - (typeRank[b.type] || 9);
         });
     });
 
-    const COL_W = 260, NODE_H = 74, V_GAP = 18, H_PAD = 40, V_PAD = 42, GRP_PAD = 14;
-    let maxRows = 0;
-    Object.keys(cols).forEach(d => { maxRows = Math.max(maxRows, cols[d].length); });
-    const NODE_W = 200;
+    const NODE_W = 200, NODE_H = 72, CP_H = 46, V_GAP_IN = 8, H_PAD = 40, V_PAD = 42;
+    const COL_W_IN = 224;                 /* Spaltenbreite innerhalb einer Gruppe (nach Tiefe) */
+    const GROUP_GAP_X = 90, GROUP_GAP_Y = 90;   /* große Abstände zwischen den Gruppen */
+    const MAX_GROUP_COLS = 3;             /* höchstens 3 Gruppen nebeneinander */
+    const nodeHeight = (n) => (n.type === 'checklist' ? CP_H : NODE_H);
 
-    /* Position je Knoten: Spalte = Tiefe; innerhalb Spalte gestapelt, Lücke zwischen Stack-Gruppen */
-    Object.keys(cols).forEach(d => {
-        let y = V_PAD, prevGroup = null;
-        cols[d].forEach((n) => {
-            const g = groupKey(n);
-            if (prevGroup !== null && g !== prevGroup) y += GRP_PAD;
-            n.x = H_PAD + n.depth * COL_W;
-            n.y = y;
-            y += NODE_H + V_GAP;
-            prevGroup = g;
+    /* 1) Knoten in Blöcke einteilen.
+          Regel: Ein Checklistenpunkt gehört IMMER in den Block seiner Elternaufgabe.
+          Eine Aufgabe gehört in ihren Stack-Block, sonst in einen eigenen Block. */
+    const nodeById = {};
+    nodes.forEach(n => { nodeById[n.id] = n; });
+
+    const blockKeyOf = (n) => {
+        if (n.type === 'checklist' && n.parentTask) {
+            const parent = nodeById[n.parentTask];
+            if (parent) return blockKeyOf(parent);          /* Punkt folgt seiner Aufgabe */
+            return '_orphan_' + n.id;
+        }
+        const g = groupKey(n);
+        if (g && g !== '_none') return 'grp_' + g;          /* Stack-Gruppe */
+        return '_solo_' + n.id;                             /* alleinstehend */
+    };
+
+    const blocksMap = {};
+    const blockOrder = [];
+    nodes.forEach(n => {
+        const bk = blockKeyOf(n);
+        if (!blocksMap[bk]) { blocksMap[bk] = []; blockOrder.push(bk); }
+        blocksMap[bk].push(n);
+    });
+
+    /* Reihenfolge: erst die Stack-Gruppen in ihrer bekannten Ordnung, dann der Rest */
+    const groupBlocks = [];
+    const seen = new Set();
+    groupOrder.forEach(g => {
+        if (g === '_none') return;
+        const bk = 'grp_' + g;
+        if (blocksMap[bk] && !seen.has(bk)) { seen.add(bk); groupBlocks.push({ key: g, members: blocksMap[bk], standalone: false }); }
+    });
+    blockOrder.forEach(bk => {
+        if (seen.has(bk)) return;
+        seen.add(bk);
+        groupBlocks.push({ key: bk, members: blocksMap[bk], standalone: bk.indexOf('grp_') !== 0 });
+    });
+
+    /* 2) Interne Anordnung je Block: EINE Spalte, eng untereinander in der Reihenfolge
+          1. Stack (falls vorhanden), 2. Aufgabe, 3. alle zugehörigen Checklistenpunkte. */
+    groupBlocks.forEach(blk => {
+        const mem = blk.members;
+        const stacksIn = mem.filter(n => n.type === 'stack');
+        const milestonesIn = mem.filter(n => n.type === 'milestone');
+        const tasksIn = mem.filter(n => n.type === 'task');
+        const cpsIn = mem.filter(n => n.type === 'checklist');
+        /* verwaiste Checkpunkte (Elternaufgabe nicht in dieser Gruppe) hinten anhängen */
+        const taskIds = new Set(tasksIn.map(t => t.id));
+        const orphanCps = cpsIn.filter(c => !c.parentTask || !taskIds.has(c.parentTask));
+
+        const cmp = (a, b) => (_sortKey !== 'manual' ? sortCompare(a, b) : 0);
+        stacksIn.sort(cmp); milestonesIn.sort(cmp); tasksIn.sort(cmp);
+
+        const ordered = [];
+        stacksIn.forEach(s => ordered.push(s));
+        milestonesIn.forEach(m => ordered.push(m));
+        tasksIn.forEach(tk => {
+            ordered.push(tk);
+            cpsIn.filter(c => c.parentTask === tk.id).sort(cmp).forEach(c => ordered.push(c));
         });
+        orphanCps.sort(cmp).forEach(c => ordered.push(c));
+
+        let yy = 0;
+        ordered.forEach((n, i) => {
+            /* etwas Luft vor einer Aufgabe mit Checkpunkten (Platz für Hülle + Label) */
+            const hasCps = n.type === 'task' && cpsIn.some(c => c.parentTask === n.id);
+            if (i > 0 && hasCps) yy += 20;
+            n._lx = 0; n._ly = yy;
+            yy += nodeHeight(n) + V_GAP_IN;
+        });
+        blk.w = NODE_W; blk.h = yy + 22;   /* etwas Platz für die Gruppen-Beschriftung */
+    });
+
+    /* 3) Blöcke im Raster anordnen: max. 3 Spalten, Zeilenhöhe = höchster Block der Zeile */
+    let gx = 0, gy = 0, colIdx = 0, rowMaxH = 0;
+    const LABEL_SP = 22;
+    groupBlocks.forEach(blk => {
+        if (colIdx >= MAX_GROUP_COLS) { colIdx = 0; gx = 0; gy += rowMaxH + GROUP_GAP_Y; rowMaxH = 0; }
+        const ox = H_PAD + gx, oy = V_PAD + gy + LABEL_SP;
+        blk.members.forEach(n => { n.x = ox + n._lx; n.y = oy + n._ly; });
+        blk.ox = ox; blk.oy = V_PAD + gy;   /* für die Hülle inkl. Label */
+        rowMaxH = Math.max(rowMaxH, blk.h + LABEL_SP);
+        gx += blk.w + GROUP_GAP_X;
+        colIdx += 1;
     });
 
     /* ---- Gruppen-Rahmen berechnen ---- */
+    const HULL_PAD = 12;
     const hulls = [];
     const boundsOf = (list) => {
         let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-        list.forEach(n => { x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y); x2 = Math.max(x2, n.x + NODE_W); y2 = Math.max(y2, n.y + NODE_H); });
+        list.forEach(n => { x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y); x2 = Math.max(x2, n.x + NODE_W); y2 = Math.max(y2, n.y + nodeHeight(n)); });
         return { x1, y1, x2, y2 };
     };
     groupOrder.forEach(g => {
@@ -3044,7 +3384,7 @@ function renderDependenciesView(c) {
         if (members.length < 2) return;
         const bk = appData.projectStacks.find(x => x.id === g);
         const b = boundsOf(members);
-        hulls.push({ kind: 'stack', x: b.x1 - GRP_PAD, y: b.y1 - GRP_PAD - 16, w: (b.x2 - b.x1) + GRP_PAD * 2, h: (b.y2 - b.y1) + GRP_PAD * 2 + 16, name: bk ? bk.name : 'Stack', color: (bk && bk.color) ? bk.color : 'var(--primary-color)' });
+        hulls.push({ kind: 'stack', x: b.x1 - HULL_PAD, y: b.y1 - HULL_PAD - 16, w: (b.x2 - b.x1) + HULL_PAD * 2, h: (b.y2 - b.y1) + HULL_PAD * 2 + 16, name: bk ? bk.name : 'Stack', color: (bk && bk.color) ? bk.color : 'var(--primary-color)' });
     });
     const tasksWithCp = {};
     nodes.forEach(n => { if (n.type === 'checklist' && n.parentTask) (tasksWithCp[n.parentTask] = tasksWithCp[n.parentTask] || []).push(n); });
@@ -3053,11 +3393,11 @@ function renderDependenciesView(c) {
         if (!taskNode) return;
         const members = [taskNode].concat(tasksWithCp[tid]);
         const b = boundsOf(members);
-        hulls.push({ kind: 'task', x: b.x1 - 8, y: b.y1 - 8, w: (b.x2 - b.x1) + 16, h: (b.y2 - b.y1) + 16, name: '', color: 'var(--wk-graphite)' });
+        hulls.push({ kind: 'task', x: b.x1 - 8, y: b.y1 - 8, w: (b.x2 - b.x1) + 16, h: (b.y2 - b.y1) + 16, name: taskNode.name || '', color: 'var(--wk-graphite)' });
     });
 
     let canvasW = 0, canvasH = 0;
-    nodes.forEach(n => { canvasW = Math.max(canvasW, n.x + NODE_W); canvasH = Math.max(canvasH, n.y + NODE_H); });
+    nodes.forEach(n => { canvasW = Math.max(canvasW, n.x + NODE_W); canvasH = Math.max(canvasH, n.y + nodeHeight(n)); });
     hulls.forEach(hz => { canvasW = Math.max(canvasW, hz.x + hz.w); canvasH = Math.max(canvasH, hz.y + hz.h); });
     canvasW += H_PAD; canvasH += V_PAD;
     /* ---- Kanten (SVG) zeichnen: von Vorgänger (rechts) zu Abhängigem (links) ---- */
@@ -3066,10 +3406,22 @@ function renderDependenciesView(c) {
         n.preds.forEach(pid => {
             const p = byId[pid];
             if (!p) return;
-            const x1 = p.x + NODE_W, y1 = p.y + NODE_H / 2;
-            const x2 = n.x, y2 = n.y + NODE_H / 2;
-            const mx = (x1 + x2) / 2;
-            edges += `<path class="dep-edge dep-edge-${n.type}" d="M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}" marker-end="url(#depArrow)"></path>`;
+            const x1 = p.x + NODE_W, y1 = p.y + nodeHeight(p) / 2;
+            const x2 = n.x, y2 = n.y + nodeHeight(n) / 2;
+            const dx = x2 - x1;
+            const dy = Math.abs(y2 - y1);
+            let d;
+            if (dx < 60) {
+                /* Vorgänger und Abhängiger liegen (nahezu) übereinander – z. B. zwei
+                   Checklistenpunkte derselben Aufgabe. Die Linie holt weit nach rechts aus,
+                   damit sie neben der Punkte-Liste sichtbar ist und nicht dahinter verschwindet. */
+                const bow = Math.max(70, dy * 0.9);
+                d = `M ${x1} ${y1} C ${x1 + bow} ${y1}, ${x2 + bow} ${y2}, ${x2} ${y2}`;
+            } else {
+                const mx = (x1 + x2) / 2;
+                d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+            }
+            edges += `<path class="dep-edge dep-edge-${n.type}" d="${d}" marker-end="url(#depArrow)"></path>`;
         });
     });
 
@@ -3084,13 +3436,13 @@ function renderDependenciesView(c) {
         const cls = ['dep-gnode', 'type-' + n.type, n.done ? 'done' : '', locked ? 'locked' : '',
                      !hasPreds ? 'is-start' : '', !isDependedOn ? 'is-end' : ''].filter(Boolean).join(' ');
         const click = n.type === 'stack' ? `openStackModal('${n.id}')` : (n.type === 'task' ? `openModal('${n.id}')` : '');
-        nodeHtml += `<div class="${cls} ${window.depConnectMode && window.depTapSource === n.id ? 'dep-tap-src' : ''}" style="left:${n.x}px; top:${n.y}px; width:${NODE_W}px; height:${NODE_H}px"
+        nodeHtml += `<div class="${cls} ${window.depConnectMode && window.depTapSource === n.id ? 'dep-tap-src' : ''}" style="left:${n.x}px; top:${n.y}px; width:${NODE_W}px; height:${nodeHeight(n)}px"
             data-depid="${n.id}" data-deptype="${n.type}" draggable="true"
             ondragstart="depDragStart(event,'${n.id}','${n.type}')" ondragend="depDragEnd(event)"
             ondragover="depDragOver(event)" ondragleave="depDragLeave(event)" ondrop="depDrop(event,'${n.id}','${n.type}')"
             onclick="depNodeClick(event,'${n.id}','${n.type}')">
             ${!hasPreds
-                ? `<span class="dep-gport in start" title="${t('dep_start')}">&gt;</span>`
+                ? ``
                 : `<span class="dep-gport in linked ${locked ? 'locked' : ''}" title="${t('dep_unlink_hint')}" onclick="event.stopPropagation(); depClearPreds('${n.id}')"><i class="fas fa-lock"></i></span>`}
             <span class="dep-gport out ${isDependedOn ? '' : 'end'}" title="${!isDependedOn ? t('dep_end') : ''}"></span>
             <div class="dep-gnode-ic"><i class="fas ${typeIcon[n.type]}"></i></div>
@@ -3105,10 +3457,10 @@ function renderDependenciesView(c) {
     html += `<div class="dep-canvas-wrap"><div class="dep-canvas" style="width:${canvasW}px; height:${canvasH}px">
         <svg class="dep-edges" width="${canvasW}" height="${canvasH}">
             <defs><marker id="depArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L8,3 L0,6 Z" fill="var(--wk-graphite-2)"></path></marker></defs>
+                <path d="M0,0 L8,3 L0,6 Z" fill="#ffc93c"></path></marker></defs>
             ${edges}
         </svg>
-        ${hulls.map(hz => `<div class="dep-hull dep-hull-${hz.kind}" style="left:${hz.x}px; top:${hz.y}px; width:${hz.w}px; height:${hz.h}px; --hc:${hz.color}">${hz.name ? `<span class="dep-hull-label"><i class='fas fa-folder'></i> ${escapeHtmlToday(hz.name)}</span>` : ''}</div>`).join('')}
+        ${hulls.map(hz => `<div class="dep-hull dep-hull-${hz.kind}" style="left:${hz.x}px; top:${hz.y}px; width:${hz.w}px; height:${hz.h}px; --hc:${hz.color}">${hz.name ? `<span class="dep-hull-label" title="${escapeHtmlToday(hz.name)}"><i class='fas ${hz.kind === 'task' ? 'fa-tasks' : 'fa-folder'}'></i><span class="dep-hull-labeltxt">${escapeHtmlToday(hz.name)}</span></span>` : ''}</div>`).join('')}
         ${nodeHtml}
     </div></div>`;
 
@@ -3155,9 +3507,14 @@ function depNodeClick(ev, id, type) {
         depConnect(srcId, id);
         return;
     }
-    /* Normaler Modus: Stack/Aufgabe öffnen */
+    /* Normaler Modus: Stack/Aufgabe öffnen; Checkpunkt → Elternaufgabe an der Stelle */
     if (type === 'stack') openStackModal(id);
     else if (type === 'task') openModal(id);
+    else if (type === 'checklist') {
+        /* Elternaufgabe des Checkpunkts finden */
+        const parent = appData.tasks.find(tk => (tk.checklist || []).some(ci => ci.id === id));
+        if (parent) openTaskToCheckpoint(parent.id, id);
+    }
 }
 
 /* Verknüpfung zwischen zwei beliebigen Elementen herstellen (gemeinsame Logik für Drag & Tap) */
@@ -3267,6 +3624,11 @@ function depClearPreds(id) {
     if (typeof tempPredecessors === 'object') tempPredecessors[id] = [];
     saveToLocal(true);
     showToast(t('dep_unlinked'), 'success');
+    renderView();
+}
+
+function depSetSort(key) {
+    window.depSortKey = key || 'manual';
     renderView();
 }
 
@@ -3416,48 +3778,7 @@ function renderNotesView(c) {
             <div id="active_note_rte" class="rte-content" contenteditable="true" onblur="saveInlineNote('${activeItem.type}', '${activeItem.id}', this)" style="border-top:none; border-radius:0 0 var(--radius) var(--radius); flex:1; min-height:300px; max-height:none; padding:20px;">${content}</div>
         </div>`;
 
-        let checkHtml = '';
-        if(activeItem.obj.checklist && activeItem.obj.checklist.length > 0) {
-            activeItem.obj.checklist.forEach((cl, i) => {
-                let d = '', time = ''; if(cl.dueDate) { if(cl.dueDate.includes('T')) [d, time] = cl.dueDate.split('T'); else d = cl.dueDate; }
-                let userOpts = `<option value="">-- Benutzer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===cl.assigneeId?'selected':''}>${u.name}</option>`).join('');
-                let lineThrough = cl.done ? 'text-decoration:line-through; opacity:0.6;' : '';
-
-                let clLocked = isEntityLocked(cl.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
-
-                checkHtml += `
-                <div class="checklist-item draggable-item" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${i}'); event.dataTransfer.setData('type', 'checklist-item'); event.dataTransfer.setData('parentId', '${activeItem.id}'); event.dataTransfer.setData('parentType', '${activeItem.type}');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGlobalClDrop(event, this, '${activeItem.type}', '${activeItem.id}', ${i})" data-id="${cl.id}">
-                    <div class="cl-swipe-bg"><i class="fas fa-trash"></i></div>
-                    <div class="cl-swipe-container" tabindex="-1">
-                        <div class="cl-main-row" style="${lineThrough}">
-                            <i class="fas fa-grip-vertical cl-drag"></i>
-                            <input type="checkbox" class="cl-done" ${cl.done ? 'checked' : ''} onchange="updateGlobalCl('${activeItem.type}', '${activeItem.id}', ${i}, 'done', this.checked)">
-                            <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; justify-content: center;">
-                                <div style="display: flex; align-items: center; width: 100%;">
-                                    ${clLocked}<input type="text" class="cl-title" value="${cl.title}" placeholder="..." onblur="updateGlobalCl('${activeItem.type}', '${activeItem.id}', ${i}, 'title', this.value)" onkeypress="if(event.key==='Enter') this.blur()">
-                                    <i class="fas fa-info-circle cl-info-btn" onclick="this.closest('.checklist-item').classList.toggle('show-details')"></i>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="cl-controls">
-                            ${getAvatarHtml(cl.assigneeId, 'avatar-sm')}
-                            <select class="cl-assignee" onchange="updateGlobalCl('${activeItem.type}', '${activeItem.id}', ${i}, 'assigneeId', this.value)">${userOpts}</select>
-                            <input type="date" value="${d}" onchange="updateGlobalClDate('${activeItem.type}', '${activeItem.id}', ${i}, this.value, this.nextElementSibling.value)">
-                            <input type="time" value="${time}" onchange="updateGlobalClDate('${activeItem.type}', '${activeItem.id}', ${i}, this.previousElementSibling.value, this.value)">
-                            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
-                            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${activeItem.type}', '${activeItem.id}', ${i})" tabindex="-1" title="Löschen"><i class="fas fa-trash"></i></button>
-                        </div>
-                    </div>
-                    <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>
-                </div>`;
-            });
-        }
-        
-        html += `<div style="margin-top:20px; border-top:1px solid var(--border-color); padding-top:20px;">
-                    <h4 style="margin-bottom:10px;"><i class="fas fa-check-square"></i> Checkliste / Milestones</h4>
-                    ${checkHtml}
-                    <button class="secondary" style="font-size:11px; padding:4px 8px; margin-top:5px;" onclick="addGlobalCl('${activeItem.type}', '${activeItem.id}')"><i class="fas fa-plus"></i> ${t('add_point')}</button>
-                 </div>`;
+        /* Checklistenpunkte in der Notizen-Ansicht entfernt — hier nur die Notiz anzeigen */
     }
     
     html += `</div></div>`; c.innerHTML = html;
@@ -3466,7 +3787,8 @@ function renderNotesView(c) {
 }
 
 // CHECKLISTEN VIEW
-function renderChecklists(c) {
+function renderChecklists(c, mode = 'checklists') {
+    const _onlyStacks = (mode === 'milestones');
     let html = `<div style="max-width: 900px; margin: 0 auto;">`;
     html += `<div style="display:flex; justify-content:flex-start; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
         <button class="secondary ${clSortKey==='none'?'active':''}" onclick="clSortKey='none'; renderView()"><i class="fas fa-list"></i> ${t('default')}</button>
@@ -3514,7 +3836,7 @@ function renderChecklists(c) {
                 let clLocked = isEntityLocked(item.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
 
                 h += `
-                <div class="checklist-item draggable-item" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${originalIdx}'); event.dataTransfer.setData('type', 'checklist-item'); event.dataTransfer.setData('parentId', '${parentId}'); event.dataTransfer.setData('parentType', '${parentType}');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGlobalClDrop(event, this, '${parentType}', '${parentId}', ${originalIdx})" style="margin-left:25px;" data-id="${item.id}">
+                <div class="checklist-item draggable-item" draggable="false" data-parent-type="${parentType}" data-parent-id="${parentId}" style="margin-left:25px;" data-id="${item.id}">
                     <div class="cl-swipe-bg"><i class="fas fa-trash"></i></div>
                     <div class="cl-swipe-container" tabindex="-1">
                         <div class="cl-main-row" style="${lineThrough}">
@@ -3543,7 +3865,7 @@ function renderChecklists(c) {
         return h + `</div><button class="secondary" style="margin-top:10px; font-size:12px; margin-left:25px;" onclick="addGlobalCl('${parentType}', '${parentId}')"><i class="fas fa-plus"></i> ${t('add_point')}</button></div>`;
     };
 
-    const fStacks = getFilteredStacks(); const fTasks = getFilteredTasks(); let renderItems = [];
+    const fStacks = _onlyStacks ? getFilteredStacks() : []; const fTasks = _onlyStacks ? [] : getFilteredTasks(); let renderItems = [];
     fStacks.forEach(s => { let clMapped = (s.checklist || []).map((c, i) => { let copy = {...c}; copy._origIdx = i; return copy; }); const isDone = s.status === 'completed'; renderItems.push({ type: 'stack', obj: s, name: s.name, id: s.id, dueDate: s.dueDate||'', priority: 'medium', cl: clMapped, isDone: isDone, isPaused: s.status === 'paused', stackName: null, assigneeId: s.assigneeId }); });
     fTasks.forEach(t_obj => {
         let sName = null; if(t_obj.projectStackId) { const stack = appData.projectStacks.find(x => x.id === t_obj.projectStackId); if(stack) sName = stack.name; }
@@ -3567,7 +3889,7 @@ function renderChecklists(c) {
     else if (clSortKey === 'priority') { const pMap = { high: 3, medium: 2, low: 1 }; renderItems.sort((a,b) => (pMap[b.priority] || 0) - (pMap[a.priority] || 0)); }
 
     renderItems.forEach(item => { html += renderGroup(item.name, item.type, item.id, item.cl, item.isDone, item.isPaused, item.stackName, item.priority, item.dueDate, item.assigneeId); });
-    if(renderItems.length === 0 && !hasItems) { html += `<p style="color:var(--text-muted); margin-top:20px; text-align:center;">Keine Aufgaben oder Stacks gefunden.</p>`; }
+    if(renderItems.length === 0 && !hasItems) { html += `<p style="color:var(--text-muted); margin-top:20px; text-align:center;">${_onlyStacks ? t('milestones_empty') : t('checklists_empty')}</p>`; }
     c.innerHTML = html + `</div>`;
     updateDepDisplay();
 }
@@ -3655,7 +3977,9 @@ function renderKanban(c) {
         colDiv.dataset.statusId = col.id;           
         const colTitle = col.id === 'done' ? t('col_completed') : col.title;
         const colCount = col.id === 'done' ? appData.tasks.filter(t_obj => isTaskDone(t_obj) && kanbanPassesUserFilters(t_obj)).length : tasks.filter(t_obj => t_obj.status === col.id).length;
-        colDiv.innerHTML = `<div class="kanban-header"><span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${colCount}</span></div>`;
+        const _stColor = getStatusColor(col);
+        colDiv.style.setProperty('--col-color', _stColor);
+        colDiv.innerHTML = `<div class="kanban-header"><span class="kanban-col-dot" style="background:${_stColor}"></span><span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${colCount}</span></div>`;
         const cardsDiv = document.createElement('div'); cardsDiv.className = 'kanban-cards';
 
         if (col.id === 'done') {
@@ -3686,8 +4010,7 @@ function renderKanban(c) {
         }
         colTasks.forEach(task => { cardsDiv.appendChild(createTaskCard(task)); });
 
-        const quickAdd = document.createElement('div'); quickAdd.className = 'kanban-quick-add'; quickAdd.innerHTML = `<input type="text" placeholder="+ ${t('quick_add')}" onkeypress="if(event.key==='Enter') quickAddTask(this, '${col.id}')">`;
-        colDiv.appendChild(cardsDiv); colDiv.appendChild(quickAdd); board.appendChild(colDiv);
+        colDiv.appendChild(cardsDiv); board.appendChild(colDiv);
     });
     c.appendChild(board);
 }
@@ -3708,8 +4031,9 @@ function createTaskCard(task) {
         card.style.borderColor = 'color-mix(in srgb, var(--border-color) 85%, #000 15%)';
     }
     
-    card.draggable = true; 
-    card.ondragstart = (e) => { e.dataTransfer.setData('text/plain', task.id); e.dataTransfer.setData('type', 'task'); };
+    /* Kanban nutzt ausschliesslich den zeigerbasierten Mechanismus (Maus + Touch),
+       damit das Verhalten auf allen Geraeten identisch ist. */
+    card.draggable = false;
     card.ondblclick = () => openModal(task.id);
     
     card.ondragover = (e) => handleCardDragOver(e, card, !isCompleted); 
@@ -3882,14 +4206,18 @@ function renderStacks(c) {
         if(sLogs.length > 0) {
             const logAgg = {}; sLogs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
             const dates = Object.keys(logAgg).sort((a,b) => new Date(a) - new Date(b));
-            if(dates.length > 1) {
-                const maxH = Math.max(...Object.values(logAgg));
+            const maxH = Math.max(...Object.values(logAgg), 0.1);
+            let pathD = '';
+            if(dates.length === 1) {
+                const y = 35 - ((logAgg[dates[0]] / maxH) * 28);
+                pathD = `M 0 ${y} L 100 ${y}`;
+            } else {
                 const points = dates.map((d, i) => { return { x: (i / (dates.length - 1)) * 100, y: 35 - ((logAgg[d] / maxH) * 28) }; });
-                let pathD = `M ${points[0].x} ${points[0].y}`;
-                for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x} ${points[i].y}, ${xc} ${yc}`; }
+                pathD = `M ${points[0].x} ${points[0].y}`;
+                for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`; }
                 pathD += ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`;
-                chartHtml = `<div style="height:40px; width:100%; margin-top:5px; margin-bottom:10px; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="Aktivitätsverlauf (Zeiterfassung)"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;"><path d="${pathD} L 100 40 L 0 40 Z" fill="var(--primary-lightest)"/><path d="${pathD}" fill="none" stroke="var(--primary-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
             }
+            chartHtml = `<div style="height:40px; width:100%; margin-top:5px; margin-bottom:10px; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="Aktivitätsverlauf (Zeiterfassung)"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;"><path d="${pathD} L 100 40 L 0 40 Z" fill="rgba(204,163,0,0.15)"/><path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
         }
 
         let checklistHtml = '';
@@ -4018,7 +4346,15 @@ function renderList(c) {
     
     html += `</tr></thead><tbody>`;
     
-    const filteredTasks = getFilteredTasks(); const stacks = getFilteredStacks();
+    let filteredTasks = getFilteredTasks(); const stacks = getFilteredStacks();
+    /* Abgeschlossene Aufgaben mit zukünftigen, offenen Checkpunkten trotz Filter aufnehmen */
+    if(appData.settings.globalHideCompleted) {
+        const _todayIso = ttTodayIso();
+        const _extra = appData.tasks.filter(t_obj => isTaskDone(t_obj)
+            && !filteredTasks.some(ft => ft.id === t_obj.id)
+            && (t_obj.checklist || []).some(cl => !cl.done && (cl.dueDate || '').split('T')[0] >= _todayIso));
+        if(_extra.length) filteredTasks = filteredTasks.concat(_extra);
+    }
     let middleColSpan = 0; if(cols.stakeholder) middleColSpan++; if(cols.bucket) middleColSpan++; if(cols.status) middleColSpan++; if(cols.priority) middleColSpan++; if(cols.startDate) middleColSpan++; if(cols.dueDate) middleColSpan++; if(cols.recurrence) middleColSpan++;
     let endColSpan = 0; if(cols.timeSpent) endColSpan++; if(cols.progress) endColSpan++; if(cols.description) endColSpan++; if(cols.checklist) endColSpan++; if(cols.files) endColSpan++; if(cols.notes) endColSpan++;
 
@@ -4094,7 +4430,15 @@ function generateListRow(task, isIndented) {
 
     if(cols.progress) rHtml += `<td data-label="Fortschritt"><div style="display:flex; align-items:center; gap:8px;">${generateProgressBarHTML(progress)}<small style="min-width:25px; text-align:right;">${progress}%</small></div></td>`;
     if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-label="Notizen"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
-    if(cols.checklist) { const cl = task.checklist || []; const clDone = cl.filter(c=>c.done).length; rHtml += `<td data-label="Checkliste"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span></td>`; }
+    if(cols.checklist) { const cl = task.checklist || []; const clDone = cl.filter(c=>c.done).length;
+        let cpExtra = '';
+        /* Bei abgeschlossenen Aufgaben die offenen, zukünftigen Checkpunkte lesbar auflisten */
+        if(isTaskDone(task)) {
+            const _todayIso = ttTodayIso();
+            const futureCps = cl.filter(c => !c.done && (c.dueDate || '').split('T')[0] >= _todayIso);
+            if(futureCps.length) cpExtra = `<div style="margin-top:4px; display:flex; flex-direction:column; gap:2px;">` + futureCps.map(c => `<span style="font-size:11px; color:var(--text-main);"><i class="far fa-square" style="color:var(--primary-color); margin-right:4px;"></i>${escapeHtmlToday ? escapeHtmlToday(c.title) : c.title}${c.dueDate ? ` <span style="color:var(--text-muted);">(${(c.dueDate||'').split('T')[0]})</span>` : ''}</span>`).join('') + `</div>`;
+        }
+        rHtml += `<td data-label="Checkliste"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span>${cpExtra}</td>`; }
     if(cols.files) { const files = task.files || []; rHtml += `<td data-label="Dateien"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
     if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-label="Historie"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
     
@@ -4348,7 +4692,7 @@ function quickCompleteEvent(type, id, parentId) {
     saveToLocal(); safeRenderSchedule(); showToast(`"${changedName}" erledigt!`);
 }
 
-function quickTrackTime(taskId) {
+function quickTrackTime(taskId, noteText = '') {
     switchView('time');
     setTimeout(() => {
         const sel = document.getElementById('tt_task');
@@ -4368,6 +4712,7 @@ function quickTrackTime(taskId) {
         }
         const hrs = document.getElementById('tt_hours');
         if(hrs) { hrs.focus(); hrs.select(); }
+        if(noteText) { const noteEl = document.getElementById('tt_note'); if(noteEl) noteEl.value = noteText; }
     }, 120);
 }
 
@@ -4422,7 +4767,7 @@ function renderSchedule(c) {
         if(t_obj.checklist) t_obj.checklist.forEach(cl => { 
             let clMatchesUser = activeFilters.users.length === 0 || activeFilters.users.includes(cl.assigneeId || '');
             if(hideDone && cl.done) return;
-            if(cl.dueDate && (taskMatchesUser || clMatchesUser)) { pushSpanned(cl.dueDate, cl.dueDate, 'task-checklist', cl, t_obj); }
+            if(cl.dueDate && (taskMatchesUser || clMatchesUser)) { pushSpanned(cl.startDate || cl.dueDate, cl.dueDate, 'task-checklist', cl, t_obj); }
         });
     });
     
@@ -4441,6 +4786,20 @@ function renderSchedule(c) {
     });
 
     // Abwesenheiten (Urlaub, Krank, Feiertag, Kompensation) als Ereignisse mitführen
+    /* Abgeschlossene (herausgefilterte) Aufgaben: zukünftige, offene Checkpunkte trotzdem zeigen */
+    if(hideDone) {
+        const _todayIso = ttTodayIso();
+        appData.tasks.forEach(t_obj => {
+            if(!isTaskDone(t_obj)) return;
+            let taskMatchesUser = activeFilters.users.length === 0 || activeFilters.users.includes(t_obj.assigneeId || '');
+            if(!taskMatchesUser) return;
+            (t_obj.checklist || []).forEach(cl => {
+                if(cl.done) return;
+                const clDate = (cl.dueDate || '').split('T')[0];
+                if(clDate && clDate >= _todayIso) pushSpanned(cl.startDate || cl.dueDate, cl.dueDate, 'task-checklist', cl, t_obj);
+            });
+        });
+    }
     (appData.absences || []).forEach(a => {
         events.push({ date: ttParse(a.date), type: 'absence', data: a, parent: null, span: 'single' });
     });
@@ -4505,7 +4864,7 @@ function renderSchedule(c) {
                     if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                     else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                     else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
+                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openTaskToCheckpoint('${ev.parent.id}','${ev.data.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
                     
                     let spanText = '';
                     if(ev.span === 'start') spanText = '(Start)';
@@ -4610,7 +4969,7 @@ function renderSchedule(c) {
                 if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                 else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                 else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
+                else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openTaskToCheckpoint('${ev.parent.id}','${ev.data.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
 
                 let topPos = item.level * 50 + 10;
                 let timeLabel = `${formatTimeFromMinutes(item.evStartMins)} - ${formatTimeFromMinutes(item.evEndMins)}`;
@@ -4651,7 +5010,7 @@ function renderSchedule(c) {
                     if(ev.type === 'stack') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-folder"></i>'; title=ev.data.name; click=`openStackModal('${ev.data.id}')`; isComp = (ev.data.status === 'completed'); isPaused = ev.data.status === 'paused'; } 
                     else if(ev.type === 'milestone') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-flag"></i>'; title=ev.data.title; click=`openStackModal('${ev.parent.id}')`; isComp = (ev.data.done || ev.parent.status === 'completed'); isPaused = ev.parent.status === 'paused' && !isComp; } 
                     else if(ev.type === 'task') { color='var(--primary-color)'; bg='var(--primary-light)'; icon='<i class="fas fa-tasks"></i>'; title=ev.data.projectName; click=`openModal('${ev.data.id}')`; isComp = isTaskDone(ev.data); isPaused = ev.data.isPaused && !isComp; }
-                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openModal('${ev.parent.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
+                    else if(ev.type === 'task-checklist') { color='var(--primary-color)'; bg='var(--primary-lightest)'; icon='<i class="fas fa-check-square"></i>'; title=ev.data.title; click=`openTaskToCheckpoint('${ev.parent.id}','${ev.data.id}')`; isComp = (ev.data.done || isTaskDone(ev.parent)); isPaused = ev.parent.isPaused && !isComp; } else if(ev.type === 'absence') { const _ac = ABSENCE_TYPES[ev.data.type] || {}; color = ttAbsColor(ev.data.type); bg = 'color-mix(in srgb, ' + color + ' 16%, transparent)'; icon = '<i class="fas ' + (ttAbsIcon(ev.data.type)) + '"></i>'; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : ''); click = "switchView('time')"; }
                     
                     let actualStart = ev.data.startDate; let actualDue = ev.data.dueDate;
                     if(ev.type === 'milestone' || ev.type === 'task-checklist') { actualStart = null; actualDue = ev.data.dueDate ? ev.data.dueDate.split('T')[0] : null; }
@@ -4805,7 +5164,9 @@ function renderSchedule(c) {
             const actualStack = !isTaskType ? (ev.type === 'stack' ? ev.data : ev.parent) : null;
             if (!actualTask && !actualStack) return '';   /* Absturzschutz */
             
-            const isComp = isTaskType ? isTaskDone(actualTask) : (actualStack ? actualStack.status === 'completed' : false);
+            let isComp = isTaskType ? isTaskDone(actualTask) : (actualStack ? actualStack.status === 'completed' : false);
+            /* Checkpunkt einer abgeschlossenen Aufgabe: gilt nur als erledigt, wenn der Checkpunkt selbst erledigt ist */
+            if (ev.type === 'task-checklist') isComp = !!ev.data.done;
             if (hideDone && isComp) return '';
 
             const isPaused = isTaskType ? actualTask.isPaused : actualStack.status === 'paused';
@@ -5276,9 +5637,35 @@ function renderTimeline(c) {
         if(t_obj.checklist) t_obj.checklist.forEach((cl, idx) => { 
             let mMatchesUser = activeFilters.users.length === 0 || activeFilters.users.includes(cl.assigneeId || '');
             if(hideDone && cl.done) return;
-            if(cl.dueDate && mMatchesUser) items.push({ type: 'task-checklist', d: cl, taskId: t_obj.id, idx: idx, start: new Date(cl.dueDate.split('T')[0]), end: new Date(cl.dueDate.split('T')[0]), hasNoEnd: false, hasNoStart: false }); 
+            if(cl.dueDate && mMatchesUser) {
+                const _cs = cl.startDate ? new Date(cl.startDate.split('T')[0]) : new Date(cl.dueDate.split('T')[0]);
+                const _ce = new Date(cl.dueDate.split('T')[0]);
+                items.push({ type: 'task-checklist', d: cl, taskId: t_obj.id, idx: idx, start: _cs, end: _ce, hasNoEnd: false, hasNoStart: false });
+            }
         }); 
     });
+
+    /* Abgeschlossene (herausgefilterte) Aufgaben: zukünftige, offene Checkpunkte trotzdem zeigen */
+    if(hideDone) {
+        const _todayIso = ttTodayIso();
+        appData.tasks.forEach(t_obj => {
+            if(!isTaskDone(t_obj)) return;
+            let taskMatchesUser = activeFilters.users.length === 0 || activeFilters.users.includes(t_obj.assigneeId || '');
+            if(!taskMatchesUser) return;
+            const futureCps = (t_obj.checklist || []).map((cl, idx) => ({ cl, idx })).filter(x => !x.cl.done && (x.cl.dueDate || '').split('T')[0] >= _todayIso);
+            if(!futureCps.length) return;
+            /* Elternaufgabe als Zeile aufnehmen, damit die Checkpunkte darunter erscheinen (spannt über die Checkpunkt-Daten) */
+            const cpDates = futureCps.map(x => new Date((x.cl.dueDate || '').split('T')[0]));
+            const tStart = new Date(Math.min(...cpDates.map(d => d.getTime())));
+            const tEnd = new Date(Math.max(...cpDates.map(d => d.getTime())));
+            items.push({ type: 'task', d: t_obj, start: tStart, end: tEnd, _doneWithFutureCps: true });
+            futureCps.forEach(({ cl, idx }) => {
+                const clDate = (cl.dueDate || '').split('T')[0];
+                const _cs2 = cl.startDate ? new Date(cl.startDate.split('T')[0]) : new Date(clDate);
+                items.push({ type: 'task-checklist', d: cl, taskId: t_obj.id, idx: idx, start: _cs2, end: new Date(clDate) });
+            });
+        });
+    }
 
     items = applySort(items, timelineSortKey); unscheduledItems = applySort(unscheduledItems, timelineSortKey);
     
@@ -5358,7 +5745,8 @@ function renderTimeline(c) {
         else { width = ((item.end - item.start) / 86400000) * appData.settings.tlPixelsPerDay; if(isDiamond || width < 4) width = 4; }
 
         const finalStartX = item.hasNoStart ? 0 : startX; 
-        const entityId = item.type === 'milestone' ? item.d.id : (item.type === 'task-checklist' ? item.d.id : item.d.id);
+        const entityId = item.d.id;   /* eindeutige Kennung des Elements (für Positionen) */
+        const dragId = item.type === 'milestone' ? item.stackId : (item.type === 'task-checklist' ? item.taskId : item.d.id);   /* Eltern-ID fürs Ziehen */
         
         let dragHandles = '';
         let progressPct = 0;
@@ -5373,12 +5761,12 @@ function renderTimeline(c) {
 
         if(!isComp && !isDiamond) {
             dragHandles = `
-                <div class="gantt-resize-handle start" onmousedown="startTimelineDrag(event, '${item.type}', '${entityId}', 'start', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${entityId}', 'start', ${item.idx})"></div>
-                <div class="gantt-move-handle" onmousedown="startTimelineDrag(event, '${item.type}', '${entityId}', 'move', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${entityId}', 'move', ${item.idx})"></div>
-                <div class="gantt-resize-handle end" onmousedown="startTimelineDrag(event, '${item.type}', '${entityId}', 'end', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${entityId}', 'end', ${item.idx})"></div>
+                <div class="gantt-resize-handle start" onmousedown="startTimelineDrag(event, '${item.type}', '${dragId}', 'start', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${dragId}', 'start', ${item.idx})"></div>
+                <div class="gantt-move-handle" onmousedown="startTimelineDrag(event, '${item.type}', '${dragId}', 'move', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${dragId}', 'move', ${item.idx})"></div>
+                <div class="gantt-resize-handle end" onmousedown="startTimelineDrag(event, '${item.type}', '${dragId}', 'end', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${dragId}', 'end', ${item.idx})"></div>
             `;
         } else if(!isComp && isDiamond) {
-            dragHandles = `<div class="gantt-move-handle" style="inset:0;" onmousedown="startTimelineDrag(event, '${item.type}', '${entityId}', 'move', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${entityId}', 'move', ${item.idx})"></div>`;
+            dragHandles = `<div class="gantt-move-handle" style="inset:0;" onmousedown="startTimelineDrag(event, '${item.type}', '${dragId}', 'move', ${item.idx})" ontouchstart="startTimelineDrag(event, '${item.type}', '${dragId}', 'move', ${item.idx})"></div>`;
         }
 
         const yCenter = rowIndex * ROW_HEIGHT + (ROW_HEIGHT / 2);
@@ -5431,7 +5819,7 @@ function renderTimeline(c) {
             barsHtml += drawBar(t_obj, true, color, `openModal('${t_obj.d.id}')`, `<i class="fas fa-tasks" style="color:${color}; margin-right:5px;"></i> ${tPausedIcon}${t_obj.d.projectName}`, false, isTaskDone(t_obj.d)); 
 
             const tCl = items.filter(i => i.type === 'task-checklist' && i.taskId === t_obj.d.id);
-            tCl.forEach(cl => { barsHtml += drawBar(cl, true, color, `openModal('${t_obj.d.id}')`, `<i class="fas fa-check-square" style="margin-left:15px; margin-right:5px; color:${color}"></i> ${cl.d.title}`, true, isTaskDone(t_obj.d) || cl.d.done); });
+            tCl.forEach(cl => { barsHtml += drawBar(cl, true, color, `openTaskToCheckpoint('${t_obj.d.id}','${cl.d.id}')`, `<i class="fas fa-check-square" style="margin-left:15px; margin-right:5px; color:${color}"></i> ${cl.d.title}`, (cl.start && cl.end && cl.end - cl.start > 0) ? false : true, isTaskDone(t_obj.d) || cl.d.done); });
         });
     });
 
@@ -5441,7 +5829,7 @@ function renderTimeline(c) {
             const tPausedIcon = item.d.isPaused && !isTaskDone(item.d) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
             barsHtml += drawBar(item, false, color, `openModal('${item.d.id}')`, `<i class="fas fa-file" style="color:${color}; margin-right:5px;"></i> ${tPausedIcon}${item.d.projectName}`, false, isTaskDone(item.d)); 
             const tCl = items.filter(i => i.type === 'task-checklist' && i.taskId === item.d.id);
-            tCl.forEach(cl => { barsHtml += drawBar(cl, true, color, `openModal('${item.d.id}')`, `<i class="fas fa-check-square" style="margin-left:15px; margin-right:5px; color:${color}"></i> ${cl.d.title}`, true, isTaskDone(item.d) || cl.d.done); });
+            tCl.forEach(cl => { barsHtml += drawBar(cl, true, color, `openTaskToCheckpoint('${item.d.id}','${cl.d.id}')`, `<i class="fas fa-check-square" style="margin-left:15px; margin-right:5px; color:${color}"></i> ${cl.d.title}`, (cl.start && cl.end && cl.end - cl.start > 0) ? false : true, isTaskDone(item.d) || cl.d.done); });
         }
     });
     
@@ -6286,8 +6674,20 @@ function exportSingleStackJSON() {
     if(stack) exportSharedData([], [stack], `proman_stack_${stack.name.replace(/\s+/g, '_')}.json`);
 }
 
+function stripObsoleteThemeData(obj) {
+    /* Nicht mehr genutzte Theme-Informationen aus Backups entfernen */
+    if (!obj || typeof obj !== 'object') return obj;
+    delete obj.customTheme; delete obj.dark; delete obj.glass; delete obj.theme; delete obj.customThemeVars;
+    if (obj.settings && typeof obj.settings === 'object') {
+        delete obj.settings.customTheme; delete obj.settings.dark; delete obj.settings.glass;
+        delete obj.settings.theme; delete obj.settings.glassTheme;
+    }
+    return obj;
+}
+
 function exportJSON() { 
     let exportData = JSON.parse(JSON.stringify(appData));
+    stripObsoleteThemeData(exportData);
     exportData.tasks.forEach(t_obj => { if(t_obj.files) t_obj.files.forEach(f => { if(f.type === 'blob') { f.type = 'missing-blob'; delete f.data; } }); });
     triggerDownloadJSON(exportData, "proman_backup.json");
 }
@@ -6309,6 +6709,7 @@ function importJSON(event) {
                 if(imported.tasks) { imported.tasks.forEach(it => { const idx = appData.tasks.findIndex(t_obj => t_obj.id === it.id); if(idx > -1) appData.tasks[idx] = it; else appData.tasks.push(it); mergedTasks++; }); }
                 saveToLocal(true); showToast(`Geteilte Daten importiert: ${mergedTasks} Aufgaben, ${mergedStacks} Stacks aktualisiert.`); setTimeout(() => window.location.reload(), 1000);
             } else if(imported.tasks) { 
+                stripObsoleteThemeData(imported);
                 appData = imported; 
                 if(!appData.settings.views) { appData.settings.views = [...defaultViews]; }
                 if(!appData.settings.noteOrder) appData.settings.noteOrder = [];
@@ -6713,7 +7114,16 @@ function renderPresetsPanel() {
                             ${appData.stakeholders.map(sh => `<option value="${sh.id}" ${p.stakeholderId===sh.id?'selected':''}>${sh.name}</option>`).join('')}
                         </select>
                         <label>${t('view_checklists')}</label>
-                        <textarea class="preset-cl" rows="3" placeholder="${t('preset_cl_ph')}" onchange="updatePresetField('${kind}','${p.id}','checklist',this.value)">${(p.checklist||[]).join('\n')}</textarea>
+                        <div class="preset-cl-list" data-kind="${kind}" data-pid="${p.id}">
+                            ${_presetClNorm(p.checklist).map((ci, idx) => `<div class="preset-cl-row" data-idx="${idx}">
+                                <i class="fas fa-grip-vertical preset-cl-drag" title="Verschieben"></i>
+                                <input class="preset-cl-title" value="${(ci.title||'').replace(/"/g,'&quot;')}" placeholder="${t('preset_cl_item_ph')||'Checklistenpunkt'}" onchange="presetClSetTitle('${kind}','${p.id}',${idx},this.value)">
+                                <input class="preset-cl-dur" type="number" min="0" step="0.25" value="${ci.duration ? Math.round((ci.duration/60)*100)/100 : ''}" placeholder="0" title="${t('preset_cl_time_title')||'Zeit in Stunden (optional)'}" onchange="presetClSetDuration('${kind}','${p.id}',${idx},this.value)">
+                                <span class="preset-cl-unit">h</span>
+                                <button class="preset-mini danger" onclick="presetClRemove('${kind}','${p.id}',${idx})" title="${t('delete')}"><i class="fas fa-times"></i></button>
+                            </div>`).join('')}
+                        </div>
+                        <button class="preset-cl-add secondary" onclick="presetClAdd('${kind}','${p.id}')"><i class="fas fa-plus"></i> ${t('preset_cl_add')||'Punkt hinzufügen'}</button>
                         <label>${t('notes') || 'Notiz'}</label>
                         <textarea class="preset-note" rows="2" placeholder="${t('preset_note_ph')}" onchange="updatePresetField('${kind}','${p.id}','note',this.value)">${(p.note||'').replace(/</g,'&lt;')}</textarea>
                     </div>
@@ -6747,6 +7157,52 @@ function updatePresetField(kind, id, field, val) {
     if (field === 'checklist') p.checklist = val.split('\n').map(s => s.trim()).filter(Boolean);
     else p[field] = val;
     saveToLocal(true);
+}
+
+/* Preset-Checklist normalisieren: Einträge dürfen Strings ODER {title, duration} sein.
+   duration = Minuten (optional). */
+function _presetClNorm(cl) {
+    if (!Array.isArray(cl)) return [];
+    return cl.map(it => {
+        if (typeof it === 'string') return { title: it, duration: 0 };
+        return { title: (it && it.title) || '', duration: (it && Number(it.duration)) || 0 };
+    });
+}
+function presetClAdd(kind, id) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.checklist = _presetClNorm(p.checklist);
+    p.checklist.push({ title: '', duration: 0 });
+    saveToLocal(true); renderPresetsPanel();
+}
+function presetClRemove(kind, id, idx) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.checklist = _presetClNorm(p.checklist);
+    p.checklist.splice(idx, 1);
+    saveToLocal(true); renderPresetsPanel();
+}
+function presetClSetTitle(kind, id, idx, val) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.checklist = _presetClNorm(p.checklist);
+    if (p.checklist[idx]) p.checklist[idx].title = val;
+    saveToLocal(true);
+}
+function presetClSetDuration(kind, id, idx, hoursVal) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.checklist = _presetClNorm(p.checklist);
+    const h = parseFloat(hoursVal); const min = (isNaN(h) || h < 0) ? 0 : Math.round(h * 60);
+    if (p.checklist[idx]) p.checklist[idx].duration = min;
+    saveToLocal(true);
+}
+/* Checklistenpunkt eines Presets an eine neue Position verschieben */
+function presetClMove(kind, id, fromIdx, toIdx) {
+    const p = _presetList(kind).find(x => x.id === id); if (!p) return;
+    p.checklist = _presetClNorm(p.checklist);
+    if (fromIdx < 0 || fromIdx >= p.checklist.length) return;
+    let to = Math.max(0, Math.min(p.checklist.length - 1, toIdx));
+    if (to === fromIdx) return;
+    const [mv] = p.checklist.splice(fromIdx, 1);
+    p.checklist.splice(to, 0, mv);
+    saveToLocal(true); renderPresetsPanel();
 }
 
 function setDefaultPreset(kind, id) {
@@ -6789,7 +7245,7 @@ function applyPresetToForm(kind, presetId) {
         if (p.note) { const rte = document.getElementById('t_desc_rte'); if (rte) rte.innerHTML = p.note.replace(/\n/g, '<br>'); }
         if (p.checklist && p.checklist.length) {
             const container = document.getElementById('t_checklist_container');
-            if (container) { container.innerHTML = ''; p.checklist.forEach(title => { const nid = generateId(); renderTaskChecklistItem(container, title, false, '', '', nid); }); }
+            if (container) { container.innerHTML = ''; _presetClNorm(p.checklist).forEach(ci => { const nid = generateId(); renderTaskChecklistItem(container, ci.title, false, '', '', nid, '', ci.duration || null); }); }
         }
     } else {
         if (p.stakeholderId) { const el = document.getElementById('s_stakeholder'); if (el) el.value = p.stakeholderId; }
@@ -6799,10 +7255,10 @@ function applyPresetToForm(kind, presetId) {
             const scont = document.getElementById('s_checklist_container');
             if (scont) {
                 scont.innerHTML = '';
-                p.checklist.forEach(title => {
+                _presetClNorm(p.checklist).forEach(ci => {
                     const div = document.createElement('div'); div.className = 'checklist-item';
                     const nid = generateId(); div.setAttribute('data-id', nid);
-                    div.innerHTML = buildChecklistItemHTML(title, false, '', '', nid);
+                    div.innerHTML = buildChecklistItemHTML(ci.title, false, '', '', nid, '', ci.duration || null);
                     addModalClDragHandlers(div); scont.appendChild(div);
                 });
             }
@@ -7131,12 +7587,16 @@ function renderToday(c) {
             if (ms.dueDate && !ms.done) dueItems.push({ kind: 'milestone', obj: ms, parent: s, dueDate: ms.dueDate });
         });
     });
+    /* Geplante Abwesenheiten (Urlaub, Krank, Feiertag, Kompensation) als eigene Einträge */
+    (appData.absences || []).forEach(a => {
+        if (a.date) dueItems.push({ kind: 'absence', obj: a, dueDate: a.date });
+    });
     const _dateOf = (it) => (it.dueDate || '').split('T')[0];
 
     const all = appData.tasks.filter(t => !isTaskDone(t));
-    const overdue = dueItems.filter(it => _dateOf(it) < todayIso)
+    const overdue = dueItems.filter(it => it.kind !== 'absence' && _dateOf(it) < todayIso)
                        .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
-    const dueToday = dueItems.filter(it => _dateOf(it) === todayIso);
+    const dueToday = dueItems.filter(it => it.kind !== 'absence' && _dateOf(it) === todayIso);
     /* Wochengrenzen für „Diese Woche" / „Nächste Woche" */
     const _todayD = ttParse(todayIso); const _dowT = (_todayD.getDay() + 6) % 7; /* Mo=0 */
     const endThisWeekIso = ttShiftIso(todayIso, 6 - _dowT);       /* bis Sonntag dieser Woche */
@@ -7144,6 +7604,8 @@ function renderToday(c) {
     const soon = dueItems.filter(it => _dateOf(it) > todayIso && _dateOf(it) <= endThisWeekIso)
                     .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
     const nextWeek = dueItems.filter(it => _dateOf(it) > endThisWeekIso && _dateOf(it) <= endNextWeekIso)
+                    .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
+    const later = dueItems.filter(it => _dateOf(it) > endNextWeekIso)
                     .sort((a,b) => _dateOf(a).localeCompare(_dateOf(b)));
 
     const running = (typeof activeTimers === 'object' && activeTimers)
@@ -7178,9 +7640,24 @@ function renderToday(c) {
     const weekStartMs = ttParse(weekStartIso).getTime();
     appData.tasks.forEach(t => { if (isTaskDone(t) && t.completedAt && t.completedAt >= weekStartMs) doneThisWeek++; });
     let weekSoll = 0, weekIst = 0;
-    for (let i = 0; i <= _dow; i++) { const iso = ttShiftIso(weekStartIso, i); const di = ttDayInfo(iso); weekSoll += di.target; weekIst += di.total; }
+    for (let i = 0; i <= 6; i++) { const iso = ttShiftIso(weekStartIso, i); const di = ttDayInfo(iso); weekSoll += di.target; weekIst += di.total; }
     const weekPct = weekSoll ? Math.min(100, Math.round(weekIst / weekSoll * 100)) : 0;
     const openCount = overdue.length + dueToday.length + soon.length;
+
+    /* Bisher vergangene Arbeitszeit heute: vom Arbeitsbeginn bis jetzt, gedeckelt auf das Tagessoll. */
+    const _target = info.target || ttTargetHours();
+    let _elapsed = 0;
+    {
+        const startStr = appData.settings.timeTrackFrom || '08:00';
+        const m = /^(\d{1,2}):(\d{2})$/.exec(startStr);
+        const startH = m ? (parseInt(m[1], 10) + parseInt(m[2], 10) / 60) : 8;
+        const nowH = _now.getHours() + _now.getMinutes() / 60;
+        _elapsed = Math.max(0, Math.min(_target, nowH - startH));
+    }
+    const _booked = info.total || 0;
+    const _openToTarget = Math.max(0, _target - _booked);   /* noch offen bis zum Tagessoll */
+    const _elapsedPct = _target ? Math.min(100, Math.round(_elapsed / _target * 100)) : 0;
+    const _bookedPct = _target ? Math.min(100, Math.round(_booked / _target * 100)) : 0;
 
     let html = `<div class="wk-today">`;
 
@@ -7190,13 +7667,16 @@ function renderToday(c) {
         <div class="wk-hero-left">
             <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
             <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
-            <div class="wk-hero-track"><i style="width:${pct}%"></i></div>
+            <div class="wk-hero-track" title="${ttNum(_booked)} h gebucht · ${ttNum(_elapsed)} h vergangen · Soll ${ttNum(_target)} h">
+                <span class="wk-elapsed" style="width:${_elapsedPct}%"></span>
+                <i class="wk-booked" style="width:${_bookedPct}%"></i>
+                <span class="wk-track-label">${ttNum(_openToTarget)} von ${ttNum(_target)} h offen</span>
+            </div>
             <p class="wk-hero-note">${info.missing > 0.01
                 ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
                 : t('today_complete').replace('{n}', overdue.length + dueToday.length)}</p>
             <div class="wk-hero-acts">
                 <button class="wk-hero-cta" onclick="switchView('time')"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
-                <button class="wk-hero-ghost" onclick="openModal()"><i class="fas fa-plus"></i> ${t('new_task')}</button>
             </div>
         </div>
         <div class="wk-hero-stats">
@@ -7218,23 +7698,28 @@ function renderToday(c) {
         </div>
     </section>`;
 
-    /* ── Buchungen der letzten 7 Tage nach Bucket (farblich) ── */
-    const bucketPalette = ['#cca300', '#22262B', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#B96A2B'];
-    const sevenAgo = ttParse(ttShiftIso(todayIso, -6));
+    /* ── Buchungen der AKTUELLEN WOCHE nach Bucket (farblich) ── */
+    const _bkWeekStart = weekStartIso;                        /* Montag dieser Woche (bereits berechnet) */
+    const _bkWeekEnd = ttShiftIso(_bkWeekStart, 6);           /* Sonntag dieser Woche */
     const bucketHours = {};
     (appData.timeLogs || []).forEach(l => {
         if (!l.date) return;
-        const d = ttParse(l.date); if (d < sevenAgo) return;
+        const di = (l.date || '').split('T')[0];
+        if (di < _bkWeekStart || di > _bkWeekEnd) return;
         const task = appData.tasks.find(x => x.id === l.taskId);
         const bk = (task && task.bucket) ? task.bucket : t('no_bucket');
         bucketHours[bk] = (bucketHours[bk] || 0) + (parseFloat(l.hours) || 0);
     });
-    const bucketRows = Object.keys(bucketHours).map((bk, i) => ({ name: bk, hours: bucketHours[bk], col: '#cca300' }))
+    const bucketRows = Object.keys(bucketHours).map((bk) => ({ name: bk, hours: bucketHours[bk], col: getBucketColor(bk) }))
         .filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours);
     const maxBk = Math.max(1, ...bucketRows.map(r => r.hours));
+    const bucketTotal = bucketRows.reduce((s, r) => s + r.hours, 0);
     const trendBars = bucketRows.length
         ? bucketRows.map(r => `<div class="wk-tr-col" title="${escapeHtmlToday(r.name)}: ${ttNum(r.hours)} h"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.round(r.hours / maxBk * 100)}%;background:${r.col}"></span></div><u title="${escapeHtmlToday(r.name)}">${escapeHtmlToday(r.name.length > 6 ? r.name.slice(0,6)+'…' : r.name)}</u></div>`).join('')
         : `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
+    const trendLegend = bucketRows.length
+        ? `<div class="wk-trend-legend">${bucketRows.map(r => `<span><i style="background:${r.col}"></i>${escapeHtmlToday(r.name)}: <b>${ttNum(r.hours)} h</b></span>`).join('')}</div>`
+        : '';
 
     /* Statusverteilung */
     const byStatus = { todo:0, inProgress:0, review:0 };
@@ -7249,8 +7734,9 @@ function renderToday(c) {
 
     html += `<section class="wk-graphs">
         <div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('today_trend')}</b><u>${t('today_last7')}</u></div>
+            <div class="wk-graph-h"><b>${t('today_trend')}</b><u>${t('today_this_week')}</u></div>
             <div class="wk-trend">${trendBars}</div>
+            ${trendLegend}
         </div>
         <div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('today_status_dist')}</b><u>${stTot} ${t('today_open')}</u></div>
@@ -7289,6 +7775,10 @@ function renderToday(c) {
     if (nextWeek.length) {
         html += `<div class="wk-strip-h"><b>${t('today_next_week')}</b><span class="wk-count">${nextWeek.length}</span><span class="wk-rule"></span></div>
         <div class="wk-today-list" id="wkTodayNext"></div>`;
+    }
+    if (later.length) {
+        html += `<div class="wk-strip-h"><b>${t('today_later')}</b><span class="wk-count">${later.length}</span><span class="wk-rule"></span></div>
+        <div class="wk-today-list" id="wkTodayLater"></div>`;
     }
     html += `</div>`; /* /wk-today-main */
 
@@ -7343,30 +7833,73 @@ function renderToday(c) {
     fill('wkTodayUrgent', urgent);
     fill('wkTodaySoon', soon);
     fill('wkTodayNext', nextWeek);
+    fill('wkTodayLater', later);
 }
 
 /* Mini-Karte für Stacks, Meilensteine und Checkpunkte in der Heute-Ansicht */
 function createTodayItemCard(it) {
     const card = document.createElement('div');
     card.className = 'task-card wk-today-item';
+
+    /* Abwesenheiten eigens darstellen */
+    if (it.kind === 'absence') {
+        const a = it.obj;
+        const col = ttAbsColor(a.type);
+        card.classList.add('wk-today-absence');
+        card.style.setProperty('--card-strip', col);
+        card.style.cursor = 'pointer';
+        card.onclick = () => { try { switchView('time'); } catch(e){} };
+        const dueStr = (it.dueDate || '').split('T')[0];
+        card.innerHTML = `<div class="wk-card">
+            <div class="wk-card-top">
+                <div class="wk-card-tags">
+                    <span class="wk-c-kind" style="color:${col}"><i class="fas ${ttAbsIcon(a.type)}"></i> ${ttAbsLabel(a.type)}</span>
+                </div>
+            </div>
+            ${a.note ? `<div class="task-title">${escapeHtmlToday(a.note)}</div>` : ''}
+            <div class="wk-card-foot">
+                <div class="wk-card-foot-l"><span class="wk-c-due"><i class="far fa-calendar-alt"></i> ${dueStr}</span></div>
+                <div class="wk-card-foot-r"><span class="wk-c-hours">${ttNum(a.hours)} h</span></div>
+            </div>
+        </div>`;
+        return card;
+    }
+
     const parentId = it.parent ? it.parent.id : '';
+    /* Streifenfarbe einer Aufgabe wie in createTaskCard herleiten (Stakeholder, sonst Priorität) */
+    /* Streifenfarbe = Farbe der Kanban-Spalte, in der die Aufgabe steht */
+    const STATUS_STRIP = { todo:'#B9BFB6', inProgress:'#0F5FDC', review:'#E8A317', done:'#1F9463' };
+    const taskStripColor = (tk) => {
+        if (!tk) return 'var(--border-color)';
+        return STATUS_STRIP[tk.status] || 'var(--border-color)';
+    };
     const meta = {
-        stack:      { ic: 'fa-folder',       label: 'Stack',              strip: 'var(--primary-color)', click: `openStackModal('${it.obj.id}')` },
-        milestone:  { ic: 'fa-flag',         label: t('milestones'),      strip: '#E8A317',              click: `openStackModal('${parentId}')` },
-        checkpoint: { ic: 'fa-check-square', label: t('view_checklists'), strip: '#7C6CE0',              click: `openModal('${parentId}')` }
+        stack:      { ic: 'fa-folder',       label: 'Stack',              strip: (it.obj && it.obj.color) ? it.obj.color : 'var(--primary-color)', click: `openStackModal('${it.obj.id}')` },
+        milestone:  { ic: 'fa-flag',         label: t('milestones'),      strip: (it.parent && it.parent.color) ? it.parent.color : '#E8A317', click: `openStackModal('${parentId}')` },
+        checkpoint: { ic: 'fa-check-square', label: t('view_checklists'), strip: taskStripColor(it.parent), click: `openTaskToCheckpoint('${parentId}','${it.obj.id}')` }
     }[it.kind];
     card.style.setProperty('--card-strip', meta.strip);
+    if (it.kind === 'checkpoint') card.classList.add('wk-cp-striped');   /* schräges Muster überlagert den Streifen */
     card.style.cursor = 'pointer';
     card.onclick = () => { try { eval(meta.click); } catch(e){} };
     const name = it.obj.name || it.obj.title || it.obj.projectName || 'Unbenannt';
     const parentName = it.parent ? (it.parent.name || it.parent.projectName || '') : '';
     const dueStr = (it.dueDate || '').split('T')[0];
+    let cpActions = '';
+    if (it.kind === 'checkpoint' && it.parent) {
+        const _idx = (it.parent.checklist || []).findIndex(c => c.id === it.obj.id);
+        cpActions = `<div class="wk-card-actions">
+            <button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${it.parent.id}', decodeURIComponent('${encodeURIComponent(it.obj.title||'')}'))" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>
+            <button class="secondary icon-btn wk-cp-complete" onclick="event.stopPropagation(); updateGlobalCl('task','${it.parent.id}',${_idx},'done',true); renderView();" title="${t('mark_done') || 'Abschließen'}"><i class="fas fa-check"></i></button>
+        </div>`;
+    }
     card.innerHTML = `<div class="wk-card">
         <div class="wk-card-top">
             <div class="wk-card-tags">
                 <span class="wk-c-kind"><i class="fas ${meta.ic}"></i> ${meta.label}</span>
                 ${parentName ? `<span class="wk-c-parent">${escapeHtmlToday(parentName)}</span>` : ''}
             </div>
+            ${cpActions}
         </div>
         <div class="task-title">${escapeHtmlToday(name)}</div>
         <div class="wk-card-foot">
@@ -7414,3 +7947,1159 @@ function ttHeuteBook(iso){
     }, 120);
 }
 
+
+
+/* ═══════════════════════════════════════════════════════════════
+   SHELL (ehemals shell.js, hier zusammengeführt) — neue Wegführung
+   als Schicht über der bestehenden App. Läuft als eigene IIFE.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════
+   shell.js — Neue Wegführung als Schicht über der bestehenden App
+
+   Ändert KEINE Zeichenlogik. Die Datei baut nur die Schiene, die
+   Tableiste und die Linsenschiene und leitet Klicks an das
+   vorhandene switchView() weiter. Alle 30 Render-Funktionen,
+   Workflows, Benachrichtigungen, Drag & Drop usw. bleiben,
+   wie sie sind.
+   ══════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  /* ── Orte und ihre Linsen ─────────────────────────────────────
+     Kanban, Liste, Stacks, Kalender und Gantt sind keine fünf
+     Bereiche, sondern fünf Formen derselben Aufgaben. Deshalb
+     liegen sie als Linsen unter einem Ort.                      */
+  const PLACES = [
+    { k: 'today', label: 'Hub', icon: 'fa-sun', lenses: [
+        { v: 'today', l: 'Hub', i: 'fa-sun' }
+    ]},
+    { k: 'arbeit', label: 'Arbeit', icon: 'fa-columns', lenses: [
+        { v: 'kanban',   l: 'Board',    i: 'fa-columns' },
+        { v: 'list',     l: 'Liste',    i: 'fa-list' },
+        { v: 'stacks',   l: 'Stapel',   i: 'fa-folder-open' },
+        { v: 'schedule', l: 'Kalender', i: 'fa-calendar-alt' },
+        { v: 'timeline', l: 'Gantt',    i: 'fa-stream' }
+    ]},
+    { k: 'wissen', label: 'Wissen', icon: 'fa-sticky-note', lenses: [
+        { v: 'notes',      l: 'Notizen',     i: 'fa-sticky-note' },
+        { v: 'checklists', l: 'Checklisten', i: 'fa-check-square' },
+        { v: 'milestones', l: 'Milestones',  i: 'fa-flag' }
+    ]},
+    { k: 'verwaltung', label: 'Verwaltung', icon: 'fa-sliders-h', lenses: [
+        { v: 'stakeholder',  l: 'Stakeholder',    i: 'fa-users' },
+        { v: 'buckets',      l: 'Buckets',        i: 'fa-box-open' },
+        { v: 'dependencies', l: 'Abhängigkeiten', i: 'fa-project-diagram' }
+    ]},
+    { k: 'zeit', label: 'Zeit', icon: 'fa-clock', lenses: [
+        { v: 'time', l: 'Zeitkonto', i: 'fa-clock' }
+    ]}
+  ];
+
+  /* Rückweg: welche Ansicht gehört zu welchem Ort */
+  const VIEW2PLACE = {};
+  PLACES.forEach(p => p.lenses.forEach(l => { VIEW2PLACE[l.v] = p.k; }));
+  VIEW2PLACE.planner = 'arbeit';
+
+  const state = { place: 'today', lastLens: {} };
+  PLACES.forEach(p => { state.lastLens[p.k] = p.lenses[0].v; });
+
+  const $ = s => document.querySelector(s);
+
+  /* Beschriftung: eigene Namen aus den Einstellungen haben Vorrang,
+     sonst die Übersetzung, sonst der Rückfallwert aus dieser Datei. */
+  function lensLabel(l) {
+    try {
+      const v = (appData.settings.views || []).find(x => x.id === l.v);
+      const def = (typeof defaultViews !== 'undefined') ? defaultViews.find(d => d.id === l.v) : null;
+      if (v && def && v.name !== def.name) return v.name;
+      const tr = t('view_' + l.v);
+      if (tr && tr !== 'view_' + l.v) return tr;
+    } catch (e) {}
+    return l.l;
+  }
+  function placeLabel(p) {
+    try { const tr = t('wk_place_' + p.k); if (tr && tr !== 'wk_place_' + p.k) return tr; } catch (e) {}
+    return p.label;
+  }
+
+  /* ── Aufbau ─────────────────────────────────────────────────── */
+  function build() {
+    if ($('.wk-rail')) return;
+
+    /* Schiene links (Tablet, Desktop) */
+    const rail = document.createElement('nav');
+    rail.className = 'wk-rail';
+    rail.setAttribute('aria-label', 'Bereiche');
+    rail.innerHTML =
+      `<span class="wk-logo" aria-hidden="true">pm</span>` +
+      PLACES.map(p => `<button class="wk-rail-item" data-wkplace="${p.k}">
+          <i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('') +
+      `<span class="wk-spacer"></span>
+       <button class="wk-rail-new" id="wkRailNew" title="Neu anlegen" aria-label="Neu anlegen"><i class="fas fa-plus"></i></button>
+       <button class="wk-rail-export" id="wkRailExport" title="Export & Backup" aria-label="Export & Backup"><i class="fas fa-file-export"></i></button>`;
+    document.body.insertBefore(rail, document.body.firstChild);
+
+    /* Linsenschiene unter der Kopfzeile */
+    const lensrail = document.createElement('div');
+    lensrail.className = 'wk-lensrail';
+    lensrail.id = 'wkLensrail';
+    lensrail.setAttribute('role', 'tablist');
+    lensrail.setAttribute('aria-label', 'Darstellung');
+    const container = $('#mainContainer');
+    container.parentNode.insertBefore(lensrail, container);
+
+    /* Tableiste unten (Telefon) */
+    const tabbar = document.createElement('nav');
+    tabbar.className = 'wk-tabbar';
+    tabbar.setAttribute('aria-label', 'Bereiche');
+    tabbar.innerHTML = PLACES.map(p => `<button class="wk-tab" data-wkplace="${p.k}">
+        <span class="wk-tab-ind"></span><i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('');
+    document.body.appendChild(tabbar);
+
+    /* Namenskürzel in der Kopfzeile — öffnet die Einstellungen.
+       Auf dem Telefon der einzige Weg dorthin, deshalb immer sichtbar. */
+    const bar = document.querySelector('.topbar-actions');
+    if (bar && !document.getElementById('wkUserChip')) {
+      /* Export & Backup — nur auf Tablet/Telefon, links neben dem Profil-Kürzel.
+         Auf dem Desktop bleibt der vorhandene Topbar-Knopf, dieser hier ist ausgeblendet. */
+      if (!document.getElementById('wkExportChip')) {
+        const exp = document.createElement('button');
+        exp.className = 'wk-userchip wk-exportchip';
+        exp.id = 'wkExportChip';
+        exp.title = 'Export & Backup';
+        exp.setAttribute('aria-label', 'Export & Backup');
+        exp.innerHTML = '<i class="fas fa-file-export"></i>';
+        exp.onclick = function () { if (typeof openMobileExportMenu === 'function') openMobileExportMenu(); };
+        bar.appendChild(exp);
+      }
+      const chip = document.createElement('button');
+      chip.className = 'wk-userchip';
+      chip.id = 'wkUserChip';
+      chip.title = 'Profil & Einstellungen';
+      chip.setAttribute('aria-label', 'Profil & Einstellungen');
+      chip.onclick = function () { openSettings(); };
+      bar.appendChild(chip);
+    }
+
+    /* Aktionsknopf: eine kurze Auswahl zwischen Aufgabe und Stapel */
+    const fabMenu = document.createElement('div');
+    fabMenu.className = 'wk-fab-menu';
+    fabMenu.id = 'wkFabMenu';
+    fabMenu.innerHTML =
+      `<button class="wk-fab-opt" data-wknew="task"><i class="fas fa-tasks"></i><span>${labelNewTask()}</span></button>
+       <button class="wk-fab-opt" data-wknew="stack"><i class="fas fa-folder-plus"></i><span>${labelNewStack()}</span></button>`;
+    document.body.appendChild(fabMenu);
+
+    const fabScrim = document.createElement('div');
+    fabScrim.className = 'wk-fab-scrim';
+    fabScrim.id = 'wkFabScrim';
+    document.body.appendChild(fabScrim);
+
+    /* Klicks auf Orte, Linsen und den Aktionsknopf */
+    document.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-wkplace]');
+      if (b) { closeFab(); goPlace(b.dataset.wkplace); return; }
+      const l = ev.target.closest('[data-wklens]');
+      if (l) { switchView(l.dataset.wklens); return; }
+
+      const fab = ev.target.closest('#wkFab, .mobile-fab, #wkRailNew');
+      if (fab) { ev.preventDefault(); ev.stopPropagation(); toggleFab(); return; }
+      const opt = ev.target.closest('[data-wknew]');
+      if (opt) {
+        closeFab();
+        if (opt.dataset.wknew === 'task') openModal(); else openStackModal();
+        return;
+      }
+      if (!ev.target.closest('#wkFabMenu')) closeFab();
+    });
+
+    /* Zieh-Rückmeldung: hebt die gezogene Karte sichtbar ab,
+       ohne in die vorhandenen Drag-Handler einzugreifen. */
+    document.addEventListener('dragstart', ev => {
+      const card = ev.target.closest && ev.target.closest('.task-card, .draggable-item');
+      if (card) card.classList.add('dragging');
+    }, true);
+    document.addEventListener('dragend', ev => {
+      document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    }, true);
+
+    /* Export-Menü aus der Kopfzeile ans untere Ende der Schiene versetzen */
+    const exp = document.getElementById('exportDropdown');
+    const railExport = document.getElementById('wkRailExport');
+    if (exp && railExport) {
+      const menu = exp.querySelector('.dropdown-content');
+      if (menu) {
+        menu.classList.add('wk-rail-menu');
+        document.body.appendChild(menu);           /* aus dem Kopf lösen */
+        exp.style.display = 'none';                 /* alten Auslöser verbergen */
+        railExport.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const open = menu.classList.toggle('wk-open');
+          if (open) {
+            const r = railExport.getBoundingClientRect();
+            menu.style.left = (r.right + 8) + 'px';
+            menu.style.bottom = (window.innerHeight - r.bottom) + 'px';
+            menu.style.top = 'auto'; menu.style.right = 'auto';
+          }
+        });
+        document.addEventListener('click', ev => {
+          if (!ev.target.closest('.wk-rail-menu') && !ev.target.closest('#wkRailExport'))
+            menu.classList.remove('wk-open');
+        });
+        /* nach Auswahl schliessen */
+        menu.addEventListener('click', () => setTimeout(() => menu.classList.remove('wk-open'), 50));
+      }
+    }
+
+    window.addEventListener('resize', moveMagnet);
+  }
+
+  function goPlace(key) {
+    state.place = key;
+    switchView(state.lastLens[key]);
+  }
+
+  /* ── Abgleich nach jedem Ansichtswechsel ────────────────────── */
+  function sync() {
+    let view = (typeof currentView !== 'undefined') ? currentView : 'kanban';
+    if (view === 'planner') view = (typeof plannerSubView !== 'undefined' ? plannerSubView : 'schedule');
+
+    const place = VIEW2PLACE[view] || state.place;
+    state.place = place;
+    state.lastLens[place] = view;
+
+    document.querySelectorAll('[data-wkplace]').forEach(b => {
+      const on = b.dataset.wkplace === place;
+      on ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current');
+    });
+
+    const p = PLACES.find(x => x.k === place);
+    const rail = $('#wkLensrail');
+    if (rail && p) {
+      /* Eine einzelne Linse braucht keine Schiene */
+      if (p.lenses.length < 2) { rail.hidden = true; rail.innerHTML = ''; }
+      else {
+        rail.hidden = false;
+        rail.innerHTML = `<span class="wk-magnet" id="wkMagnet"></span>` + p.lenses.map(l =>
+          `<button class="wk-lens" role="tab" data-wklens="${l.v}" aria-selected="${l.v === view}">
+             <i class="fas ${l.i}"></i>${lensLabel(l)}</button>`).join('');
+        requestAnimationFrame(moveMagnet);
+      }
+    }
+
+    /* Benutzerzeichen in Schiene und Kopfzeile spiegeln */
+    const src = $('#active_user_icon');
+    const initials = (() => {
+      try {
+        const u = (appData.users || []).find(u => u.id === appData.settings.currentUserId);
+        if (u && u.name) return u.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      } catch (e) {}
+      const txt = src ? (src.textContent || '').trim() : '';
+      return txt ? txt.slice(0, 2).toUpperCase() : 'PM';
+    })();
+    const railU = $('#wkRailUser'); if (railU) railU.textContent = initials;
+    const chipU = $('#wkUserChip'); if (chipU) chipU.textContent = initials;
+  }
+
+  function moveMagnet() {
+    const rail = $('#wkLensrail'); if (!rail || rail.hidden) return;
+    const act = rail.querySelector('[aria-selected="true"]'), mag = $('#wkMagnet');
+    if (!act || !mag) return;
+    mag.style.width = act.offsetWidth + 'px';
+    mag.style.transform = 'translateX(' + (act.offsetLeft - 5) + 'px)';
+  }
+
+  /* ── Magnetstreifen einfärben ────────────────────────────────
+     Die Karten selbst werden weiterhin von createTaskCard()
+     gebaut. Hier wird nur nachträglich die Streifenfarbe nach
+     Status gesetzt — kein Eingriff in die Zeichenlogik.       */
+  const STRIP = { todo:'#B9BFB6', inProgress:'#0F5FDC', review:'#E8A317', done:'#1F9463' };
+
+  function paintCards() {
+    if (typeof appData === 'undefined' || !appData.tasks) return;
+    document.querySelectorAll('.task-card[data-id]').forEach(el => {
+      const task = appData.tasks.find(x => x.id === el.dataset.id);
+      if (!task) return;
+      const c = STRIP[task.status] || (el.classList.contains('is-completed') ? STRIP.done : STRIP.todo);
+      el.style.setProperty('--card-strip', task.isPaused ? '#8A939E' : c);
+    });
+  }
+
+  /* Nach jedem Neuzeichnen der Fläche nachfärben */
+  function watch() {
+    const c = document.getElementById('mainContainer');
+    if (!c || !window.MutationObserver) return;
+    let pending = null;
+    new MutationObserver(() => {
+      clearTimeout(pending);
+      pending = setTimeout(paintCards, 30);
+    }).observe(c, { childList: true, subtree: true });
+  }
+
+  /* Beschriftungen nach einem Sprachwechsel auffrischen */
+  function relabel() {
+    document.querySelectorAll('[data-wkplace] small').forEach(el => {
+      const p = PLACES.find(x => x.k === el.closest('[data-wkplace]').dataset.wkplace);
+      if (p) el.textContent = placeLabel(p);
+    });
+    sync();
+  }
+
+  /* ── switchView umhüllen, ohne es zu ersetzen ───────────────── */
+  function hook() {
+    if (typeof window.switchView !== 'function' || window.switchView.__wk) return false;
+    const inner = window.switchView;
+    const wrapped = function () {
+      const r = inner.apply(this, arguments);
+      try { sync(); } catch (e) { console.warn('[shell] sync', e); }
+      return r;
+    };
+    wrapped.__wk = true;
+    window.switchView = wrapped;
+
+    /* Sprachwechsel: applyTranslations() zeichnet die alte Sidebar neu,
+       die neue Schiene muss mitziehen. */
+    if (typeof window.applyTranslations === 'function' && !window.applyTranslations.__wk) {
+      const innerT = window.applyTranslations;
+      const wrappedT = function () {
+        const r = innerT.apply(this, arguments);
+        try { relabel(); } catch (e) { console.warn('[shell] relabel', e); }
+        return r;
+      };
+      wrappedT.__wk = true;
+      window.applyTranslations = wrappedT;
+    }
+    return true;
+  }
+
+  function start() {
+    if (!document.getElementById('mainContainer')) { setTimeout(start, 60); return; }
+    build();
+    hook();
+    watch();
+    /* Heute ist die Startseite */
+    try { switchView('today'); } catch (e) {}
+    sync();
+    paintCards();
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 0));
+  else setTimeout(start, 0);
+
+  function labelNewTask() { try { const v = t('new_task'); if (v && v !== 'new_task') return v; } catch(e){} return 'Neue Aufgabe'; }
+  function labelNewStack() { try { const v = t('new_stack'); if (v && v !== 'new_stack') return v; } catch(e){} return 'Neuer Stapel'; }
+
+  function toggleFab() {
+    const m = document.getElementById('wkFabMenu');
+    if (!m) return;
+    m.classList.contains('on') ? closeFab() : openFab();
+  }
+  function openFab() {
+    document.getElementById('wkFabMenu').classList.add('on');
+    document.getElementById('wkFabScrim').classList.add('on');
+    const fab = document.querySelector('#wkFab, .mobile-fab');
+    if (fab) fab.classList.add('wk-fab-open');
+  }
+  function closeFab() {
+    const m = document.getElementById('wkFabMenu'); if (m) m.classList.remove('on');
+    const sc = document.getElementById('wkFabScrim'); if (sc) sc.classList.remove('on');
+    const fab = document.querySelector('#wkFab, .mobile-fab');
+    if (fab) fab.classList.remove('wk-fab-open');
+  }
+
+  window.Shell = { sync, relabel, paintCards, goPlace, moveMagnet, PLACES };
+})();
+
+/* ============================================================
+   Kanban Drag & Drop – vollständiger Neuaufbau (Touch + Maus)
+   Echtes „Sortable"-Verhalten: die gezogene Karte wird durch einen
+   Platzhalter in exakt gleicher Größe ersetzt; die übrigen Karten
+   rücken sichtbar weg. Die Zielposition wird über die Mittelpunkte
+   der echten Karten bestimmt (nicht über elementFromPoint) – das
+   verhindert jede Rückkopplung und damit das Zittern.
+   Zwei Aufgaben übereinander -> Stack. Ablegen in „Abgeschlossen"
+   -> Sonder-Feedback.
+   ============================================================ */
+(function () {
+    const THRESHOLD = 6;
+    let drag = null;   /* { taskId, srcCard, startX, startY, active, ghost, offX, offY, ph, mergeWith } */
+
+    function pt(ev) { const t = ev.touches ? (ev.touches[0] || ev.changedTouches[0]) : ev; return { x: t.clientX, y: t.clientY }; }
+    function colOf(el) { return el && el.closest ? el.closest('.kanban-column') : null; }
+
+    function clearFeedback() {
+        document.querySelectorAll('.kanban-column.wk-drop-target').forEach(el => el.classList.remove('wk-drop-target'));
+        document.querySelectorAll('.kanban-column.drag-over-zone').forEach(el => el.classList.remove('drag-over-zone'));
+        document.querySelectorAll('.task-card.wk-merge-target').forEach(el => el.classList.remove('wk-merge-target'));
+    }
+
+    function makePlaceholder(h) {
+        const ph = document.createElement('div');
+        ph.className = 'wk-placeholder';
+        ph.style.height = h + 'px';
+        return ph;
+    }
+
+    /* Zwei Aufgaben übereinander -> Stack bilden */
+    function stackTasks(dragId, targetId) {
+        const dragTask = appData.tasks.find(t => t.id === dragId);
+        const targetTask = appData.tasks.find(t => t.id === targetId);
+        if (!dragTask || !targetTask) return;
+        let stackId = targetTask.projectStackId;
+        if (!stackId) {
+            stackId = generateId();
+            const baseName = (targetTask.projectName || 'Neues Stack');
+            appData.projectStacks.push({ id: stackId, name: baseName, status: 'active', checklist: [], startDate: '', dueDate: '', notes: '', history: '', assigneeId: '', stakeholderId: '', bucket: targetTask.bucket || '', predecessors: [] });
+            targetTask.projectStackId = stackId;
+        }
+        dragTask.projectStackId = stackId;
+        /* gleiche Spalte/Status beibehalten wie Zielaufgabe */
+        saveToLocal();
+        renderView();
+        showToast('Aufgaben als Stack gruppiert.');
+    }
+
+    function moveTask(taskId, newStatus, beforeId) {
+        const task = appData.tasks.find(t => t.id === taskId);
+        if (!task) return;
+        if (task.status === newStatus) {
+            if (!beforeId || beforeId === taskId) return;
+            const from = appData.tasks.findIndex(t => t.id === taskId);
+            if (from < 0) return;
+            const [mv] = appData.tasks.splice(from, 1);
+            const to = appData.tasks.findIndex(t => t.id === beforeId);
+            appData.tasks.splice(to < 0 ? appData.tasks.length : to, 0, mv);
+            saveToLocal(); renderView(); return;
+        }
+        if (newStatus === 'done' && isEntityLocked(taskId)) { showToast('Aufgabe ist durch Abhängigkeiten gesperrt!', 'warning'); return; }
+        checkTaskCompletion(taskId, newStatus);
+        const oldStatus = task.status;
+        task.status = newStatus;
+        if (newStatus === 'done') {
+            task.isPaused = false;
+            if (!task.completedAt) { task.completedAt = Date.now(); triggerWorkflows('task_completed', { task }); }
+        } else { delete task.completedAt; }
+        triggerWorkflows('task_status_changed', { task, oldStatus, newStatus });
+        if (beforeId && beforeId !== taskId) {
+            const from = appData.tasks.findIndex(t => t.id === taskId);
+            if (from > -1) { const [mv] = appData.tasks.splice(from, 1); const to = appData.tasks.findIndex(t => t.id === beforeId); appData.tasks.splice(to < 0 ? appData.tasks.length : to, 0, mv); }
+        } else if (newStatus === 'done') {
+            const i = appData.tasks.findIndex(t => t.id === taskId);
+            if (i > -1) { const [mv] = appData.tasks.splice(i, 1); appData.tasks.unshift(mv); }
+        }
+        saveToLocal(); renderView();
+    }
+
+    function onDown(ev) {
+        if (currentView !== 'kanban') return;
+        if (ev.button !== undefined && ev.button !== 0) return;
+        if (ev.target.closest('button, a, input, select, textarea')) return;
+        const card = ev.target.closest('.task-card');
+        if (!card) return;
+        const id = card.dataset.id || card.dataset.taskId;
+        if (!id) return;
+        const p = pt(ev);
+        drag = { taskId: id, srcCard: card, startX: p.x, startY: p.y, active: false, ghost: null, ph: null, mergeWith: null };
+    }
+
+    function activate() {
+        const card = drag.srcCard;
+        const r = card.getBoundingClientRect();
+        /* Ghost, der dem Cursor folgt */
+        const g = card.cloneNode(true);
+        g.className += ' wk-drag-ghost';
+        g.style.cssText += `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;margin:0;pointer-events:none;z-index:9999;opacity:.9;transform:rotate(1.5deg);box-shadow:0 16px 34px rgba(0,0,0,.28);`;
+        document.body.appendChild(g);
+        drag.ghost = g;
+        drag.offX = drag.startX - r.left;
+        drag.offY = drag.startY - r.top;
+        /* Platzhalter an Stelle der Quellkarte, Quellkarte aus dem Fluss */
+        drag.ph = makePlaceholder(r.height);
+        card.parentNode.insertBefore(drag.ph, card);
+        card.style.display = 'none';
+        document.body.style.userSelect = 'none';
+        document.body.classList.add('wk-dragging');
+    }
+
+    function onMove(ev) {
+        if (!drag) return;
+        const p = pt(ev);
+        if (!drag.active) {
+            if (Math.abs(p.x - drag.startX) < THRESHOLD && Math.abs(p.y - drag.startY) < THRESHOLD) return;
+            drag.active = true;
+            activate();
+        }
+        if (ev.cancelable) ev.preventDefault();
+        drag.ghost.style.left = (p.x - drag.offX) + 'px';
+        drag.ghost.style.top = (p.y - drag.offY) + 'px';
+
+        /* Zielspalte bestimmen (Ghost kurz ausblenden, damit er nicht selbst getroffen wird) */
+        drag.ghost.style.display = 'none';
+        const under = document.elementFromPoint(p.x, p.y);
+        drag.ghost.style.display = '';
+        clearFeedback();
+        const col = colOf(under);
+        if (!col) { if (drag.ph) drag.ph.style.display = 'none'; return; }
+        drag.ph.style.display = '';
+        col.classList.add('wk-drop-target');
+
+        /* „Abgeschlossen"-Spalte: Sonder-Feedback, kein Einsortieren */
+        const isDone = col.classList.contains('done-column') || col.dataset.statusId === 'done';
+        const srcStatus = (appData.tasks.find(t => t.id === drag.taskId) || {}).status;
+        if (isDone && srcStatus !== 'done') {
+            col.classList.add('drag-over-zone');
+            if (drag.ph && drag.ph.parentNode) drag.ph.parentNode.removeChild(drag.ph);
+            drag.mergeWith = null;
+            return;
+        }
+
+        const host = col.querySelector('.kanban-cards') || col;
+        /* Stack-Erkennung: Cursor im mittleren Drittel einer echten Karte */
+        const overCard = under.closest ? under.closest('.task-card') : null;
+        if (overCard && overCard !== drag.srcCard && overCard.style.display !== 'none') {
+            const rr = overCard.getBoundingClientRect();
+            const rel = (p.y - rr.top) / rr.height;
+            if (rel > 0.34 && rel < 0.66) {
+                overCard.classList.add('wk-merge-target');
+                drag.mergeWith = overCard.dataset.id || null;
+                if (drag.ph && drag.ph.parentNode) drag.ph.parentNode.removeChild(drag.ph);
+                return;
+            }
+        }
+        drag.mergeWith = null;
+
+        /* Einsortieren über Mittelpunkte der echten Karten (stabil, kein Zittern) */
+        const cards = Array.from(host.querySelectorAll('.task-card')).filter(c => c !== drag.srcCard && c.style.display !== 'none');
+        let before = null;
+        for (const c of cards) {
+            const rc = c.getBoundingClientRect();
+            if (p.y < rc.top + rc.height / 2) { before = c; break; }
+        }
+        if (drag.ph.parentNode !== host || drag.ph.nextElementSibling !== before) {
+            host.insertBefore(drag.ph, before);
+        }
+    }
+
+    function onUp(ev) {
+        if (!drag) return;
+        const d = drag; drag = null;
+        document.body.style.userSelect = '';
+        document.body.classList.remove('wk-dragging');
+        if (!d.active) return;
+
+        if (d.ghost) d.ghost.remove();
+        d.srcCard.style.display = '';
+
+        const p = pt(ev);
+        d.ghost && (d.ghost.style.display = 'none');
+        const under = document.elementFromPoint(p.x, p.y);
+        const col = colOf(under);
+
+        /* Zielposition aus Platzhalter ablesen, bevor er entfernt wird */
+        let beforeId = null;
+        if (d.ph && d.ph.parentNode) {
+            const nx = d.ph.nextElementSibling;
+            if (nx && nx.classList.contains('task-card')) beforeId = nx.dataset.id || null;
+            d.ph.parentNode.removeChild(d.ph);
+        }
+        const mergeWith = d.mergeWith;
+        clearFeedback();
+
+        if (mergeWith && mergeWith !== d.taskId) { stackTasks(d.taskId, mergeWith); return; }
+        if (col && col.dataset.statusId) moveTask(d.taskId, col.dataset.statusId, beforeId);
+    }
+
+    function cancel() {
+        if (!drag) return;
+        if (drag.ghost) drag.ghost.remove();
+        if (drag.srcCard) drag.srcCard.style.display = '';
+        if (drag.ph && drag.ph.parentNode) drag.ph.parentNode.removeChild(drag.ph);
+        drag = null; clearFeedback(); document.body.style.userSelect = ''; document.body.classList.remove('wk-dragging');
+    }
+
+    document.addEventListener('touchstart', onDown, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onUp);
+    document.addEventListener('touchcancel', cancel);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('dragstart', (e) => { if (drag && drag.active) e.preventDefault(); }, true);
+})();
+
+/* ---- Build-Kennung: erlaubt zu prüfen, ob wirklich der neue Stand geladen ist ---- */
+window.PROMAN_BUILD = '20260804-15';
+try { console.info('ProMan Build', window.PROMAN_BUILD); } catch(e) {}
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const host = document.getElementById('set_attachment_folder');
+        const tab = document.getElementById('set-general');
+        if (tab && !document.getElementById('wkBuildTag')) {
+            const tag = document.createElement('div');
+            tag.id = 'wkBuildTag';
+            tag.style.cssText = 'margin-top:14px;font-size:11px;color:var(--text-muted);font-family:var(--ff-data);';
+            tag.textContent = 'Build ' + window.PROMAN_BUILD;
+            tab.appendChild(tag);
+        }
+    } catch (e) {}
+});
+
+/* ============================================================
+   Checklistenpunkte: Drag & Drop – vollständiger Neuaufbau
+   Mit der Maus ist der GANZE Punkt greifbar (außer Eingabefeldern
+   und Bedien-Icons); auf Touch startet das Ziehen am Griff (.cl-drag),
+   damit der horizontale Wisch-zum-Löschen erhalten bleibt. Ein klar
+   sichtbarer Platzhalter zeigt die Zielposition, die übrigen Punkte
+   rücken animiert weg. Die Zielposition wird über die Mittelpunkte
+   der echten Punkte bestimmt (stabil, kein Zittern).
+   ============================================================ */
+(function () {
+    const THRESHOLD = 5;
+    let cd = null;
+
+    function pt(ev) { const t = ev.touches ? (ev.touches[0] || ev.changedTouches[0]) : ev; return { x: t.clientX, y: t.clientY }; }
+
+    function startFrom(ev, isTouch) {
+        if (ev.button !== undefined && ev.button !== 0) return null;
+        /* Bedien-Elemente nie als Drag-Start werten */
+        if (ev.target.closest('input, textarea, select, a, button, .cl-info-btn, .cl-done, .cl-assignee-pick, .cl-assignee-menu, .cl-delete-btn, .cl-deps-display')) return null;
+        if (isTouch) {
+            /* Auf Touch nur am Griff ziehen (sonst Konflikt mit Swipe-to-delete) */
+            const handle = ev.target.closest ? ev.target.closest('.cl-drag') : null;
+            if (!handle) return null;
+            return handle.closest('.checklist-item');
+        }
+        /* Maus: ganzer Punkt greifbar */
+        return ev.target.closest ? ev.target.closest('.checklist-item') : null;
+    }
+
+    function onDown(ev, isTouch) {
+        const item = startFrom(ev, isTouch);
+        if (!item) return;
+        const container = item.parentNode;
+        if (!container) return;
+        const p = pt(ev);
+        cd = { item, container, startX: p.x, startY: p.y, active: false, ghost: null, ph: null, isTouch };
+    }
+
+    function activate() {
+        const item = cd.item;
+        const r = item.getBoundingClientRect();
+        const g = item.cloneNode(true);
+        g.className += ' cl-drag-ghost';
+        g.style.cssText += `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;margin:0;pointer-events:none;z-index:99999;opacity:.95;box-shadow:0 16px 34px rgba(0,0,0,.30);border-radius:10px;background:var(--surface-color);`;
+        document.body.appendChild(g);
+        cd.ghost = g;
+        cd.offX = cd.startX - r.left;
+        cd.offY = cd.startY - r.top;
+        cd.ph = document.createElement('div');
+        cd.ph.className = 'cl-placeholder';
+        cd.ph.style.height = r.height + 'px';
+        item.parentNode.insertBefore(cd.ph, item);
+        item.style.display = 'none';
+        document.body.style.userSelect = 'none';
+        document.body.classList.add('cl-dragging');
+    }
+
+    function onMove(ev) {
+        if (!cd) return;
+        const p = pt(ev);
+        if (!cd.active) {
+            const dx = Math.abs(p.x - cd.startX), dy = Math.abs(p.y - cd.startY);
+            if (dx < THRESHOLD && dy < THRESHOLD) return;
+            /* Auf Touch nur bei überwiegend vertikaler Bewegung starten (horizontale = Swipe) */
+            if (cd.isTouch && dx > dy) { cd = null; return; }
+            cd.active = true;
+            activate();
+        }
+        if (ev.cancelable) ev.preventDefault();
+        cd.ghost.style.left = (p.x - cd.offX) + 'px';
+        cd.ghost.style.top = (p.y - cd.offY) + 'px';
+
+        const items = Array.from(cd.container.querySelectorAll('.checklist-item')).filter(c => c !== cd.item && c.style.display !== 'none');
+        let before = null;
+        for (const c of items) {
+            const rc = c.getBoundingClientRect();
+            if (p.y < rc.top + rc.height / 2) { before = c; break; }
+        }
+        if (cd.ph.parentNode !== cd.container || cd.ph.nextElementSibling !== before) {
+            cd.container.insertBefore(cd.ph, before);
+        }
+    }
+
+    function finish() {
+        if (!cd) return;
+        const d = cd; cd = null;
+        document.body.style.userSelect = '';
+        document.body.classList.remove('cl-dragging');
+        if (!d.active) return;
+        if (d.ghost) d.ghost.remove();
+        if (d.ph && d.ph.parentNode) { d.ph.parentNode.insertBefore(d.item, d.ph); d.ph.parentNode.removeChild(d.ph); }
+        d.item.style.display = '';
+
+        /* Array synchronisieren, falls Parent auflösbar (Notizen-/Milestones-Ansicht) */
+        const first = d.container.querySelector('.checklist-item');
+        const ptype = first ? first.getAttribute('data-parent-type') : null;
+        const pid = first ? first.getAttribute('data-parent-id') : null;
+        if (ptype && pid) {
+            const parent = ptype === 'stack' ? appData.projectStacks.find(x => x.id === pid) : appData.tasks.find(x => x.id === pid);
+            if (parent && Array.isArray(parent.checklist)) {
+                const ids = Array.from(d.container.querySelectorAll('.checklist-item')).map(el => el.getAttribute('data-id'));
+                parent.checklist.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+                saveToLocal(true);
+                const mc = document.getElementById('mainContainer');
+                if (currentView === 'notes' && mc) renderNotesView(mc);
+                else if (mc && typeof renderChecklists === 'function') renderChecklists(mc);
+            }
+        }
+        /* Im Modal genügt die geänderte DOM-Reihenfolge – sie wird beim Speichern gelesen. */
+    }
+
+    function cancel() {
+        if (!cd) return;
+        if (cd.ghost) cd.ghost.remove();
+        if (cd.item) cd.item.style.display = '';
+        if (cd.ph && cd.ph.parentNode) cd.ph.parentNode.removeChild(cd.ph);
+        cd = null; document.body.style.userSelect = ''; document.body.classList.remove('cl-dragging');
+    }
+
+    document.addEventListener('mousedown', (e) => onDown(e, false));
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', finish);
+    document.addEventListener('touchstart', (e) => onDown(e, true), { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', finish);
+    document.addEventListener('touchcancel', cancel);
+})();
+
+/* ============================================================
+   ONBOARDING: Product-Tour + Ersteinrichtung
+   Läuft nur beim ersten Start bzw. wenn noch keine Daten existieren.
+   Jeder Eingabeschritt ist überspringbar.
+   ============================================================ */
+(function () {
+    function shouldRun() {
+        if (!appData || !appData.settings) return false;
+        if (appData.settings.onboardingCompleted) return false;
+        const noTasks = !appData.tasks || appData.tasks.length === 0;
+        const noStacks = !appData.projectStacks || appData.projectStacks.length === 0;
+        /* Der ausgelieferte Standard-Nutzer „Max Mustermann" zählt noch als leer. */
+        const users = appData.users || [];
+        const onlyDefaultUser = users.length === 0 || (users.length === 1 && (users[0].id === 'u1' || users[0].name === 'Max Mustermann'));
+        return noTasks && noStacks && onlyDefaultUser;
+    }
+
+    const WEEK = [['1', 'Mo'], ['2', 'Di'], ['3', 'Mi'], ['4', 'Do'], ['5', 'Fr'], ['6', 'Sa'], ['0', 'So']];
+
+    /* ---------- Product-Tour-Folien ---------- */
+    const tour = [
+        { icon: 'fa-hand-sparkles', title: 'Willkommen bei ProMan', text: 'Deine Werkstatt für Projekte, Aufgaben und Zeit. In wenigen Schritten ist alles startklar – hier eine kurze Tour.', place: 'today' },
+        { icon: 'fa-gauge-high', title: 'Hub – dein Tagesüberblick', text: 'Der Hub zeigt gebuchte und offene Stunden, anstehende Fälligkeiten und deine Auslastung auf einen Blick.', place: 'today' },
+        { icon: 'fa-table-columns', title: 'Arbeit – Kanban, Liste, Zeitplan', text: 'Aufgaben ziehst du per Drag & Drop zwischen Spalten. Zwei Aufgaben übereinander bilden ein Stack. Alles auch als Liste, Kalender oder Gantt.', place: 'arbeit' },
+        { icon: 'fa-clock', title: 'Zeit erfassen', text: 'Buche Arbeitszeit je Aufgabe oder Checklistenpunkt. Soll-/Ist-Stunden, Abwesenheiten und ein Zeitkonto sind eingebaut.', place: 'zeit' },
+        { icon: 'fa-project-diagram', title: 'Abhängigkeiten & Verwaltung', text: 'Verknüpfe Aufgaben und Checklistenpunkte, verwalte Stakeholder, Buckets und Workflows. Jetzt richten wir die Basis ein.', place: 'verwaltung' }
+    ];
+
+    let ov, body, footer, stepIdx, tourIdx;
+    const collected = {};
+
+    function overlay() {
+        ov = document.createElement('div');
+        ov.className = 'onb-overlay';
+        ov.innerHTML = `<div class="onb-card">
+            <div class="onb-progress"><span class="onb-progress-fill"></span></div>
+            <div class="onb-body"></div>
+            <div class="onb-footer"></div>
+        </div>`;
+        document.body.appendChild(ov);
+        body = ov.querySelector('.onb-body');
+        footer = ov.querySelector('.onb-footer');
+    }
+
+    function setProgress(frac) {
+        const f = ov.querySelector('.onb-progress-fill');
+        if (f) f.style.width = Math.round(frac * 100) + '%';
+    }
+
+    /* ---------- Tour ---------- */
+    function showTour() {
+        const s = tour[tourIdx];
+        setProgress((tourIdx + 1) / (tour.length + 8));
+        /* Passenden Bereich im Hintergrund anwählen, damit der Nutzer sieht, wo er ihn findet */
+        if (s.place && window.Shell && typeof window.Shell.goPlace === 'function') {
+            try { window.Shell.goPlace(s.place); } catch (e) {}
+        }
+        /* Overlay während der Tour zur Seite rücken, damit der Bereich sichtbar bleibt */
+        ov.classList.add('onb-touring');
+        body.innerHTML = `<div class="onb-tour">
+            <div class="onb-tour-ic"><i class="fas ${s.icon}"></i></div>
+            <h2>${s.title}</h2>
+            <p>${s.text}</p>
+            ${tourIdx === 0 ? `<button class="onb-demo-btn" id="onbDemo"><i class="fas fa-wand-magic-sparkles"></i> Mit Demo-Daten starten</button><div class="onb-demo-note">Beispiel-Projekte eines Marketing-Teams (Briefe &amp; Papiertragetaschen) inkl. Zeitbuchungen, Urlaub/Krankheit und Abhängigkeiten.</div>` : ''}
+            <div class="onb-dots">${tour.map((_, i) => `<span class="${i === tourIdx ? 'on' : ''}"></span>`).join('')}</div>
+        </div>`;
+        footer.innerHTML = `
+            <button class="onb-skip" id="onbSkipTour">Tour überspringen</button>
+            <div class="onb-nav">
+                ${tourIdx > 0 ? `<button class="secondary" id="onbTourBack">Zurück</button>` : ''}
+                <button id="onbTourNext">${tourIdx < tour.length - 1 ? 'Weiter' : 'Einrichtung starten'}</button>
+            </div>`;
+        document.getElementById('onbSkipTour').onclick = startForm;
+        document.getElementById('onbTourNext').onclick = () => { if (tourIdx < tour.length - 1) { tourIdx++; showTour(); } else startForm(); };
+        const bk = document.getElementById('onbTourBack'); if (bk) bk.onclick = () => { tourIdx--; showTour(); };
+        const demo = document.getElementById('onbDemo'); if (demo) demo.onclick = runDemo;
+    }
+
+    function runDemo() {
+        /* Aus den Einstellungen mit bestehenden Daten gestartet? Dann Sicherung anbieten. */
+        const hasData = (appData.tasks && appData.tasks.length) || (appData.projectStacks && appData.projectStacks.length);
+        if (hasData) {
+            const backup = confirm('Es sind bereits Daten vorhanden. Sollen die aktuellen Daten vorher als Sicherung (JSON) heruntergeladen werden?\n\nOK = Sicherung herunterladen und fortfahren\nAbbrechen = ohne Sicherung fortfahren');
+            if (backup) { try { exportJSON(); } catch (e) {} }
+            if (!confirm('Demo-Daten jetzt erzeugen? Die vorhandenen Projekte, Aufgaben und Buchungen werden dabei ersetzt.')) return;
+        }
+        try { generateDemoData(); } catch (e) { console.error('Demo-Daten-Fehler', e); }
+        appData.settings.onboardingCompleted = true;
+        saveToLocal(true);
+        if (ov) ov.remove();
+        try { renderSidebar(); } catch (e) {}
+        try { switchView('today'); } catch (e) { try { renderView(); } catch (e2) {} }
+        try { showToast('Demo-Daten erzeugt – viel Spaß beim Ausprobieren!'); } catch (e) {}
+    }
+
+    /* ---------- Formular-Schritte ---------- */
+    const steps = [
+        {
+            key: 'name', icon: 'fa-user', title: 'Dein Name', hint: 'Wie heißt du (Team-Mitglied)? Damit legen wir dein Profil an.',
+            render: () => `<input type="text" id="onb_name" placeholder="z. B. Alex Muster" value="${collected.name || ''}">`,
+            save: () => { const v = (document.getElementById('onb_name').value || '').trim(); if (v) collected.name = v; }
+        },
+        {
+            key: 'workdays', icon: 'fa-calendar-week', title: 'Arbeitstage', hint: 'An welchen Wochentagen arbeitest du?',
+            render: () => { const cur = collected.workDays || (appData.settings.workDays || [1, 2, 3, 4, 5]).map(String); return `<div class="onb-week">${WEEK.map(([v, l]) => `<button type="button" class="onb-day ${cur.includes(v) ? 'on' : ''}" data-d="${v}" onclick="this.classList.toggle('on')">${l}</button>`).join('')}</div>`; },
+            save: () => { const days = Array.from(body.querySelectorAll('.onb-day.on')).map(b => b.dataset.d); collected.workDays = days; }
+        },
+        {
+            key: 'hours', icon: 'fa-business-time', title: 'Arbeitszeiten', hint: 'Von wann bis wann arbeitest du üblicherweise?',
+            render: () => `<div class="onb-row2"><label>Von<input type="time" id="onb_from" value="${collected.from || appData.settings.timeTrackFrom || '08:00'}"></label><label>Bis<input type="time" id="onb_to" value="${collected.to || appData.settings.timeTrackTo || '17:00'}"></label></div>`,
+            save: () => { collected.from = document.getElementById('onb_from').value; collected.to = document.getElementById('onb_to').value; }
+        },
+        {
+            key: 'target', icon: 'fa-hourglass-half', title: 'Soll-Stunden pro Tag', hint: 'Wie viele Stunden willst du pro Arbeitstag einplanen?',
+            render: () => `<input type="number" id="onb_target" min="0" max="24" step="0.25" placeholder="8" value="${collected.target != null ? collected.target : (appData.settings.targetHoursPerDay || 8)}">`,
+            save: () => { const v = parseFloat(document.getElementById('onb_target').value); if (!isNaN(v) && v > 0) collected.target = v; }
+        },
+        {
+            key: 'email', icon: 'fa-envelope', title: 'E-Mail', hint: 'Für Benachrichtigungen (optional).',
+            render: () => `<input type="email" id="onb_email" placeholder="name@firma.de" value="${collected.email || appData.settings.notificationEmail || ''}">`,
+            save: () => { const v = (document.getElementById('onb_email').value || '').trim(); if (v) collected.email = v; }
+        },
+        {
+            key: 'columns', icon: 'fa-table-columns', title: 'Kanban-Spalten', hint: 'Passe die Spalten deines Boards an (eine pro Zeile). Die Spalte „Abgeschlossen" ist ein fester System-Standard.',
+            render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done').map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="Zu erledigen\nIn Bearbeitung\nPrüfung">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> Abgeschlossen <span>(System-Standard)</span></div>`; },
+            save: () => { const lines = (document.getElementById('onb_cols').value || '').split('\n').map(s => s.trim()).filter(Boolean); if (lines.length) collected.columns = lines; }
+        },
+        {
+            key: 'stakeholders', icon: 'fa-users', title: 'Stakeholder', hint: 'Wichtige Beteiligte / Auftraggeber (eine pro Zeile, optional).',
+            render: () => { const cur = collected.stakeholders || (appData.stakeholders || []).map(s => s.name); return `<textarea id="onb_sh" rows="4" placeholder="Kunde A\nAbteilung Marketing">${cur.join('\n')}</textarea>`; },
+            save: () => { const lines = (document.getElementById('onb_sh').value || '').split('\n').map(s => s.trim()).filter(Boolean); collected.stakeholders = lines; }
+        },
+        {
+            key: 'buckets', icon: 'fa-layer-group', title: 'Buckets', hint: 'Kategorien zum Einsortieren von Aufgaben (eine pro Zeile, optional).',
+            render: () => { const cur = collected.buckets || (appData.buckets || []); return `<textarea id="onb_buckets" rows="4" placeholder="Entwicklung\nDesign\nAdministration">${cur.join('\n')}</textarea>`; },
+            save: () => { const lines = (document.getElementById('onb_buckets').value || '').split('\n').map(s => s.trim()).filter(Boolean); collected.buckets = lines; }
+        }
+    ];
+
+    function showStep() {
+        const s = steps[stepIdx];
+        setProgress((tour.length + stepIdx + 1) / (tour.length + 8));
+        body.innerHTML = `<div class="onb-step">
+            <div class="onb-step-ic"><i class="fas ${s.icon}"></i></div>
+            <h2>${s.title}</h2>
+            <p class="onb-hint">${s.hint}</p>
+            <div class="onb-field">${s.render()}</div>
+        </div>`;
+        if (s.after) s.after();
+        footer.innerHTML = `
+            <button class="onb-skip" id="onbSkipStep">Überspringen</button>
+            <div class="onb-nav">
+                ${stepIdx > 0 ? `<button class="secondary" id="onbBack">Zurück</button>` : ''}
+                <button id="onbNext">${stepIdx < steps.length - 1 ? 'Weiter' : 'Fertig'}</button>
+            </div>`;
+        document.getElementById('onbSkipStep').onclick = () => next(true);
+        document.getElementById('onbNext').onclick = () => next(false);
+        const bk = document.getElementById('onbBack'); if (bk) bk.onclick = () => { stepIdx--; showStep(); };
+    }
+
+    function next(skip) {
+        const s = steps[stepIdx];
+        if (!skip) { try { s.save(); } catch (e) {} }
+        if (stepIdx < steps.length - 1) { stepIdx++; showStep(); }
+        else finishAll();
+    }
+
+    function startForm() { if (ov) ov.classList.remove('onb-touring'); stepIdx = 0; showStep(); }
+
+    function finishAll() {
+        applyCollected();
+        appData.settings.onboardingCompleted = true;
+        saveToLocal(true);
+        if (ov) ov.remove();
+        try { renderSidebar(); } catch (e) {}
+        try { renderView(); } catch (e) {}
+        try { showToast('Einrichtung abgeschlossen – viel Erfolg!'); } catch (e) {}
+    }
+
+    function applyCollected() {
+        const st = appData.settings;
+        if (collected.name) {
+            appData.users = appData.users || [];
+            appData.users.push({ id: generateId(), name: collected.name, avatar: '' });
+        }
+        if (collected.workDays) st.workDays = collected.workDays.map(Number).filter(n => !isNaN(n));
+        if (collected.from !== undefined) st.timeTrackFrom = collected.from;
+        if (collected.to !== undefined) st.timeTrackTo = collected.to;
+        if (collected.target != null) st.targetHoursPerDay = collected.target;
+        if (collected.email) st.notificationEmail = collected.email;
+        if (collected.columns) {
+            const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('col_' + Math.random().toString(36).slice(2, 6));
+            const used = { done: 1 };
+            const cols = collected.columns.filter(title => slug(title) !== 'done').map(title => { let id = slug(title); while (used[id]) id += '_'; used[id] = 1; return { id, title }; });
+            /* „Abgeschlossen" bleibt als fester System-Standard immer erhalten (ID 'done'). */
+            const prevDone = (appData.statuses || []).find(s => s.id === 'done');
+            cols.push(prevDone || { id: 'done', title: 'Abgeschlossen' });
+            appData.statuses = cols;
+        }
+        if (collected.stakeholders) {
+            appData.stakeholders = appData.stakeholders || [];
+            const palette = ['#cca300', '#0F5FDC', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA'];
+            collected.stakeholders.forEach((name, i) => { if (!appData.stakeholders.some(s => s.name === name)) appData.stakeholders.push({ id: generateId(), name, color: palette[i % palette.length] }); });
+        }
+        if (collected.buckets) appData.buckets = collected.buckets.slice();
+    }
+
+    function begin() {
+        if (!shouldRun()) return;
+        overlay();
+        tourIdx = 0;
+        showTour();
+    }
+
+    /* ---------- Demo-Daten (Marketing-PM: Briefe & Papiertragetaschen) ---------- */
+    function generateDemoData() {
+        const today = new Date();
+        const iso = (d) => ttIso(d);
+        const shift = (days) => { const d = new Date(today); d.setDate(d.getDate() + days); return iso(d); };
+        const startIso = shift(-60), endIso = shift(30), todayIso = iso(today);
+        const uid = (appData.users[0] && appData.users[0].id) || 'u1';
+
+        appData.buckets = ['Design', 'Druck', 'Logistik', 'Kundenbetreuung'];
+        const palette = ['#cca300', '#0F5FDC', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA'];
+        appData.stakeholders = [
+            { id: generateId(), name: 'Papierwerk Nord GmbH', color: palette[0] },
+            { id: generateId(), name: 'Bäckerei-Kette Korn & Co.', color: palette[1] },
+            { id: generateId(), name: 'Boutique Lindenhof', color: palette[2] },
+            { id: generateId(), name: 'Geschäftsleitung intern', color: palette[3] }
+        ];
+        const shId = (i) => appData.stakeholders[i].id;
+
+        appData.projectStacks = [];
+        appData.tasks = [];
+        appData.timeLogs = [];
+        appData.absences = [];
+
+        /* Projektdefinitionen: relative Tage (zu heute) für Start/Ende je Aufgabe */
+        const defs = [
+            {
+                name: 'Kampagne Papiertragetaschen Frühjahr', bucket: 'Design', sh: 0,
+                tasks: [
+                    { t: 'Designkonzept & Motive', s: -58, e: -44, cl: ['Briefing auswerten', 'Moodboard erstellen', 'Motive skizzieren'] },
+                    { t: 'Kundenfreigabe Design', s: -44, e: -36, cl: ['Präsentation vorbereiten', 'Freigabe einholen'], dep: 0 },
+                    { t: 'Druckvorstufe & Proof', s: -36, e: -24, cl: ['Reinzeichnung', 'Andruck prüfen', 'Farbprofil abstimmen'], dep: 1 },
+                    { t: 'Produktion & Druck', s: -24, e: -6, cl: ['Papier bestellen', 'Auflage drucken', 'Qualitätskontrolle'], dep: 2 },
+                    { t: 'Auslieferung & Nachbereitung', s: -6, e: 12, cl: ['Versand koordinieren', 'Kundenfeedback einholen'], dep: 3 }
+                ]
+            },
+            {
+                name: 'Briefbogen-Redesign Geschäftskunden', bucket: 'Design', sh: 1,
+                tasks: [
+                    { t: 'Analyse Bestandsbriefbögen', s: -52, e: -42, cl: ['Vorlagen sammeln', 'Schwachstellen notieren'] },
+                    { t: 'Neuentwurf Layout', s: -42, e: -28, cl: ['Typografie festlegen', 'Rasterentwurf', 'Varianten anlegen'], dep: 0 },
+                    { t: 'Testdruck & Abstimmung', s: -28, e: -14, cl: ['Musterdruck', 'Korrekturschleife'], dep: 1 },
+                    { t: 'Rollout aller Vorlagen', s: -14, e: 8, cl: ['Vorlagen finalisieren', 'Übergabe an Kunde'], dep: 2 }
+                ]
+            },
+            {
+                name: 'Messeauftritt Verpackungsmesse', bucket: 'Logistik', sh: 3,
+                tasks: [
+                    { t: 'Standkonzept', s: -30, e: -18, cl: ['Fläche planen', 'Materialien wählen'] },
+                    { t: 'Werbemittel produzieren', s: -18, e: -2, cl: ['Muster-Tragetaschen drucken', 'Flyer gestalten', 'Roll-ups bestellen'], dep: 0 },
+                    { t: 'Messe-Durchführung', s: 14, e: 18, cl: ['Standaufbau', 'Betreuung', 'Leads erfassen'], dep: 1 }
+                ]
+            },
+            {
+                name: 'Sonderedition Boutique-Tüten', bucket: 'Druck', sh: 2,
+                tasks: [
+                    { t: 'Materialmuster beschaffen', s: -20, e: -10, cl: ['Papiersorten anfragen', 'Haptik-Muster prüfen'] },
+                    { t: 'Veredelung abstimmen', s: -10, e: 6, cl: ['Heißfolie testen', 'Prägung abstimmen'], dep: 0 },
+                    { t: 'Kleinauflage drucken', s: 6, e: 24, cl: ['Freigabe einholen', 'Auflage produzieren'], dep: 1 }
+                ]
+            }
+        ];
+
+        const activeSpans = []; /* für Buchungsverlauf: {taskId, s, e} vergangener/aktueller Aufgaben */
+
+        defs.forEach(def => {
+            const stackId = generateId();
+            appData.projectStacks.push({ id: stackId, name: def.name, status: 'active', checklist: [], startDate: shift(def.tasks[0].s), dueDate: shift(def.tasks[def.tasks.length - 1].e), notes: '', history: '', assigneeId: uid, stakeholderId: shId(def.sh), bucket: def.bucket, predecessors: [] });
+            const taskIds = [];
+            def.tasks.forEach(tk => {
+                const id = generateId();
+                const sIso = shift(tk.s), eIso = shift(tk.e);
+                const done = tk.e < -1;                 /* abgeschlossen, wenn Ende in der Vergangenheit */
+                const inProg = tk.s <= 0 && tk.e >= 0;   /* läuft gerade */
+                const status = done ? 'done' : (inProg ? 'inProgress' : 'todo');
+                const preds = (tk.dep != null && taskIds[tk.dep]) ? [taskIds[tk.dep]] : [];
+                const checklist = tk.cl.map((title, ci) => {
+                    const cdone = done || (inProg && ci === 0);
+                    return { id: generateId(), title, done: cdone, predecessors: [], dueDate: '', startDate: '', duration: 0, assigneeId: uid };
+                });
+                const task = { id, projectName: tk.t, status, bucket: def.bucket, priority: (tk.dep == null ? 'high' : 'medium'), checklist, predecessors: preds, files: [], startDate: sIso, dueDate: eIso, spentTime: '0', estimatedTime: String(6 + tk.cl.length * 2), projectStackId: stackId, stakeholderId: shId(def.sh), assigneeId: uid };
+                if (done) task.completedAt = ttParse(eIso).getTime();
+                appData.tasks.push(task);
+                taskIds.push(id);
+                if (tk.s <= 0) activeSpans.push({ taskId: id, s: Math.max(tk.s, -60), e: Math.min(tk.e, 0) });
+            });
+        });
+
+        /* Abwesenheiten: eine Urlaubswoche + zwei Kranktage in der Vergangenheit */
+        const absDays = [];
+        for (let k = -40; k <= -36; k++) { const d = shift(k); if (ttIsWorkDay(d)) { appData.absences.push({ id: generateId(), date: d, type: 'vacation', hours: ttTargetHours(), note: 'Frühjahrsurlaub', userId: uid }); absDays.push(d); } }
+        [-22, -21].forEach(k => { const d = shift(k); if (ttIsWorkDay(d)) { appData.absences.push({ id: generateId(), date: d, type: 'sick', hours: ttTargetHours(), note: 'Erkältung', userId: uid }); absDays.push(d); } });
+
+        /* 100% Buchungsverlauf: jeden vergangenen Arbeitstag mit dem Tagessoll füllen */
+        const target = ttTargetHours();
+        for (let k = -60; k <= 0; k++) {
+            const d = shift(k);
+            if (!ttIsWorkDay(d)) continue;
+            if (absDays.includes(d)) continue;
+            const active = activeSpans.filter(sp => sp.s <= k && sp.e >= k);
+            if (!active.length) continue;
+            let remaining = target;
+            /* gleichmäßig auf die aktiven Aufgaben verteilen, in 0,25-Schritten */
+            const per = Math.max(0.25, Math.round((target / active.length) * 4) / 4);
+            active.forEach((sp, i) => {
+                let h = (i === active.length - 1) ? remaining : Math.min(per, remaining);
+                h = Math.round(h * 4) / 4;
+                if (h <= 0) return;
+                remaining = Math.round((remaining - h) * 4) / 4;
+                appData.timeLogs.push({ id: generateId(), taskId: sp.taskId, hours: h, date: d, note: '' });
+            });
+        }
+
+        /* spentTime je Aufgabe aus den Buchungen aktualisieren */
+        appData.tasks.forEach(tk => {
+            const sum = appData.timeLogs.filter(l => l.taskId === tk.id).reduce((a, l) => a + (parseFloat(l.hours) || 0), 0);
+            tk.spentTime = String(Math.round(sum * 100) / 100);
+        });
+    }
+
+    /* Nach dem ersten Rendern starten */
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(begin, 400));
+    else setTimeout(begin, 400);
+
+    /* Manueller Neustart (z. B. aus den Einstellungen) */
+    window.startOnboarding = function () { if (!ov || !document.body.contains(ov)) { overlay(); } tourIdx = 0; showTour(); };
+})();
+
+/* ============================================================
+   Preset-Checklistenpunkte: Verschieben per Griff (.preset-cl-drag)
+   ============================================================ */
+(function () {
+    const THRESHOLD = 4;
+    let pd = null;
+
+    function pt(ev) { const t = ev.touches ? (ev.touches[0] || ev.changedTouches[0]) : ev; return { x: t.clientX, y: t.clientY }; }
+
+    function onDown(ev) {
+        const handle = ev.target.closest ? ev.target.closest('.preset-cl-drag') : null;
+        if (!handle) return;
+        const row = handle.closest('.preset-cl-row');
+        const list = handle.closest('.preset-cl-list');
+        if (!row || !list) return;
+        const p = pt(ev);
+        pd = { row, list, startY: p.y, active: false, ph: null, ghost: null };
+        if (ev.cancelable) ev.preventDefault();
+    }
+
+    function activate() {
+        const r = pd.row.getBoundingClientRect();
+        const g = pd.row.cloneNode(true);
+        g.className += ' preset-cl-ghost';
+        g.style.cssText += `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;margin:0;pointer-events:none;z-index:100001;opacity:.95;box-shadow:0 12px 26px rgba(0,0,0,.28);background:var(--surface-color);border-radius:8px;`;
+        document.body.appendChild(g);
+        pd.ghost = g;
+        pd.offY = pd.startY - r.top;
+        pd.ph = document.createElement('div');
+        pd.ph.className = 'preset-cl-ph';
+        pd.ph.style.height = r.height + 'px';
+        pd.row.parentNode.insertBefore(pd.ph, pd.row);
+        pd.row.style.display = 'none';
+        document.body.style.userSelect = 'none';
+    }
+
+    function onMove(ev) {
+        if (!pd) return;
+        const p = pt(ev);
+        if (!pd.active) {
+            if (Math.abs(p.y - pd.startY) < THRESHOLD) return;
+            pd.active = true; activate();
+        }
+        if (ev.cancelable) ev.preventDefault();
+        pd.ghost.style.top = (p.y - pd.offY) + 'px';
+        const rows = Array.from(pd.list.querySelectorAll('.preset-cl-row')).filter(r => r !== pd.row && r.style.display !== 'none');
+        let before = null;
+        for (const r of rows) { const rc = r.getBoundingClientRect(); if (p.y < rc.top + rc.height / 2) { before = r; break; } }
+        if (pd.ph.parentNode !== pd.list || pd.ph.nextElementSibling !== before) pd.list.insertBefore(pd.ph, before);
+    }
+
+    function finish() {
+        if (!pd) return;
+        const d = pd; pd = null;
+        document.body.style.userSelect = '';
+        if (!d.active) return;
+        if (d.ghost) d.ghost.remove();
+        /* Zielindex aus Platzhalter-Position ableiten */
+        const fromIdx = parseInt(d.row.getAttribute('data-idx'), 10);
+        let toIdx = 0;
+        const kids = Array.from(d.list.children).filter(c => c.classList.contains('preset-cl-row') || c.classList.contains('preset-cl-ph'));
+        toIdx = kids.indexOf(d.ph);
+        if (d.ph && d.ph.parentNode) d.ph.parentNode.removeChild(d.ph);
+        d.row.style.display = '';
+        const kind = d.list.getAttribute('data-kind');
+        const pid = d.list.getAttribute('data-pid');
+        if (kind && pid && !isNaN(fromIdx) && toIdx >= 0) {
+            /* Entfernt man das gezogene Element, verschiebt sich der Zielindex ggf. um 1 */
+            if (toIdx > fromIdx) toIdx -= 1;
+            presetClMove(kind, pid, fromIdx, toIdx);
+        }
+    }
+
+    function cancel() {
+        if (!pd) return;
+        if (pd.ghost) pd.ghost.remove();
+        if (pd.row) pd.row.style.display = '';
+        if (pd.ph && pd.ph.parentNode) pd.ph.parentNode.removeChild(pd.ph);
+        pd = null; document.body.style.userSelect = '';
+    }
+
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', finish);
+    document.addEventListener('touchstart', onDown, { passive: false });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', finish);
+    document.addEventListener('touchcancel', cancel);
+})();
