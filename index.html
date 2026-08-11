@@ -48,7 +48,7 @@
                 <div class="dropdown click-only filter-dropdown-container" id="mainFilterDropdown">
                     <button class="secondary icon-btn" style="font-size: 16px; padding: 6px 10px; position:relative;" data-i18n-title="filter_menu_title" title="Filtermenü" onclick="toggleFilterMenu(event)">
                         <i class="fas fa-filter"></i>
-                        
+                        <span id="filterActiveDot" class="filter-active-dot" style="display:none;"></span>
                     </button>
                     <div id="filterMenu" class="dropdown-content" style="right:0; width: 280px; padding: 15px; gap: 8px; flex-direction: column;">
                         <div id="desktopFilterContent"></div>
@@ -211,6 +211,24 @@
             </div>
             <div class="modal-footer" style="justify-content: flex-end;">
                 <button onclick="closeDependencyModal()">Fertig</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD EXISTING TASK TO STACK MODAL -->
+    <div class="modal-overlay" id="addTaskToStackModal" style="z-index: 2500;">
+        <div class="modal-content bottom-sheet-mobile" style="width: 500px;">
+            <div class="modal-header">
+                <h3 data-i18n="s_add_existing_task_title">Bestehende Aufgabe hinzufügen</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeAddTaskToStackModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="display:flex; flex-direction:column; height: 50vh;">
+                <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;" data-i18n="s_add_existing_task_desc">Wähle eine bestehende, aktive Aufgabe aus, um sie diesem Projekt-Stack zuzuordnen.</p>
+                <input type="text" id="addTaskToStackSearchInput" data-i18n="search" placeholder="Suchen..." onkeyup="renderAddTaskToStackList()" style="margin-bottom:10px;">
+                <div id="addTaskToStackListContainer" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; padding-right:5px; margin-top:5px;"></div>
+            </div>
+            <div class="modal-footer" style="justify-content: flex-end;">
+                <button onclick="closeAddTaskToStackModal()">Fertig</button>
             </div>
         </div>
     </div>
@@ -654,7 +672,10 @@
                 <!-- STAB 3: Aufgaben -->
                 <div id="stab-tasks" class="modal-tab-content">
                     <div>
-                        <span class="form-label" data-i18n="s_tasks">Zugehörige Aufgaben</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <span class="form-label" style="margin:0;" data-i18n="s_tasks">Zugehörige Aufgaben</span>
+                            <button class="secondary" id="btnAddExistingTaskToStack" style="font-size:12px; padding:4px 8px;" onclick="openAddTaskToStackModal()"><i class="fas fa-plus"></i> <span data-i18n="s_add_existing_task">Bestehende Aufgabe hinzufügen</span></button>
+                        </div>
                         <div id="s_tasks_container" style="max-height: 400px; overflow-y:auto; display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
                     </div>
                     <div style="border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">

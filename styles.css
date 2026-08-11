@@ -316,6 +316,9 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .cal-day.empty { background: transparent; border: none; }
 .cal-day.today { border: 2px solid var(--primary-color); }
 
+/* Drag & Drop: Aufgaben/Stacks aus Ganztägig/Backlog in die Planung ziehen */
+.sched-drop-hover { outline: 2px dashed var(--primary-color) !important; outline-offset: -2px; background-color: var(--primary-lightest) !important; }
+
 .cal-event { isolation: isolate; position: relative; font-size: 11px; padding: 4px 6px; border-radius: 4px; cursor: pointer; display: flex; flex-direction: column; align-items: stretch; gap: 4px; font-weight: 500; overflow: hidden; }
 .cal-event-title { display: flex; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; gap: 4px; }
 .cal-event:hover { filter: brightness(0.95); }
@@ -2698,14 +2701,16 @@ body.dep-linking .dep-node:not(.dep-dragging){outline-color:var(--border-color)}
 }
 body.dep-linking .dep-gnode:not(.dep-dragging){outline:1px dashed var(--border-color)}
 
-/* Aktiver Filter: dezente Umrandung statt „!"-Badge */
-#mainFilterDropdown.has-active-filter > button,
-#mainFilterDropdown.has-active-filter .secondary{
-  border:1.5px solid #cca300 !important;
-}
-[data-theme="dark"] #mainFilterDropdown.has-active-filter > button,
-[data-theme="dark"] #mainFilterDropdown.has-active-filter .secondary{
-  border-color:#cca300 !important;
+/* Aktiver Filter: kleiner roter Punkt an der äußeren oberen rechten Kante — analog zur Benachrichtigungs-Badge, aber ohne Zahl */
+.filter-active-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  pointer-events: none;
 }
 
 /* Heute — Mini-Karten für Stacks/Meilensteine/Checkpunkte */

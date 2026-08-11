@@ -1210,6 +1210,7 @@ function updateFilterBadge() {
     const _anyFilter = (totalFilters > 0 || appData.settings.globalHideCompleted || appData.settings.globalHidePaused);
     const _fb = document.getElementById('filterBadge'); if(_fb) _fb.style.display = 'none';
     const _fbtn = document.getElementById('mainFilterDropdown'); if(_fbtn) _fbtn.classList.toggle('has-active-filter', _anyFilter);
+    const _fdot = document.getElementById('filterActiveDot'); if(_fdot) _fdot.style.display = _anyFilter ? 'block' : 'none';
 }
 
 function updateGlobalHideComp(isChecked) { appData.settings.globalHideCompleted = isChecked; saveToLocal(); updateFilterBadge(); }
@@ -2663,6 +2664,7 @@ function openStackModal(id = null) {
     if (id) {
         document.getElementById('stackModalTitle').innerText = t('s_edit'); { const _pr = document.getElementById('s_preset_row'); if(_pr) _pr.style.display='none'; }
         document.getElementById('btnDeleteStack').style.display = 'block'; document.getElementById('dropdownShareStack').style.display = 'block';
+        { const _bat = document.getElementById('btnAddExistingTaskToStack'); if(_bat) _bat.style.display = 'inline-flex'; }
         const s = appData.projectStacks.find(x => x.id === id);
         
         let sStartDate = '', sStartTime = '';
@@ -2691,19 +2693,11 @@ function openStackModal(id = null) {
             addModalClDragHandlers(div); container.appendChild(div); 
         });
         
-        const sTasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
-        if(sTasks.length === 0) tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Keine Aufgaben zugeordnet.</span>';
-        sTasks.forEach(t_obj => {
-            const st = appData.statuses.find(x => x.id === t_obj.status); const progress = getTaskProgress(t_obj);
-            const div = document.createElement('div'); div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:4px; font-size:13px; border:1px solid var(--border-color);";
-            let tPausedIcon = t_obj.isPaused && !isTaskDone(t_obj) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-            if(isTaskDone(t_obj)) div.classList.add('is-completed');
-            div.innerHTML = `<div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;"><b>${tPausedIcon}${t_obj.projectName}</b> <span style="color:var(--text-muted); font-size:11px;">(${st? (st.id==='done'?t('col_completed'):st.title) :''})</span></div><div style="width:100px; margin:0 15px; flex-shrink:0;">${generateProgressBarHTML(progress)}</div><button class="secondary icon-btn" style="flex-shrink:0;" onclick="closeStackModal(); openModal('${t_obj.id}')"><i class="fas fa-external-link-alt"></i> Öffnen</button>`;
-            tasksContainer.appendChild(div);
-        });
+        renderStackTasksContainer(id);
         updateDepDisplay();
     } else {
         document.getElementById('stackModalTitle').innerText = t('s_new'); document.getElementById('btnDeleteStack').style.display = 'none'; document.getElementById('dropdownShareStack').style.display = 'none';
+        { const _bat = document.getElementById('btnAddExistingTaskToStack'); if(_bat) _bat.style.display = 'none'; }
         renderInteractiveRating('s_interactive_rating', null); tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Noch keine Aufgaben.</span>';
         document.getElementById('s_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
         populatePresetPicker('stack');
@@ -2726,7 +2720,77 @@ function openStackModal(id = null) {
     }
     actionsContainer.innerHTML = actionsHtml;
 }
+function renderStackTasksContainer(stackId) {
+    const tasksContainer = document.getElementById('s_tasks_container');
+    if(!tasksContainer) return;
+    tasksContainer.innerHTML = '';
+    const sTasks = appData.tasks.filter(t_obj => t_obj.projectStackId === stackId);
+    if(sTasks.length === 0) { tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Keine Aufgaben zugeordnet.</span>'; return; }
+    sTasks.forEach(t_obj => {
+        const st = appData.statuses.find(x => x.id === t_obj.status); const progress = getTaskProgress(t_obj);
+        const div = document.createElement('div'); div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:4px; font-size:13px; border:1px solid var(--border-color);";
+        let tPausedIcon = t_obj.isPaused && !isTaskDone(t_obj) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
+        if(isTaskDone(t_obj)) div.classList.add('is-completed');
+        div.innerHTML = `<div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;"><b>${tPausedIcon}${t_obj.projectName}</b> <span style="color:var(--text-muted); font-size:11px;">(${st? (st.id==='done'?t('col_completed'):st.title) :''})</span></div><div style="width:100px; margin:0 15px; flex-shrink:0;">${generateProgressBarHTML(progress)}</div><div style="display:flex; gap:6px; flex-shrink:0;"><button class="secondary icon-btn" onclick="closeStackModal(); openModal('${t_obj.id}')"><i class="fas fa-external-link-alt"></i> Öffnen</button><button class="secondary icon-btn" style="color:var(--danger);" onclick="removeTaskFromStack('${t_obj.id}')" title="${t('s_remove_from_stack')}"><i class="fas fa-unlink"></i></button></div>`;
+        tasksContainer.appendChild(div);
+    });
+}
 function closeStackModal() { document.getElementById('stackModal').classList.remove('active'); }
+function removeTaskFromStack(taskId) {
+    const task = appData.tasks.find(t_obj => t_obj.id === taskId);
+    if(!task) return;
+    const stackId = task.projectStackId;
+    task.projectStackId = '';
+    saveToLocal();
+    renderStackTasksContainer(stackId);
+    showToast(t('s_task_removed_from_stack').replace('{n}', task.projectName || ''));
+}
+
+/* Bestehende aktive Aufgabe zu einem Stack hinzufügen (Tab "Aufgaben" im Stack-Modal) */
+let addTaskToStackId = null;
+function openAddTaskToStackModal() {
+    const stackId = document.getElementById('s_id').value;
+    if(!stackId) return;
+    addTaskToStackId = stackId;
+    const search = document.getElementById('addTaskToStackSearchInput'); if(search) search.value = '';
+    document.getElementById('addTaskToStackModal').classList.add('active');
+    renderAddTaskToStackList();
+}
+function closeAddTaskToStackModal() {
+    document.getElementById('addTaskToStackModal').classList.remove('active');
+}
+function renderAddTaskToStackList() {
+    const q = (document.getElementById('addTaskToStackSearchInput').value || '').toLowerCase();
+    const container = document.getElementById('addTaskToStackListContainer');
+    const candidates = appData.tasks.filter(t_obj => !isTaskDone(t_obj) && t_obj.projectStackId !== addTaskToStackId && (!q || (t_obj.projectName || '').toLowerCase().includes(q)));
+
+    if(candidates.length === 0) { container.innerHTML = `<p style="font-size:12px; color:var(--text-muted); padding:10px;">${t('s_no_active_tasks')}</p>`; return; }
+
+    let html = '';
+    candidates.forEach(t_obj => {
+        const stack = appData.projectStacks.find(x => x.id === t_obj.projectStackId);
+        const pausedIcon = t_obj.isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
+        const contextLabel = stack ? `<i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}` : t('standalone_tasks');
+        html += `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-bottom:1px solid var(--border-color);">
+            <div style="flex:1; overflow:hidden; min-width:0;">
+                <div style="font-weight:bold; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><i class="fas fa-tasks" style="color:var(--primary-color); margin-right:6px;"></i>${pausedIcon}${escapeHtmlToday(t_obj.projectName)}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${contextLabel}</div>
+            </div>
+            <button class="secondary icon-btn" style="flex-shrink:0;" onclick="addExistingTaskToStack('${t_obj.id}')" title="${t('add')}"><i class="fas fa-plus"></i></button>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+function addExistingTaskToStack(taskId) {
+    const task = appData.tasks.find(t_obj => t_obj.id === taskId);
+    const stackId = addTaskToStackId;
+    if(!task || !stackId) return;
+    task.projectStackId = stackId;
+    saveToLocal();
+    renderAddTaskToStackList();
+    renderStackTasksContainer(stackId);
+    showToast(t('s_task_added_to_stack').replace('{n}', task.projectName || ''));
+}
 function addStackChecklistItem() { 
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     const newId = generateId(); div.setAttribute('data-id', newId);
@@ -4181,6 +4245,34 @@ function dropTaskToColumn(e, newStatus) {
 }
 
 // STACKS DASHBOARD
+/**
+ * Baut eine kleine Sparkline-Grafik (Aktivitätsverlauf / Zeiterfassung) für eine gegebene Menge von Aufgaben-IDs.
+ * Aggregiert appData.timeLogs nach Datum und zeigt zusätzlich das Datum der ersten und letzten Messung an,
+ * damit der abgedeckte Zeitraum klar erkennbar ist. Gibt '' zurück, wenn keine Zeiterfassung vorliegt.
+ */
+function buildActivitySparklineHtml(taskIds) {
+    const logs = appData.timeLogs.filter(l => taskIds.has(l.taskId));
+    if (logs.length === 0) return '';
+    const logAgg = {}; logs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
+    const dates = Object.keys(logAgg).sort((a, b) => new Date(a) - new Date(b));
+    const maxH = Math.max(...Object.values(logAgg), 0.1);
+    let pathD = '';
+    if (dates.length === 1) {
+        const y = 35 - ((logAgg[dates[0]] / maxH) * 28);
+        pathD = `M 0 ${y} L 100 ${y}`;
+    } else {
+        const points = dates.map((d, i) => ({ x: (i / (dates.length - 1)) * 100, y: 35 - ((logAgg[d] / maxH) * 28) }));
+        pathD = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`; }
+        pathD += ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+    }
+    const rangeLabel = dates.length === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[dates.length - 1])}`;
+    return `<div style="margin-top:5px; margin-bottom:10px;">
+        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${t('activity_chart_title')}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;"><path d="${pathD} L 100 40 L 0 40 Z" fill="rgba(204,163,0,0.15)"/><path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div style="font-size:10px; color:var(--text-muted); text-align:right; margin-top:2px;">${rangeLabel}</div>
+    </div>`;
+}
+
 function renderStacks(c) {
     let html = getSortButtonsHTML(stackssortKey, 'stackssortKey');
     html += `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">`;
@@ -4202,25 +4294,7 @@ function renderStacks(c) {
         } else { btnHtml += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setStackStatus('${stack.id}', 'active')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
         const sTasks = appData.tasks.filter(t_obj => t_obj.projectStackId === stack.id);
-
-        let chartHtml = '';
-        const sLogs = appData.timeLogs.filter(l => sTasks.some(t_obj => t_obj.id === l.taskId));
-        if(sLogs.length > 0) {
-            const logAgg = {}; sLogs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
-            const dates = Object.keys(logAgg).sort((a,b) => new Date(a) - new Date(b));
-            const maxH = Math.max(...Object.values(logAgg), 0.1);
-            let pathD = '';
-            if(dates.length === 1) {
-                const y = 35 - ((logAgg[dates[0]] / maxH) * 28);
-                pathD = `M 0 ${y} L 100 ${y}`;
-            } else {
-                const points = dates.map((d, i) => { return { x: (i / (dates.length - 1)) * 100, y: 35 - ((logAgg[d] / maxH) * 28) }; });
-                pathD = `M ${points[0].x} ${points[0].y}`;
-                for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`; }
-                pathD += ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`;
-            }
-            chartHtml = `<div style="height:40px; width:100%; margin-top:5px; margin-bottom:10px; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="Aktivitätsverlauf (Zeiterfassung)"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;"><path d="${pathD} L 100 40 L 0 40 Z" fill="rgba(204,163,0,0.15)"/><path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
-        }
+        const chartHtml = buildActivitySparklineHtml(new Set(sTasks.map(t_obj => t_obj.id)));
 
         let checklistHtml = '';
         if(stack.checklist && stack.checklist.length > 0) {
@@ -4498,13 +4572,15 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
     const stackIdsInGroup = new Set();
     arr.forEach(item => { if(item._type === 'stack') stackIdsInGroup.add(item.id); if(item._type === 'task' && item.projectStackId) stackIdsInGroup.add(item.projectStackId); });
     const standaloneTasks = arr.filter(x => x._type === 'task' && !x.projectStackId);
-    
+    const groupTaskIds = new Set();
+
     if(showTimeStats) {
-        stackIdsInGroup.forEach(sId => { const allStackTasks = appData.tasks.filter(tx => tx.projectStackId === sId); allStackTasks.forEach(tx => { totalEst += parseFloat(tx.estimatedTime||0); totalSpent += parseFloat(tx.spentTime||0); }); });
-        standaloneTasks.forEach(t_obj => { totalEst += parseFloat(t_obj.estimatedTime||0); totalSpent += parseFloat(t_obj.spentTime||0); });
+        stackIdsInGroup.forEach(sId => { const allStackTasks = appData.tasks.filter(tx => tx.projectStackId === sId); allStackTasks.forEach(tx => { totalEst += parseFloat(tx.estimatedTime||0); totalSpent += parseFloat(tx.spentTime||0); groupTaskIds.add(tx.id); }); });
+        standaloneTasks.forEach(t_obj => { totalEst += parseFloat(t_obj.estimatedTime||0); totalSpent += parseFloat(t_obj.spentTime||0); groupTaskIds.add(t_obj.id); });
     }
     
-    let headerExtra = showTimeStats ? `<div style="font-size:12px; margin-bottom:15px; color:var(--text-muted)">${t('time_effort')}: ${totalSpent.toFixed(2)}h ${t('actual')} / ${totalEst.toFixed(2)}h ${t('target')}</div>` : '';
+    const chartHtml = showTimeStats ? buildActivitySparklineHtml(groupTaskIds) : '';
+    let headerExtra = showTimeStats ? `<div style="font-size:12px; margin-bottom:15px; color:var(--text-muted)">${t('time_effort')}: ${totalSpent.toFixed(2)}h ${t('actual')} / ${totalEst.toFixed(2)}h ${t('target')}</div>${chartHtml}` : '';
     let h = `<div style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); border-top: 4px solid ${color}; min-height: 150px;" ondragover="event.preventDefault();" ondrop="handleGroupContainerDrop(event, '${groupKey}', '${targetGroupVal}')"><h3 style="margin-bottom:5px; padding-bottom:10px;">${name}</h3>${headerExtra}<div style="display:flex; flex-direction:column; gap:10px;">`;
     
     const renderedStackIds = new Set();
@@ -4649,6 +4725,62 @@ function formatTimeFromMinutes(mins) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// --- DRAG & DROP: Aufgaben/Stacks aus "Ganztägig" oder "Backlog / Ungeplant" in die Tages-, Wochen-, Monats- oder Jahresplanung ziehen ---
+function handleSchedDragStart(e, type, id) {
+    e.stopPropagation();
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.setData('type', type);
+    e.dataTransfer.effectAllowed = 'move';
+}
+function handleSchedDragOver(e, el) {
+    e.preventDefault(); e.stopPropagation();
+    if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    el.classList.add('sched-drop-hover');
+}
+function handleSchedDragLeave(el) {
+    el.classList.remove('sched-drop-hover');
+}
+function scheduleAssignDate(type, id, dateStr, timeStr = null) {
+    if(!dateStr || (type !== 'task' && type !== 'stack')) return;
+    const newVal = timeStr ? `${dateStr}T${timeStr}` : dateStr;
+    let changedName = '';
+    if(type === 'task') {
+        const task = appData.tasks.find(x => x.id === id);
+        if(task) { task.startDate = newVal; task.dueDate = newVal; changedName = task.projectName; }
+    } else if(type === 'stack') {
+        const stack = appData.projectStacks.find(x => x.id === id);
+        if(stack) { stack.startDate = newVal; stack.dueDate = newVal; changedName = stack.name; }
+    }
+    if(!changedName) return;
+    const [y, mo, da] = dateStr.split('-');
+    const dateLabel = `${da}.${mo}.${y}`;
+    saveToLocal(); safeRenderSchedule();
+    showToast(`"${changedName}" für ${dateLabel}${timeStr ? ' um ' + timeStr + ' Uhr' : ''} eingeplant.`);
+}
+function handleSchedDropDate(e, el, dateStr) {
+    e.preventDefault(); e.stopPropagation();
+    if(el) el.classList.remove('sched-drop-hover');
+    const type = e.dataTransfer.getData('type'); const id = e.dataTransfer.getData('text/plain');
+    if(!type || !id) return;
+    scheduleAssignDate(type, id, dateStr);
+}
+function handleSchedDropTimeline(e, el) {
+    e.preventDefault(); e.stopPropagation();
+    if(el) el.classList.remove('sched-drop-hover');
+    const type = e.dataTransfer.getData('type'); const id = e.dataTransfer.getData('text/plain');
+    if(!type || !id) return;
+    const rect = el.getBoundingClientRect();
+    let pct = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+    pct = Math.max(0, Math.min(1, pct));
+    const startMins = parseFloat(el.dataset.startMins) || 0;
+    const totalMins = parseFloat(el.dataset.totalMins) || 0;
+    let mins = startMins + pct * totalMins;
+    mins = Math.round(mins / 15) * 15; // Auf 15 Minuten runden
+    const timeStr = formatTimeFromMinutes(mins);
+    const dateStr = el.dataset.date;
+    scheduleAssignDate(type, id, dateStr, timeStr);
 }
 
 // --- QUICK ACTIONS FÜR DIE LISTENANSICHT ---
@@ -4854,7 +4986,7 @@ function renderSchedule(c) {
             html += `<div style="display:flex; flex-direction:column; flex:1; min-height:0; width:100%;">`;
 
             // Ganztägige Box
-            html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-bottom:15px; padding:15px; box-shadow:var(--shadow); flex-shrink:0;">`;
+            html += `<div id="sched-allday-drop" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${dStr}')" style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-bottom:15px; padding:15px; box-shadow:var(--shadow); flex-shrink:0;">`;
             html += `<h4 style="margin-bottom:10px; font-size:13px; color:var(--text-muted);"><i class="fas fa-calendar-day"></i> Ganztägig / Ohne konkrete Uhrzeit</h4>`;
             
             if(allDayEvents.length === 0) {
@@ -4874,8 +5006,10 @@ function renderSchedule(c) {
                     if(ev.span === 'middle') spanText = '(Laufend)';
 
                     let pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
+                    const isDraggableItem = ev.type === 'task' || ev.type === 'stack';
+                    const dragAttrs = isDraggableItem ? `draggable="true" ondragstart="handleSchedDragStart(event, '${ev.type}', '${ev.data.id}')"` : '';
                     
-                    html += `<div class="cal-event ${isComp?'is-completed':''}" style="background:${bg}; color:${color}; padding:6px 12px; font-size:12px; display:inline-flex; flex-direction:row; align-items:center; gap:6px; border-radius:20px; cursor:pointer; border: 1px solid ${color};" onclick="${click}">
+                    html += `<div class="cal-event ${isComp?'is-completed':''}" ${dragAttrs} style="background:${bg}; color:${color}; padding:6px 12px; font-size:12px; display:inline-flex; flex-direction:row; align-items:center; gap:6px; border-radius:20px; cursor:pointer; border: 1px solid ${color};" onclick="${click}">
                         ${icon} <span style="font-weight:bold; white-space:nowrap;">${pausedIcon}${title} <span style="font-weight:normal; font-size:10px; opacity:0.7;">${spanText}</span></span>
                     </div>`;
                 });
@@ -4925,7 +5059,7 @@ function renderSchedule(c) {
             });
 
             const containerHeight = Math.max(350, (levelOccupied.length * 50) + 30);
-            html += `<div style="position:relative; width:100%; min-width:800px; height:${containerHeight}px; border-bottom:2px solid var(--border-color); margin-bottom:10px;">`;
+            html += `<div id="sched-timeline-drop" data-date="${dStr}" data-start-mins="${startMins}" data-total-mins="${totalMins}" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropTimeline(event, this)" style="position:relative; width:100%; min-width:800px; height:${containerHeight}px; border-bottom:2px solid var(--border-color); margin-bottom:10px;">`;
             
             // --- Past Time Background & Current Time Line ---
             let grayWidth = 0; let showRedLine = false; let redLinePct = 0;
@@ -5053,7 +5187,7 @@ function renderSchedule(c) {
                 let kwBadge = ''; const iterD = new Date(dateStr);
                 if(iterD.getDay() === 1 || iterD.getDate() === 1) { kwBadge = `<span style="font-size:9px; color:var(--primary-color); background:var(--primary-lightest); padding:2px 4px; border-radius:4px; margin-right:auto;">KW ${getISOWeek(iterD)}</span>`; }
 
-                return `<div class="cal-day ${dateStr===todayStr?'today':''}" style="min-height:${minHeight}; border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none; padding:4px 2px;"><div style="display:flex; justify-content:flex-end; align-items:center; font-size:12px; font-weight:bold; color:${dateStr===todayStr?'var(--primary-color)':'var(--text-muted)'}; margin-bottom: 4px; padding-right:4px;">${kwBadge}${dayNum}</div>${evHtml}</div>`;
+                return `<div class="cal-day ${dateStr===todayStr?'today':''}" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${dateStr}')" style="min-height:${minHeight}; border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none; padding:4px 2px;"><div style="display:flex; justify-content:flex-end; align-items:center; font-size:12px; font-weight:bold; color:${dateStr===todayStr?'var(--primary-color)':'var(--text-muted)'}; margin-bottom: 4px; padding-right:4px;">${kwBadge}${dayNum}</div>${evHtml}</div>`;
             };
 
             if (isMonth) {
@@ -5101,7 +5235,8 @@ function renderSchedule(c) {
                 let uniqueTasks = new Set(mEvents.filter(e => e.type === 'task').map(e => e.data.id)).size; let uniqueStacks = new Set(mEvents.filter(e => e.type === 'stack').map(e => e.data.id)).size; let uniqueMiles = new Set(mEvents.filter(e => e.type === 'milestone').map(e => e.data.title + e.parent.id)).size; let uniqueTcl = new Set(mEvents.filter(e => e.type === 'task-checklist').map(e => e.data.title + e.parent.id)).size;
                 const isCurrentMonth = (new Date().getFullYear() === y && new Date().getMonth() === m);
 
-                html += `<div class="month-card ${isCurrentMonth?'current':''}" onclick="scheduleCurrentDate.setMonth(${m}); scheduleMode='month'; safeRenderSchedule()">
+                const monthFirstDayStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
+                html += `<div class="month-card ${isCurrentMonth?'current':''}" onclick="scheduleCurrentDate.setMonth(${m}); scheduleMode='month'; safeRenderSchedule()" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${monthFirstDayStr}')">
                     <div class="month-card-title" style="color:${isCurrentMonth?'var(--primary-color)':'inherit'}">${monthName}</div>
                     <div style="font-size:12px; color:var(--text-muted); display:flex; flex-direction:column; gap:5px; align-items:center; margin-top: 5px;">
                         ${uniqueTasks > 0 ? `<span class="badge" style="background:var(--primary-light); color:var(--primary-color); width:100%; text-align:center; padding: 6px;"><i class="fas fa-tasks"></i> ${uniqueTasks} ${t('tasks')}</span>` : ''}
@@ -5301,7 +5436,7 @@ function renderSchedule(c) {
         let unschHtml = `<div style="margin-top: 40px; max-width:900px; margin-left:auto; margin-right:auto; text-align:left;">
             <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:5px; margin-bottom:15px; font-size:16px;">
                 <i class="fas fa-inbox" style="color:var(--text-muted); "></i> Backlog / Ungeplant
-                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">(Tipp: Klicke auf ein Element, um ein Datum festzulegen)</span>
+                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">(Tipp: Klicke auf ein Element, um ein Datum festzulegen, oder ziehe es direkt in die Planung)</span>
             </h3><div style="display:flex; flex-wrap:wrap; gap:10px; justify-content: start;">`;
         
         unscheduledItems.forEach(item => {
@@ -5310,7 +5445,7 @@ function renderSchedule(c) {
             let isComp = item.type === 'stack' ? item.data.status === 'completed' : isTaskDone(item.data); let isPaused = item.type === 'stack' ? item.data.status === 'paused' : (item.data.isPaused && !isComp);
             let pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : ''; let opacity = isComp ? 'opacity:0.6;' : '';
 
-            unschHtml += `<div class="cal-event" style="background:var(--surface-color); border:1px solid var(--border-color); padding:8px 15px; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; flex-direction:row; box-shadow:var(--shadow); transition:0.2s; ${opacity}" onclick="${fn}" onmouseover="this.style.borderColor='var(--primary-color)'" onmouseout="this.style.borderColor='var(--border-color)'"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:8px;"></i><span style="font-weight:bold; white-space:nowrap;">${pausedIcon}${title}</span></div>`;
+            unschHtml += `<div class="cal-event" draggable="true" ondragstart="handleSchedDragStart(event, '${item.type}', '${item.data.id}')" style="background:var(--surface-color); border:1px solid var(--border-color); padding:8px 15px; border-radius:20px; cursor:grab; display:inline-flex; align-items:center; flex-direction:row; box-shadow:var(--shadow); transition:0.2s; ${opacity}" onclick="${fn}" onmouseover="this.style.borderColor='var(--primary-color)'" onmouseout="this.style.borderColor='var(--border-color)'"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:8px;"></i><span style="font-weight:bold; white-space:nowrap;">${pausedIcon}${title}</span></div>`;
         });
         unschHtml += `</div></div>`; html += unschHtml;
     }
@@ -7723,11 +7858,34 @@ function renderToday(c) {
         ? `<div class="wk-trend-legend">${bucketRows.map(r => `<span><i style="background:${r.col}"></i>${escapeHtmlToday(r.name)}: <b>${ttNum(r.hours)} h</b></span>`).join('')}</div>`
         : '';
 
-    /* Statusverteilung */
-    const byStatus = { todo:0, inProgress:0, review:0 };
-    appData.tasks.forEach(t => { if (byStatus[t.status] !== undefined && !isTaskDone(t)) byStatus[t.status]++; });
-    const stTot = Math.max(1, byStatus.todo + byStatus.inProgress + byStatus.review);
-    const stSeg = (k, col, lbl) => byStatus[k] ? `<span class="wk-dist-seg" style="width:${byStatus[k]/stTot*100}%;background:${col}" title="${lbl}: ${byStatus[k]}"></span>` : '';
+    /* Statusverteilung: PRIMÄR 1:1 die echten, sichtbaren Kanban-Board-Spalten (appData.statuses, ohne "Abgeschlossen") — Benennung, Reihenfolge und Farbe dynamisch aus den Spalten übernommen, Aufgaben dynamisch pro Spalte gezählt (exakt wie im Kanban Board, inkl. aktiver Filter via getFilteredTasks()). */
+    const kanbanCols = appData.statuses.filter(col => col.id !== 'done');
+    const byStatus = {}; kanbanCols.forEach(col => { byStatus[col.id] = 0; });
+    getFilteredTasks().forEach(t => { if (byStatus[t.status] !== undefined) byStatus[t.status]++; });
+    const stTot = Math.max(1, kanbanCols.reduce((sum, col) => sum + byStatus[col.id], 0));
+    const stSeg = (col) => byStatus[col.id] ? `<span class="wk-dist-seg" style="width:${byStatus[col.id]/stTot*100}%;background:${getStatusColor(col)}" title="${escapeHtmlToday(col.title)}: ${byStatus[col.id]}"></span>` : '';
+
+    /* Sekundär: offene Stacks sowie genau die Checkpunkte/Meilensteine, die auch unter Wissen/Checklisten bzw. Wissen/Milestones sichtbar sind (gleiche Basis- und Sub-Item-Filterung: getFilteredTasks()/getFilteredStacks(), „Abgeschlossene ausblenden" und Nutzer-Filter). */
+    const _visStacksForSecondary = getFilteredStacks();
+    const openStacksCount = _visStacksForSecondary.length;
+    const _hideDoneCl = appData.settings.globalHideCompleted;
+    let openChecklistItems = 0;
+    getFilteredTasks().forEach(t_obj => {
+        let cl = t_obj.checklist || [];
+        if (_hideDoneCl) cl = cl.filter(ci => !ci.done);
+        if (activeFilters.users.length > 0 && !activeFilters.users.includes(t_obj.assigneeId || '')) { cl = cl.filter(ci => activeFilters.users.includes(ci.assigneeId || '')); }
+        openChecklistItems += cl.length;
+    });
+    _visStacksForSecondary.forEach(s => {
+        let cl = s.checklist || [];
+        if (_hideDoneCl) cl = cl.filter(ms => !ms.done);
+        if (activeFilters.users.length > 0 && !activeFilters.users.includes(s.assigneeId || '')) { cl = cl.filter(ms => activeFilters.users.includes(ms.assigneeId || '')); }
+        openChecklistItems += cl.length;
+    });
+    const secondaryParts = [];
+    if (openStacksCount > 0) secondaryParts.push(t('today_open_stacks_extra').replace('{n}', openStacksCount));
+    if (openChecklistItems > 0) secondaryParts.push(t('today_open_checklist_extra').replace('{n}', openChecklistItems));
+    const secondaryLine = secondaryParts.join(' · ');
 
     /* Prioritätenverteilung offener Aufgaben */
     const byPrio = { high:0, medium:0, low:0 };
@@ -7742,8 +7900,9 @@ function renderToday(c) {
         </div>
         <div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('today_status_dist')}</b><u>${stTot} ${t('today_open')}</u></div>
-            <div class="wk-dist">${stSeg('todo','#B9BFB6','Offen')}${stSeg('inProgress','var(--primary-color)','In Arbeit')}${stSeg('review','#E8A317','Prüfung')}</div>
-            <div class="wk-dist-legend"><span><i style="background:#B9BFB6"></i>${t('status_todo')}: ${byStatus.todo}</span><span><i style="background:var(--primary-color)"></i>${t('status_inprogress')}: ${byStatus.inProgress}</span><span><i style="background:#E8A317"></i>${t('status_review')}: ${byStatus.review}</span></div>
+            <div class="wk-dist">${kanbanCols.map(col => stSeg(col)).join('')}</div>
+            <div class="wk-dist-legend">${kanbanCols.map(col => `<span><i style="background:${getStatusColor(col)}"></i>${escapeHtmlToday(col.title)}: ${byStatus[col.id]}</span>`).join('')}</div>
+            ${secondaryLine ? `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border-color); font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px;"><i class="fas fa-layer-group"></i> ${secondaryLine}</div>` : ''}
         </div>
         <div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('today_prio_dist')}</b><u>${prTot} ${t('today_open')}</u></div>
