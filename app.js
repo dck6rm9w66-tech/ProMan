@@ -1964,7 +1964,11 @@ function getWfFieldOptionsHtml(selected = '') {
         { v: 'duration_days',  l: t('wf_f_duration'),     grp: 'Zahl' },
         { v: 'effort_remaining', l: t('wf_f_effort_rem'), grp: 'Zahl' },
         { v: 'checklistDone',  l: 'Checkliste erledigt %',grp: 'Zahl' },
+        { v: 'checklistOpenCount', l: 'Anzahl offener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
+        { v: 'checklistDoneCount', l: 'Anzahl abgeschlossener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
         { v: 'taskCount',      l: 'Anzahl Aufgaben',      grp: 'Zahl' },
+        { v: 'checklistOpenText', l: 'Text in offenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
+        { v: 'checklistDoneText', l: 'Text in abgeschlossenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
     ];
     const groups = ['Text', 'Auswahl', 'Status', 'Datum', 'Zahl'];
     let html = '';
@@ -1981,7 +1985,7 @@ function getWfFieldOptionsHtml(selected = '') {
 
 function getWfFieldType(field) {
     if(['dueDate','startDate'].includes(field)) return 'date';
-    if(['estimatedTime','spentTime','spentTime_thisWeek','duration_days','effort_remaining','checklistDone','taskCount'].includes(field)) return 'number';
+    if(['estimatedTime','spentTime','spentTime_thisWeek','duration_days','effort_remaining','checklistDone','taskCount','checklistOpenCount','checklistDoneCount'].includes(field)) return 'number';
     if(['isPaused','hasChecklist','hasAttachment','isOverdue'].includes(field)) return 'boolean';
     if(['priority','status','bucket','assigneeId','stakeholderId','projectStackId','recurrence'].includes(field)) return 'select';
     return 'text'; 
@@ -2239,6 +2243,18 @@ function evaluateConditions(entity, conditions, logic = 'AND') {
         if(cond.field === 'checklistDone') {
             const cl = entity.checklist || [];
             eVal = cl.length > 0 ? Math.round((cl.filter(c => c.done).length / cl.length) * 100) : 0;
+        }
+        if(cond.field === 'checklistOpenCount') {
+            eVal = (entity.checklist || []).filter(c => !c.done).length;
+        }
+        if(cond.field === 'checklistDoneCount') {
+            eVal = (entity.checklist || []).filter(c => c.done).length;
+        }
+        if(cond.field === 'checklistOpenText') {
+            eVal = (entity.checklist || []).filter(c => !c.done).map(c => c.title || '').join(' | ');
+        }
+        if(cond.field === 'checklistDoneText') {
+            eVal = (entity.checklist || []).filter(c => c.done).map(c => c.title || '').join(' | ');
         }
         if(cond.field === 'taskCount') {
             eVal = appData.tasks.filter(t => t.projectStackId === entity.id).length;
@@ -4246,7 +4262,8 @@ function dropTaskToColumn(e, newStatus) {
 
 // STACKS DASHBOARD
 /**
- * Baut eine kleine Sparkline-Grafik (Aktivitätsverlauf / Zeiterfassung) für eine gegebene Menge von Aufgaben-IDs.
+ * Baut eine kleine Aktivitäts-Grafik (Zeiterfassung) für eine gegebene Menge von Aufgaben-IDs:
+ * ein Balkendiagramm (Stunden pro Tag) mit einer Bezierkurve als Trendlinie darüber.
  * Aggregiert appData.timeLogs nach Datum und zeigt zusätzlich das Datum der ersten und letzten Messung an,
  * damit der abgedeckte Zeitraum klar erkennbar ist. Gibt '' zurück, wenn keine Zeiterfassung vorliegt.
  */
@@ -4255,20 +4272,35 @@ function buildActivitySparklineHtml(taskIds) {
     if (logs.length === 0) return '';
     const logAgg = {}; logs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
     const dates = Object.keys(logAgg).sort((a, b) => new Date(a) - new Date(b));
+    const N = dates.length;
     const maxH = Math.max(...Object.values(logAgg), 0.1);
+    const baseline = 35, scale = 28;
+
+    /* Balken: jedes Datum bekommt einen eigenen, gleich breiten Slot, damit Balken und Kurve exakt übereinander liegen */
+    const slotW = 100 / N;
+    const barW = Math.min(slotW * 0.55, 12);
+    let barsD = '';
+    const points = dates.map((d, i) => {
+        const cx = (i + 0.5) * slotW;
+        const h = (logAgg[d] / maxH) * scale;
+        const y = baseline - h;
+        barsD += `<rect x="${(cx - barW / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" rx="1" fill="rgba(204,163,0,0.35)"></rect>`;
+        return { x: cx, y };
+    });
+
+    /* Bezierkurve als Trendlinie, liegt über den Balken */
     let pathD = '';
-    if (dates.length === 1) {
-        const y = 35 - ((logAgg[dates[0]] / maxH) * 28);
-        pathD = `M 0 ${y} L 100 ${y}`;
+    if (N === 1) {
+        pathD = `M ${(points[0].x - slotW / 2).toFixed(2)} ${points[0].y.toFixed(2)} L ${(points[0].x + slotW / 2).toFixed(2)} ${points[0].y.toFixed(2)}`;
     } else {
-        const points = dates.map((d, i) => ({ x: (i / (dates.length - 1)) * 100, y: 35 - ((logAgg[d] / maxH) * 28) }));
-        pathD = `M ${points[0].x} ${points[0].y}`;
-        for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x} ${points[i].y} ${xc} ${yc}`; }
-        pathD += ` T ${points[points.length - 1].x} ${points[points.length - 1].y}`;
+        pathD = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+        for (let i = 1; i < points.length - 1; i++) { const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2; pathD += ` Q ${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)} ${xc.toFixed(2)} ${yc.toFixed(2)}`; }
+        pathD += ` T ${points[points.length - 1].x.toFixed(2)} ${points[points.length - 1].y.toFixed(2)}`;
     }
-    const rangeLabel = dates.length === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[dates.length - 1])}`;
+
+    const rangeLabel = N === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[N - 1])}`;
     return `<div style="margin-top:5px; margin-bottom:10px;">
-        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${t('activity_chart_title')}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;"><path d="${pathD} L 100 40 L 0 40 Z" fill="rgba(204,163,0,0.15)"/><path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${t('activity_chart_title')}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div style="font-size:10px; color:var(--text-muted); text-align:right; margin-top:2px;">${rangeLabel}</div>
     </div>`;
 }
