@@ -504,6 +504,7 @@ function updateDepDisplay() {
 
 let currentView = appData.settings.views.find(v => !v.hidden && v.id !== 'schedule' && v.id !== 'timeline')?.id || appData.settings.views[0].id;
 let plannerSubView = 'schedule';
+let timeSubView = 'tracking';
 let sidebarMgmtOpen = false;
 let currentTempFiles = []; 
 
@@ -849,9 +850,13 @@ function getNotifications() {
     let notifs = []; const now = new Date(); const settings = appData.settings;
     if(!settings.dismissedNotifs) settings.dismissedNotifs = [];
     if(!settings.pushedNotifs) settings.pushedNotifs = [];
+    if(!settings.snoozedNotifs) settings.snoozedNotifs = {};
     
     const addNotif = (nObj) => {
         if(!settings.dismissedNotifs.includes(nObj.notifId)) {
+            const snoozedUntil = settings.snoozedNotifs[nObj.notifId];
+            if(snoozedUntil && Date.now() < snoozedUntil) return; /* Erinnerung wurde per "In 30 Minuten erinnern" verschoben */
+
             const ch = (settings.notificationChannels || {})[nObj.eventKey] || { bell: true };
 
             if(ch.bell !== false) { notifs.push(nObj); }
@@ -865,7 +870,10 @@ function getNotifications() {
                     const tType = nObj.type === 'danger' ? 'error' : (nObj.type === 'warning' ? 'warning' : 'info');
                     _rawToast(`${nObj.title}: ${nObj.desc}`, tType);
                 }
-                if(ch.modal) { showNotifModal(nObj.title, nObj.desc, nObj.type); }
+                if(ch.modal) {
+                    const isReminder = (nObj.eventKey === 'reminder1' || nObj.eventKey === 'reminder2');
+                    showNotifModal(nObj.title, nObj.desc, nObj.type, isReminder ? nObj.notifId : null);
+                }
                 if(ch.email && settings.notificationEmail) { triggerEmailNotif(nObj.title, nObj.desc); }
 
                 saveToLocal(true);
@@ -1373,6 +1381,53 @@ function getStackProgress(stackId) {
     let tProgressSum = 0; tasks.forEach(t_obj => tProgressSum += getTaskProgress(t_obj));
     const tPct = tasks.length === 0 ? 0 : Math.round(tProgressSum / tasks.length);
     return { mPct, tPct, tasksCount: tasks.length };
+}
+
+/* --- BUDGET-VERRECHNUNG ---
+   Stundensatz-Kaskade: Checkpunkt-Satz > Aufgaben-Satz > Stack-Satz (Standard) > 0.
+   Verbrauchtes Budget einer Aufgabe: Summe (Checkpunkt-Dauer in Std × wirksamer Satz) über alle Checkpunkte;
+   hat die Aufgabe keine Checkliste, wird stattdessen der bisherige Aufwand (spentTime) × wirksamer Satz verwendet.
+   Verbrauchtes Budget eines Stacks: Summe der verbrauchten Budgets aller zugehörigen Aufgaben. */
+function getEffectiveHourlyRate(checkpoint, task, stack) {
+    if (checkpoint && checkpoint.hourlyRate !== null && checkpoint.hourlyRate !== undefined && checkpoint.hourlyRate !== '') return parseFloat(checkpoint.hourlyRate) || 0;
+    if (task && task.hourlyRate !== null && task.hourlyRate !== undefined && task.hourlyRate !== '') return parseFloat(task.hourlyRate) || 0;
+    if (stack && stack.hourlyRate !== null && stack.hourlyRate !== undefined && stack.hourlyRate !== '') return parseFloat(stack.hourlyRate) || 0;
+    return 0;
+}
+function getTaskConsumedBudget(task) {
+    if (!task) return 0;
+    const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
+    const cl = task.checklist || [];
+    if (cl.length > 0) {
+        return cl.reduce((sum, ci) => {
+            const durH = (parseInt(ci.duration, 10) || 0) / 60;
+            return sum + (durH * getEffectiveHourlyRate(ci, task, stack));
+        }, 0);
+    }
+    return (parseFloat(task.spentTime) || 0) * getEffectiveHourlyRate(null, task, stack);
+}
+function getStackConsumedBudget(stack) {
+    if (!stack) return 0;
+    return appData.tasks.filter(t => t.projectStackId === stack.id).reduce((sum, t) => sum + getTaskConsumedBudget(t), 0);
+}
+/* Baut eine kleine Statuszeile mit Fortschrittsbalken für die Budget-Anzeige (Modal & Übersicht) */
+function buildBudgetSummaryHtml(targetBudget, currency, consumed) {
+    const target = parseFloat(targetBudget) || 0;
+    if (target <= 0) return '';
+    const pct = Math.round((consumed / target) * 100);
+    const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
+    const remaining = target - consumed;
+    return `<div style="background:var(--bg-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:12px;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;">
+            <span><b>${consumed.toFixed(2)} ${currency}</b> ${t('budget_consumed')}</span>
+            <span style="color:var(--text-muted);">${t('budget_target')}: ${target.toFixed(2)} ${currency}</span>
+        </div>
+        <div class="pb-container"><div class="pb-fill" style="width:${Math.min(pct,100)}%; background:${barColor};"></div></div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:4px;">
+            <span>${pct}% ${t('budget_used_pct')}</span>
+            <span>${remaining >= 0 ? t('budget_remaining') + ': ' + remaining.toFixed(2) + ' ' + currency : t('budget_over') + ': ' + Math.abs(remaining).toFixed(2) + ' ' + currency}</span>
+        </div>
+    </div>`;
 }
 
 function getAvgRating(rating) {
@@ -1967,6 +2022,10 @@ function getWfFieldOptionsHtml(selected = '') {
         { v: 'checklistOpenCount', l: 'Anzahl offener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
         { v: 'checklistDoneCount', l: 'Anzahl abgeschlossener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
         { v: 'taskCount',      l: 'Anzahl Aufgaben',      grp: 'Zahl' },
+        { v: 'budgetRemainingPct', l: 'Budget: Verbleibende Limite (%)', grp: 'Zahl' },
+        { v: 'budgetConsumedPct', l: 'Budget: Verbrauchte Limite (%)', grp: 'Zahl' },
+        { v: 'budgetRemainingAmount', l: 'Budget: Verbleibende Summe', grp: 'Zahl' },
+        { v: 'budgetConsumedAmount', l: 'Budget: Verbrauchte Summe', grp: 'Zahl' },
         { v: 'checklistOpenText', l: 'Text in offenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
         { v: 'checklistDoneText', l: 'Text in abgeschlossenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
     ];
@@ -1985,7 +2044,7 @@ function getWfFieldOptionsHtml(selected = '') {
 
 function getWfFieldType(field) {
     if(['dueDate','startDate'].includes(field)) return 'date';
-    if(['estimatedTime','spentTime','spentTime_thisWeek','duration_days','effort_remaining','checklistDone','taskCount','checklistOpenCount','checklistDoneCount'].includes(field)) return 'number';
+    if(['estimatedTime','spentTime','spentTime_thisWeek','duration_days','effort_remaining','checklistDone','taskCount','checklistOpenCount','checklistDoneCount','budgetRemainingPct','budgetConsumedPct','budgetRemainingAmount','budgetConsumedAmount'].includes(field)) return 'number';
     if(['isPaused','hasChecklist','hasAttachment','isOverdue'].includes(field)) return 'boolean';
     if(['priority','status','bucket','assigneeId','stakeholderId','projectStackId','recurrence'].includes(field)) return 'select';
     return 'text'; 
@@ -2258,6 +2317,16 @@ function evaluateConditions(entity, conditions, logic = 'AND') {
         }
         if(cond.field === 'taskCount') {
             eVal = appData.tasks.filter(t => t.projectStackId === entity.id).length;
+        }
+        if(['budgetRemainingPct','budgetConsumedPct','budgetRemainingAmount','budgetConsumedAmount'].includes(cond.field)) {
+            const isTaskEntity = ('projectName' in entity);
+            const target = parseFloat(entity.targetBudget) || 0;
+            const consumed = isTaskEntity ? getTaskConsumedBudget(entity) : getStackConsumedBudget(entity);
+            const consumedPct = target > 0 ? (consumed / target) * 100 : 0;
+            if(cond.field === 'budgetConsumedPct') eVal = Math.round(consumedPct * 100) / 100;
+            if(cond.field === 'budgetRemainingPct') eVal = Math.round((100 - consumedPct) * 100) / 100;
+            if(cond.field === 'budgetConsumedAmount') eVal = Math.round(consumed * 100) / 100;
+            if(cond.field === 'budgetRemainingAmount') eVal = Math.round((target - consumed) * 100) / 100;
         }
         if(cond.field === 'status') {
             eVal = entity.status || (entity.isPaused ? 'paused' : '');
@@ -2563,7 +2632,7 @@ function addModalClDragHandlers(div) {
     div.draggable = false;
 }
 
-function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null) {
+function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null, hourlyRate = null, showBudget = false) {
     let sd = '', stime = ''; if (startDate) { if (startDate.includes('T')) [sd, stime] = startDate.split('T'); else sd = startDate; }
     /* Dauer in Minuten → Dezimalstunden (Standard 60 Min = 1 Stunde) */
     let durMin = (duration === null || duration === undefined || duration === '') ? 0 : parseInt(duration, 10);
@@ -2600,7 +2669,8 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
                 <input type="date" class="cl-start-date" value="${sd}" title="Startdatum" onchange="clStartChanged(this)">
                 <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="Startzeit (optional)" onchange="clStartChanged(this)">
             </span>
-            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="Dauer in Stunden (z. B. 1.5 = 1 Std 30 Min)" onchange="clSumDuration()"><span class="cl-durunit">Std</span></span>
+            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="Dauer in Stunden" onchange="clSumDuration()"><span class="cl-durunit">Std</span></span>
+            ${showBudget ? `<span class="cl-datespan cl-ratespan"><span class="cl-datelbl">Lohn</span><input type="number" class="cl-hourly-rate" value="${(hourlyRate !== null && hourlyRate !== undefined && hourlyRate !== '') ? hourlyRate : ''}" min="0" step="0.5" placeholder="–" title="Stundenlohn für diesen Checkpunkt (optional, überschreibt den Stundenlohn der Aufgabe)"><span class="cl-durunit">/h</span></span>` : ''}
             <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="Löschen"><i class="fas fa-trash"></i></button>
         </div>
@@ -2669,7 +2739,9 @@ function openStackModal(id = null) {
     const container = document.getElementById('s_checklist_container'); container.innerHTML = '';
     const tasksContainer = document.getElementById('s_tasks_container'); tasksContainer.innerHTML = '';
     
-    ['s_id','s_name','s_start_date','s_start_time','s_due_date','s_due_time', 's_history', 's_assignee', 's_stakeholder', 's_bucket'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
+    ['s_id','s_name','s_start_date','s_start_time','s_due_date','s_due_time', 's_history', 's_assignee', 's_stakeholder', 's_bucket', 's_target_budget', 's_hourly_rate'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
+    document.getElementById('s_target_budget_currency').value = 'EUR';
+    { const _sbs = document.getElementById('s_budget_summary'); if(_sbs) { _sbs.style.display = 'none'; _sbs.innerHTML = ''; } }
     document.getElementById('s_notes_rte').innerHTML = '';
     document.getElementById('s_assignee').innerHTML = `<option value="" data-i18n="nobody">${t('nobody')}</option>` + appData.users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
     document.getElementById('s_stakeholder').innerHTML = `<option value="" data-i18n="no_stakeholder">${t('no_stakeholder')}</option>` + appData.stakeholders.map(sh => `<option value="${sh.id}">${sh.name}</option>`).join('');
@@ -2693,6 +2765,8 @@ function openStackModal(id = null) {
         document.getElementById('s_start_date').value = sStartDate; document.getElementById('s_start_time').value = sStartTime;
         document.getElementById('s_due_date').value = sDueDate; document.getElementById('s_due_time').value = sDueTime;
         document.getElementById('s_notes_rte').innerHTML = s.notes || ''; document.getElementById('s_history').value = s.history || ''; document.getElementById('s_assignee').value = s.assigneeId || ''; document.getElementById('s_stakeholder').value = s.stakeholderId || ''; document.getElementById('s_bucket').value = s.bucket || '';
+        document.getElementById('s_target_budget').value = s.targetBudget || ''; document.getElementById('s_target_budget_currency').value = s.targetBudgetCurrency || 'EUR'; document.getElementById('s_hourly_rate').value = (s.hourlyRate !== undefined && s.hourlyRate !== null) ? s.hourlyRate : '';
+        { const _sbs = document.getElementById('s_budget_summary'); if(_sbs) { const _bh = buildBudgetSummaryHtml(s.targetBudget, s.targetBudgetCurrency || 'EUR', getStackConsumedBudget(s)); _sbs.innerHTML = _bh; _sbs.style.display = _bh ? 'block' : 'none'; } }
         
         const isCompleted = s.status === 'completed'; const isPaused = s.status === 'paused';
         if(!isCompleted) {
@@ -2862,7 +2936,8 @@ function saveStack() {
             id, name: document.getElementById('s_name').value, 
             startDate: getCombinedDateTime('s_start_date', 's_start_time'), 
             dueDate: getCombinedDateTime('s_due_date', 's_due_time'), 
-            notes: document.getElementById('s_notes_rte').innerHTML, history: finalHistory, assigneeId: document.getElementById('s_assignee').value, stakeholderId: document.getElementById('s_stakeholder').value, bucket: document.getElementById('s_bucket').value, checklist: checklist, predecessors: tempPredecessors[id] || [] 
+            notes: document.getElementById('s_notes_rte').innerHTML, history: finalHistory, assigneeId: document.getElementById('s_assignee').value, stakeholderId: document.getElementById('s_stakeholder').value, bucket: document.getElementById('s_bucket').value, checklist: checklist, predecessors: tempPredecessors[id] || [],
+            targetBudget: document.getElementById('s_target_budget').value !== '' ? parseFloat(document.getElementById('s_target_budget').value) : null, targetBudgetCurrency: document.getElementById('s_target_budget_currency').value || 'EUR', hourlyRate: document.getElementById('s_hourly_rate').value !== '' ? parseFloat(document.getElementById('s_hourly_rate').value) : null
         };
         
         if(sData.startDate) checkWorkdayWarning(sData.startDate, sData.name);
@@ -2918,10 +2993,10 @@ function populateTaskDropdowns() {
 }
 function toggleCustomRecurrence() { document.getElementById('custom_recurrence_div').style.display = (document.getElementById('t_recurrence').value === 'custom') ? 'flex' : 'none'; }
 
-function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null) {
+function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null, hourlyRate=null) {
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     if(id) div.setAttribute('data-id', id);
-    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration); addModalClDragHandlers(div); container.appendChild(div);
+    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration, hourlyRate, true); addModalClDragHandlers(div); container.appendChild(div);
 }
 
 function openTaskToCheckpoint(taskId, checkpointId) { openModal(taskId, checkpointId); }
@@ -2930,7 +3005,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
     populateTaskDropdowns(); document.getElementById('taskModal').classList.add('active'); switchTaskTab('tab-general', document.querySelector('#taskModal .modal-tab-btn')); 
     const container = document.getElementById('t_checklist_container'); container.innerHTML = '';
     document.getElementById('t_file_list').innerHTML = ''; document.getElementById('t_files').value = ''; document.getElementById('t_filepath').value = ''; currentTempFiles = [];
-    ['t_projectStack','t_project','t_start_date','t_start_time','t_due_date','t_due_time','t_estTime','t_spentTime','t_notes','t_filepath', 't_assignee'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
+    ['t_projectStack','t_project','t_start_date','t_start_time','t_due_date','t_due_time','t_estTime','t_spentTime','t_notes','t_filepath', 't_assignee', 't_target_budget', 't_hourly_rate'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
     document.getElementById('t_desc_rte').innerHTML = '';
     const baseFolderDisplay = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\'; document.getElementById('t_base_folder_display').innerText = baseFolderDisplay;
 
@@ -2962,15 +3037,16 @@ function openModal(taskId = null, _scrollToCpId = null) {
         document.getElementById('t_due_date').value = tDueDate; document.getElementById('t_due_time').value = tDueTime;
         
         document.getElementById('t_estTime').value = (t_obj.estimatedTimeBase !== undefined ? t_obj.estimatedTimeBase : (t_obj.estimatedTime || '')); document.getElementById('t_spentTime').value = t_obj.spentTime || ''; document.getElementById('t_desc_rte').innerHTML = t_obj.description || ''; document.getElementById('t_notes').value = t_obj.notes || '';
+        document.getElementById('t_target_budget').value = t_obj.targetBudget || ''; document.getElementById('t_target_budget_currency').value = t_obj.targetBudgetCurrency || 'EUR'; document.getElementById('t_hourly_rate').value = (t_obj.hourlyRate !== undefined && t_obj.hourlyRate !== null) ? t_obj.hourlyRate : '';
         
-        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null))); 
+        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null), (c.hourlyRate !== undefined ? c.hourlyRate : null))); 
         if(t_obj.files) { currentTempFiles = [...t_obj.files]; renderFileList(); }
         updateDepDisplay();
         clSumDuration();
     } else {
         document.getElementById('modalTitle').innerText = t('task_new'); document.getElementById('taskId').value = ''; document.getElementById('btnDeleteTask').style.display = 'none'; document.getElementById('dropdownShareTask').style.display = 'none';
         renderInteractiveRating('t_interactive_rating', null);
-        document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence();
+        document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence(); document.getElementById('t_target_budget_currency').value = 'EUR';
         if(appData.statuses.length > 0) document.getElementById('t_status').value = appData.statuses[0].id;
         document.getElementById('t_assignee').value = appData.settings.currentUserId || '';
         populatePresetPicker('task');
@@ -3088,7 +3164,9 @@ function saveTask() {
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds };
+            const rateVal = item.querySelector('.cl-hourly-rate')?.value;
+            const cHourlyRate = (rateVal !== undefined && rateVal !== '') ? parseFloat(rateVal) : null;
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds, hourlyRate: cHourlyRate };
         });
 
         // Diff Checklist für Historie
@@ -3115,6 +3193,7 @@ function saveTask() {
             startDate: getCombinedDateTime('t_start_date', 't_start_time'), 
             dueDate: getCombinedDateTime('t_due_date', 't_due_time'), 
             estimatedTimeBase: getVal('t_estTime'), estimatedTime: (function(){ const base = parseFloat(getVal('t_estTime')) || 0; const cpMin = (checklist||[]).reduce((s,c)=> s + (parseInt(c.duration,10)||0), 0); const total = base + cpMin/60; return (base || cpMin) ? String(Number(total.toFixed(2))) : ''; })(), spentTime: getVal('t_spentTime'), description: document.getElementById('t_desc_rte').innerHTML, notes: finalNotes, checklist: checklist, files: currentTempFiles,
+            targetBudget: getVal('t_target_budget') !== '' ? parseFloat(getVal('t_target_budget')) : null, targetBudgetCurrency: getVal('t_target_budget_currency') || 'EUR', hourlyRate: getVal('t_hourly_rate') !== '' ? parseFloat(getVal('t_hourly_rate')) : null,
             predecessors: tempPredecessors[id] || []
         };
         
@@ -3203,17 +3282,18 @@ function renderView() {
 function renderPlanner(c) {
     const tabs = [
         { id: 'schedule', label: '<i class="fas fa-calendar-alt"></i> Kalender' },
-        { id: 'timeline', label: '<i class="fas fa-stream"></i> Gantt' }
+        { id: 'timeline', label: '<i class="fas fa-stream"></i> Gantt' },
+        { id: 'budgets', label: '<i class="fas fa-coins"></i> ' + t('budgets_tab') }
     ];
     let tabHtml = `<div style="display:flex; gap:0; background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; width:fit-content; margin-bottom:20px; flex-shrink:0;">`;
-    tabs.forEach(tab => {
+    tabs.forEach((tab, idx) => {
         const active = plannerSubView === tab.id;
         tabHtml += `<button onclick="switchPlannerTab('${tab.id}')" style="
             border:none; border-radius:0; padding:9px 22px; font-size:13px; font-weight:${active?'700':'500'};
             background:${active ? 'var(--primary-color)' : 'transparent'};
             color:${active ? '#fff' : 'var(--text-muted)'};
             cursor:pointer; display:flex; align-items:center; gap:7px; transition:all 0.18s;
-            border-right:${tab.id==='schedule' ? '1px solid var(--border-color)' : 'none'};
+            border-right:${idx < tabs.length - 1 ? '1px solid var(--border-color)' : 'none'};
         ">${tab.label}</button>`;
     });
     tabHtml += `</div>`;
@@ -3224,6 +3304,7 @@ function renderPlanner(c) {
     subContainer.style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0;';
     c.appendChild(subContainer);
     if(plannerSubView === 'timeline') renderTimeline(subContainer);
+    else if(plannerSubView === 'budgets') renderBudgetsView(subContainer);
     else renderSchedule(subContainer);
 
     c.style.display = 'flex';
@@ -3233,6 +3314,149 @@ function renderPlanner(c) {
 function switchPlannerTab(subView) {
     plannerSubView = subView;
     renderPlanner(document.getElementById('mainContainer'));
+}
+
+/* Ermittelt den effektiven Stundensatz einer einzelnen Zeitbuchung (Checkpunkt > Aufgabe > Stack). */
+function getLogHourlyRate(log) {
+    const task = appData.tasks.find(x => x.id === log.taskId);
+    if (!task) return 0;
+    const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
+    return getEffectiveHourlyRate(null, task, stack);
+}
+
+/* Aggregiert die verbrauchten Budgetkosten (Stunden × effektiver Satz) je Kalendermonat, gruppiert nach Währung. */
+function getBudgetConsumptionByMonth() {
+    const byCurrencyMonth = {}; /* { currency: { 'YYYY-MM': amount } } */
+    (appData.timeLogs || []).forEach(log => {
+        if (!log.date) return;
+        const task = appData.tasks.find(x => x.id === log.taskId);
+        if (!task) return;
+        const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
+        const rate = getEffectiveHourlyRate(null, task, stack);
+        if (rate <= 0) return;
+        const cur = (task.targetBudgetCurrency) || (stack && stack.targetBudgetCurrency) || 'EUR';
+        const month = (log.date || '').slice(0, 7);
+        const cost = (parseFloat(log.hours) || 0) * rate;
+        if (!byCurrencyMonth[cur]) byCurrencyMonth[cur] = {};
+        byCurrencyMonth[cur][month] = (byCurrencyMonth[cur][month] || 0) + cost;
+    });
+    return byCurrencyMonth;
+}
+
+function renderBudgetsView(c) {
+    /* Alle Budget-Träger einsammeln: Stacks mit Zielbudget + Einzelaufgaben (ohne Stack) mit eigenem Zielbudget */
+    const stacksWithBudget = appData.projectStacks.filter(s => parseFloat(s.targetBudget) > 0);
+    const standaloneTasksWithBudget = appData.tasks.filter(t => !t.projectStackId && parseFloat(t.targetBudget) > 0);
+
+    const items = [];
+    stacksWithBudget.forEach(s => items.push({
+        type: 'stack', id: s.id, name: s.name || t('unnamed'),
+        target: parseFloat(s.targetBudget) || 0, currency: s.targetBudgetCurrency || 'EUR',
+        consumed: getStackConsumedBudget(s), status: s.status
+    }));
+    standaloneTasksWithBudget.forEach(t_obj => items.push({
+        type: 'task', id: t_obj.id, name: t_obj.projectName || t('unnamed'),
+        target: parseFloat(t_obj.targetBudget) || 0, currency: t_obj.targetBudgetCurrency || 'EUR',
+        consumed: getTaskConsumedBudget(t_obj), status: t_obj.status
+    }));
+
+    if (items.length === 0) {
+        c.innerHTML = `<div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+            <i class="fas fa-coins" style="font-size:42px; opacity:0.35; margin-bottom:16px;"></i>
+            <p style="font-size:15px;">${t('budgets_empty')}</p>
+            <p style="font-size:12px; margin-top:6px;">${t('budgets_empty_hint')}</p>
+        </div>`;
+        return;
+    }
+
+    /* Summen je Währung */
+    const byCurrency = {};
+    items.forEach(it => {
+        if (!byCurrency[it.currency]) byCurrency[it.currency] = { target: 0, consumed: 0, count: 0, over: 0 };
+        byCurrency[it.currency].target += it.target;
+        byCurrency[it.currency].consumed += it.consumed;
+        byCurrency[it.currency].count++;
+        if (it.consumed > it.target) byCurrency[it.currency].over++;
+    });
+
+    let html = '';
+
+    /* ── TREND-GRAFIKEN (wie im Hub, oberhalb) ── */
+    const consumptionByMonth = getBudgetConsumptionByMonth();
+    let graphsHtml = '';
+    Object.keys(byCurrency).sort().forEach(cur => {
+        const sums = byCurrency[cur];
+        const pct = sums.target > 0 ? Math.round((sums.consumed / sums.target) * 100) : 0;
+        const remaining = sums.target - sums.consumed;
+        const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
+
+        /* Monats-Trend für diese Währung (letzte 6 Monate mit Daten oder alle) */
+        const monthMap = consumptionByMonth[cur] || {};
+        const months = Object.keys(monthMap).sort();
+        const shownMonths = months.slice(-6);
+        const maxMonth = Math.max(0.01, ...shownMonths.map(m => monthMap[m]));
+        const trendBars = shownMonths.length
+            ? shownMonths.map(m => {
+                const val = monthMap[m];
+                const label = m.slice(5) + '.' + m.slice(2, 4);
+                return `<div class="wk-tr-col" title="${label}: ${ttNum(val)} ${cur}"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.round(val / maxMonth * 100)}%;background:#cca300"></span></div><u>${label}</u></div>`;
+            }).join('')
+            : `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
+
+        graphsHtml += `<div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('budgets_trend')} (${cur})</b><u>${t('budgets_last_months')}</u></div>
+            <div class="wk-trend">${trendBars}</div>
+        </div>
+        <div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('budgets_overview')} (${cur})</b><u>${sums.count} ${sums.count === 1 ? t('budgets_item') : t('budgets_items')}</u></div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;">
+                <span style="font-size:24px; font-weight:700; color:${barColor};">${pct}%</span>
+                <span style="font-size:12px; color:var(--text-muted);">${t('budget_used_pct')}</span>
+            </div>
+            <div class="pb-container" style="height:10px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:8px;">
+                <span><b style="color:var(--text-main);">${ttNum(sums.consumed)}</b> / ${ttNum(sums.target)} ${cur}</span>
+                <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${cur}</span>
+            </div>
+            ${sums.over > 0 ? `<div style="font-size:11px; color:var(--danger); margin-top:6px;"><i class="fas fa-exclamation-triangle"></i> ${sums.over} ${sums.over === 1 ? t('budgets_over_one') : t('budgets_over_many')}</div>` : ''}
+        </div>`;
+    });
+    html += `<section class="wk-graphs">${graphsHtml}</section>`;
+
+    /* ── DETAIL-LISTE: pro Budget-Träger ein Fortschrittsbalken ── */
+    const sortedItems = items.slice().sort((a, b) => {
+        const pa = a.target > 0 ? a.consumed / a.target : 0;
+        const pb = b.target > 0 ? b.consumed / b.target : 0;
+        return pb - pa;
+    });
+
+    html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:6px;">
+        <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-list-ul" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_details')}</h3>
+        <div style="display:flex; flex-direction:column; gap:14px;">`;
+
+    sortedItems.forEach(it => {
+        const pct = it.target > 0 ? Math.round((it.consumed / it.target) * 100) : 0;
+        const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
+        const remaining = it.target - it.consumed;
+        const icon = it.type === 'stack' ? 'fa-folder' : 'fa-tasks';
+        const openFn = it.type === 'stack' ? `openStackModal('${it.id}')` : `openModal('${it.id}')`;
+        const isDone = it.status === 'completed' || it.status === 'done';
+        html += `<div style="cursor:pointer; ${isDone ? 'opacity:0.6;' : ''}" onclick="${openFn}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:10px;">
+                <span style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:7px;"></i>${escapeHtmlToday(it.name)}</span>
+                <span style="font-size:12px; color:${barColor}; font-weight:600; white-space:nowrap; flex-shrink:0;">${pct}%</span>
+            </div>
+            <div class="pb-container" style="height:8px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:4px;">
+                <span>${ttNum(it.consumed)} / ${ttNum(it.target)} ${it.currency}</span>
+                <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${it.currency}</span>
+            </div>
+        </div>`;
+    });
+
+    html += `</div></div>`;
+    c.innerHTML = html;
+    c.style.overflowY = 'auto';
 }
 
 // DEPENDENCIES VIEW (NEW)
@@ -4267,13 +4491,16 @@ function dropTaskToColumn(e, newStatus) {
  * Aggregiert appData.timeLogs nach Datum und zeigt zusätzlich das Datum der ersten und letzten Messung an,
  * damit der abgedeckte Zeitraum klar erkennbar ist. Gibt '' zurück, wenn keine Zeiterfassung vorliegt.
  */
-function buildActivitySparklineHtml(taskIds) {
-    const logs = appData.timeLogs.filter(l => taskIds.has(l.taskId));
-    if (logs.length === 0) return '';
-    const logAgg = {}; logs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
-    const dates = Object.keys(logAgg).sort((a, b) => new Date(a) - new Date(b));
+/**
+ * Generischer Baustein für ein Balkendiagramm (Werte pro Datum) mit einer Bezierkurve als Trendlinie darüber.
+ * `valueByDate` ist eine Map { 'YYYY-MM-DD': Zahl }. `titleAttr` ist der Tooltip-Text des Charts.
+ * Gibt '' zurück, wenn keine Werte vorliegen.
+ */
+function buildBarCurveChartHtml(valueByDate, titleAttr) {
+    const dates = Object.keys(valueByDate).sort((a, b) => new Date(a) - new Date(b));
     const N = dates.length;
-    const maxH = Math.max(...Object.values(logAgg), 0.1);
+    if (N === 0) return '';
+    const maxV = Math.max(...Object.values(valueByDate), 0.1);
     const baseline = 35, scale = 28;
 
     /* Balken: jedes Datum bekommt einen eigenen, gleich breiten Slot, damit Balken und Kurve exakt übereinander liegen */
@@ -4282,7 +4509,7 @@ function buildActivitySparklineHtml(taskIds) {
     let barsD = '';
     const points = dates.map((d, i) => {
         const cx = (i + 0.5) * slotW;
-        const h = (logAgg[d] / maxH) * scale;
+        const h = (valueByDate[d] / maxV) * scale;
         const y = baseline - h;
         barsD += `<rect x="${(cx - barW / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" rx="1" fill="rgba(204,163,0,0.35)"></rect>`;
         return { x: cx, y };
@@ -4300,9 +4527,22 @@ function buildActivitySparklineHtml(taskIds) {
 
     const rangeLabel = N === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[N - 1])}`;
     return `<div style="margin-top:5px; margin-bottom:10px;">
-        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${t('activity_chart_title')}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${titleAttr || ''}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div style="font-size:10px; color:var(--text-muted); text-align:right; margin-top:2px;">${rangeLabel}</div>
     </div>`;
+}
+
+/**
+ * Baut eine kleine Aktivitäts-Grafik (Zeiterfassung) für eine gegebene Menge von Aufgaben-IDs:
+ * ein Balkendiagramm (Stunden pro Tag) mit einer Bezierkurve als Trendlinie darüber.
+ * Aggregiert appData.timeLogs nach Datum und zeigt zusätzlich das Datum der ersten und letzten Messung an,
+ * damit der abgedeckte Zeitraum klar erkennbar ist. Gibt '' zurück, wenn keine Zeiterfassung vorliegt.
+ */
+function buildActivitySparklineHtml(taskIds) {
+    const logs = appData.timeLogs.filter(l => taskIds.has(l.taskId));
+    if (logs.length === 0) return '';
+    const logAgg = {}; logs.forEach(l => { logAgg[l.date] = (logAgg[l.date] || 0) + parseFloat(l.hours); });
+    return buildBarCurveChartHtml(logAgg, t('activity_chart_title'));
 }
 
 function renderStacks(c) {
@@ -6674,7 +6914,23 @@ function renderTimeAccount() {
     return html;
 }
 
+function switchTimeSubView(view) {
+    timeSubView = view;
+    if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer'));
+}
+
 function renderTimeTracking(c) {
+    const subTabsHtml = `<div style="display:flex; gap:10px; margin-bottom:20px;">
+        <button class="secondary ${timeSubView==='tracking'?'active':''}" onclick="switchTimeSubView('tracking')"><i class="fas fa-stopwatch"></i> ${t('view_time')}</button>
+        <button class="secondary ${timeSubView==='budgets'?'active':''}" onclick="switchTimeSubView('budgets')"><i class="fas fa-coins"></i> ${t('time_budgets_tab')}</button>
+    </div>`;
+
+    if (timeSubView === 'budgets') {
+        c.innerHTML = subTabsHtml + `<div id="tt_budgets_container"></div>`;
+        renderBudgetsOverview(document.getElementById('tt_budgets_container'));
+        return;
+    }
+
     let taskOpts = `<option value="">-- ${t('select_task')} --</option>`; 
     appData.tasks.filter(t_obj => !isTaskDone(t_obj)).forEach(t_obj => { taskOpts += `<option value="${t_obj.id}">${t_obj.isPaused ? '⏸ ' : ''}${t_obj.projectName}</option>`; });
     
@@ -6690,7 +6946,7 @@ function renderTimeTracking(c) {
 
     const sortedLogs = [...appData.timeLogs].sort((a,b) => new Date(b.date) - new Date(a.date));
 
-    let html = `
+    let html = subTabsHtml + `
     <div id="tt_account_panel">${renderTimeAccount()}</div>
     <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
         <div style="flex:1; min-width:300px; display:flex; flex-direction:column; gap:20px;">
@@ -7137,21 +7393,25 @@ function exportSingleStackPDF() { const id = document.getElementById('s_id').val
 let _notifModalQueue = [];
 let _notifModalOpen = false;
 
-function showNotifModal(title, body, type) {
-    _notifModalQueue.push({ title, body, type });
+function showNotifModal(title, body, type, notifId = null) {
+    _notifModalQueue.push({ title, body, type, notifId });
     if (!_notifModalOpen) _processNotifModalQueue();
 }
+
+let _currentNotifModalId = null;
 
 function _processNotifModalQueue() {
     if (_notifModalQueue.length === 0) { _notifModalOpen = false; return; }
     _notifModalOpen = true;
-    const { title, body, type } = _notifModalQueue.shift();
+    const { title, body, type, notifId } = _notifModalQueue.shift();
+    _currentNotifModalId = notifId || null;
     const overlay = document.getElementById('notifModalOverlay');
     const card    = document.getElementById('notifModalCard');
     const iconEl  = document.getElementById('notifModalIcon');
     const titleEl = document.getElementById('notifModalTitle');
     const bodyEl  = document.getElementById('notifModalBody');
     const badge   = document.getElementById('notifModalQueueBadge');
+    const snoozeBtn = document.getElementById('notifModalSnoozeBtn');
 
     card.className = 'notif-modal-card';
     let iconHtml = '<i class="fas fa-bell" style="color:var(--primary-color)"></i>';
@@ -7163,7 +7423,21 @@ function _processNotifModalQueue() {
     bodyEl.innerText  = body;
     badge.style.display = _notifModalQueue.length > 0 ? 'block' : 'none';
     badge.innerText = `+${_notifModalQueue.length}`;
+    if (snoozeBtn) snoozeBtn.style.display = _currentNotifModalId ? '' : 'none';
     overlay.classList.add('active');
+}
+
+function snoozeNotifModal(minutes = 30) {
+    if (_currentNotifModalId) {
+        if (!appData.settings.snoozedNotifs) appData.settings.snoozedNotifs = {};
+        appData.settings.snoozedNotifs[_currentNotifModalId] = Date.now() + minutes * 60000;
+        if (Array.isArray(appData.settings.firedNotifChannels)) {
+            appData.settings.firedNotifChannels = appData.settings.firedNotifChannels.filter(id => id !== _currentNotifModalId);
+        }
+        saveToLocal(true);
+        showToast(`Erinnerung in ${minutes} Minuten erneut.`);
+    }
+    dismissNotifModal();
 }
 
 function dismissNotifModal() {

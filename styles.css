@@ -516,6 +516,8 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .notif-modal-card h3 { font-size: 18px; margin-bottom: 8px; color: var(--text-main); }
 .notif-modal-card p { font-size: 14px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
 .notif-modal-card .nm-dismiss { width: 100%; justify-content: center; }
+.notif-modal-card .nm-snooze { width: 100%; justify-content: center; display: flex; align-items: center; gap: 6px; margin-top: 8px; background: none; border: none; box-shadow: none; color: var(--text-muted); font-size: 12px; padding: 4px; cursor: pointer; }
+.notif-modal-card .nm-snooze:hover { color: var(--primary-color); text-decoration: underline; box-shadow: none; transform: none; }
 .notif-modal-queue-badge { position: absolute; top: -8px; right: -8px; background: var(--danger); color: #fff; border-radius: 10px; padding: 2px 7px; font-size: 11px; font-weight: bold; display: none; }
 
 /* --- NOTIFICATION CHANNELS TABLE --- */
@@ -2897,7 +2899,8 @@ body.dep-connect-active .dep-canvas .dep-gnode{cursor:crosshair}
 .cl-hidden{ display:none !important; }
 
 /* Checklistenpunkt: einzelnes Zeit-Feld */
-.cl-durspan .cl-dur-hours{ width:48px; text-align:right; }
+.cl-durspan .cl-dur-hours{ width:48px !important; text-align:right; }
+.cl-ratespan .cl-hourly-rate{ width:48px !important; text-align:right; }
 
 /* Abhängigkeiten — Sortier-Dropdown in der Werkzeugleiste */
 .dep-sort{

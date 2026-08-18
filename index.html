@@ -428,6 +428,28 @@
                         <div><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
                     </div>
 
+                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                        <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
+                        <div class="form-grid-2" style="margin-top:10px;">
+                            <div>
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_target_budget">Zielbudget</span>
+                                <div style="display:flex; gap:5px;">
+                                    <input type="number" id="t_target_budget" min="0" step="0.01" placeholder="0.00" style="flex:2;">
+                                    <select id="t_target_budget_currency" style="flex:1;">
+                                        <option value="EUR">EUR</option>
+                                        <option value="CHF">CHF</option>
+                                        <option value="USD">USD</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_hourly_rate">Stundenlohn (pro Std)</span>
+                                <input type="number" id="t_hourly_rate" min="0" step="0.5" placeholder="0.00">
+                            </div>
+                        </div>
+                    </div>
+
                     <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:5px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <span class="form-label" style="margin:0;">Abhängigkeiten (Wartet auf)</span>
@@ -607,7 +629,30 @@
 
                         <div><span class="form-label" data-i18n="t_bucket">Bucket (Kategorie)</span><select id="s_bucket"></select></div>
                     </div>
-                    
+
+                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                        <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
+                        <div class="form-grid-2" style="margin-top:10px;">
+                            <div>
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_target_budget">Zielbudget</span>
+                                <div style="display:flex; gap:5px;">
+                                    <input type="number" id="s_target_budget" min="0" step="0.01" placeholder="0.00" style="flex:2;">
+                                    <select id="s_target_budget_currency" style="flex:1;">
+                                        <option value="EUR">EUR</option>
+                                        <option value="CHF">CHF</option>
+                                        <option value="USD">USD</option>
+                                        <option value="GBP">GBP</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="s_hourly_rate_fallback">Stundenlohn (Standard für Aufgaben ohne eigenen Satz)</span>
+                                <input type="number" id="s_hourly_rate" min="0" step="0.5" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div id="s_budget_summary" style="margin-top:12px; display:none;"></div>
+                    </div>
+
                     <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <span class="form-label" style="margin:0;">Abhängigkeiten (Wartet auf)</span>
@@ -1077,6 +1122,7 @@
             <h3 id="notifModalTitle"></h3>
             <p id="notifModalBody"></p>
             <button class="nm-dismiss" onclick="dismissNotifModal()"><i class="fas fa-check"></i> Verstanden</button>
+            <button class="nm-snooze" id="notifModalSnoozeBtn" style="display:none;" onclick="snoozeNotifModal()"><i class="fas fa-clock"></i> In 30 Minuten erinnern</button>
         </div>
     </div>
 
