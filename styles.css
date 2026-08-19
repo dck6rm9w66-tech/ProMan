@@ -410,7 +410,9 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     .cl-swipe-container { display: flex; align-items: center; flex-wrap: nowrap; gap: 5px; }
     .cl-main-row { width: auto; flex: 1 1 120px; min-width: 0; }
     .cl-main-row > div { min-width: 0; }
-    .cl-controls { margin-left: auto; flex: 0 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap;}
+    /* Titel darf schrumpfen, damit er das Zuständig-Icon (cl-assignee-empty) nicht überlagert */
+    .cl-title { flex: 1 1 auto; min-width: 60px !important; }
+    .cl-controls { margin-left: auto; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap;}
     .cl-controls select, .cl-controls input { min-height: 24px; height: 28px !important; padding: 2px 6px !important; }
     .cl-controls .icon-btn { min-height: 28px; min-width: 28px; flex: 0 0 auto; }
 }
@@ -429,6 +431,8 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     .cl-controls { display: none; flex-wrap: wrap; padding: 10px; background: rgba(0,0,0,0.02); border-top: 1px dashed var(--border-color); border-radius: 0 0 var(--radius) var(--radius); }
     .checklist-item.show-details .cl-controls { display: flex; }
     .cl-controls select, .cl-controls input[type="date"], .cl-controls input[type="time"] { flex: 1; min-width: 45%; height: 44px !important; border: 1px solid var(--border-color) !important; background: var(--surface-color) !important; padding: 0 10px !important; border-radius: var(--radius); font-size: 14px !important; }
+    /* Mobil: Zeit- und Stundenlohn-Felder breiter für bequeme Eingabe */
+    .cl-durspan .cl-dur-hours, .cl-ratespan .cl-hourly-rate { width: 80px !important; }
 }
 
 /* Ratings */
@@ -1442,11 +1446,11 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Knöpfe: Graphit als Grundfarbe, Magnet als Signal ── */
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):not(.onb-day){
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-assignee-opt):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):not(.onb-day){
   background:var(--wk-graphite) !important;color:#fff !important;border:1px solid var(--wk-graphite) !important;
   border-radius:12px !important;font-weight:600;font-family:var(--ff-ui);
 }
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-assignee-opt):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
   background:var(--wk-graphite-2) !important;
 }
 .secondary{
@@ -1932,7 +1936,7 @@ button:not(.wk-tab):not(.wk-rail-item):not(.wk-lens):active{transform:translateY
 
 /* Blauer Umschlag/Schatten an Knöpfen weg — Graphit statt Blau */
 button:hover{box-shadow:none !important}
-button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
+button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-item):not(.modal-tab-btn):not(.stack-tab-btn):not(.dep-lvl):not(.cl-assignee-btn):not(.cl-assignee-opt):not(.cl-start-btn):not(.wk-rail-user):not(.wk-fab-opt):not(.mobile-fab):hover{
   background:var(--wk-graphite-2) !important;box-shadow:0 4px 14px -8px rgba(34,38,43,.35) !important;
 }
 
@@ -2881,10 +2885,10 @@ body.dep-connect-active .dep-canvas .dep-gnode{cursor:crosshair}
 }
 .cl-assignee-pick.open .cl-assignee-menu{ display:block; }
 .cl-assignee-opt{
-  display:flex; align-items:center; gap:8px; width:100%; padding:5px 7px; border:none; background:transparent;
-  cursor:pointer; border-radius:7px; font-size:12px; color:var(--text-main); text-align:left;
+  display:flex; align-items:center; gap:8px; width:100%; padding:5px 7px; border:none !important; background:var(--surface-color) !important;
+  cursor:pointer; border-radius:7px !important; font-size:12px; color:var(--text-main) !important; text-align:left; font-weight:500 !important;
 }
-.cl-assignee-opt:hover{ background:var(--bg-color); }
+.cl-assignee-opt:hover{ background:var(--bg-color) !important; color:var(--text-main) !important; box-shadow:none !important; }
 .cl-assignee-opt .avatar-wrap{ width:22px; height:22px; font-size:9px; border:none !important; box-shadow:none !important; }
 
 /* Checklistenpunkt: Start-Button im Stil der Sekundär-Icon-Buttons (transparent, dezent) */
@@ -2894,13 +2898,17 @@ body.dep-connect-active .dep-canvas .dep-gnode{cursor:crosshair}
   border:1px solid var(--border-color); border-radius:7px; padding:1px 3px; background:var(--surface-color);
   cursor:pointer;
 }
-.cl-startspan .cl-start-date{ width:104px; }
+.cl-startspan .cl-start-date{ width:90px; }
 .cl-startspan .cl-start-time{ width:62px; }
 .cl-hidden{ display:none !important; }
 
-/* Checklistenpunkt: einzelnes Zeit-Feld */
-.cl-durspan .cl-dur-hours{ width:48px !important; text-align:right; }
-.cl-ratespan .cl-hourly-rate{ width:48px !important; text-align:right; }
+/* Checklistenpunkt: einzelnes Zeit-Feld (Desktop 48px; Mobil 80px via Media-Query oben) */
+.cl-durspan .cl-dur-hours{ text-align:right; }
+.cl-ratespan .cl-hourly-rate{ text-align:right; }
+@media (min-width: 1089px) {
+  .cl-durspan .cl-dur-hours{ width:48px !important; }
+  .cl-ratespan .cl-hourly-rate{ width:48px !important; }
+}
 
 /* Abhängigkeiten — Sortier-Dropdown in der Werkzeugleiste */
 .dep-sort{

@@ -158,6 +158,8 @@ let defaultData = {
         autoDelete: { unit: 'days', value: 30 },
         trashAutoDelete: { unit: 'days', value: 30 },
         globalHideCompleted: true,
+        monthlyBudget: null,
+        monthlyBudgetCurrency: 'EUR',
         globalHidePaused: false,
         currentUserId: 'u1',
         companyLogo: null,
@@ -3367,6 +3369,62 @@ function buildBudgetTrendBars(rows, color) {
     return rows.map(r => `<div class="wk-tr-col" title="${escapeHtmlToday(r.title)}"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.max(2, Math.round(r.value / max * 100))}%;background:${color}"></span></div><u>${escapeHtmlToday(r.label)}</u></div>`).join('');
 }
 
+/* Speichert das globale Monatsbudget aus der Budget-Ansicht */
+function saveMonthlyBudget() {
+    const amtEl = document.getElementById('mb_amount');
+    const curEl = document.getElementById('mb_currency');
+    if (!amtEl) return;
+    const raw = amtEl.value;
+    appData.settings.monthlyBudget = (raw !== '' && parseFloat(raw) > 0) ? parseFloat(raw) : null;
+    appData.settings.monthlyBudgetCurrency = (curEl && curEl.value) ? curEl.value : 'EUR';
+    saveToLocal(true);
+    renderTimeTracking(document.getElementById('mainContainer'));
+    showToast(appData.settings.monthlyBudget ? t('mb_saved') : t('mb_cleared'));
+}
+
+/*
+ * Berechnet Trend-Kennzahlen für das globale Monatsbudget in einer Währung.
+ * Liefert u. a. Verbrauch des laufenden Monats, Veränderung zum Vormonat,
+ * 3-Monats-Durchschnitt, Tagesdurchschnitt (Burn Rate) und Hochrechnung zum Monatsende.
+ */
+function getMonthlyBudgetTrends(currency) {
+    const byCur = getBudgetConsumptionByMonth();
+    const monthMap = byCur[currency] || {};
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const curKey = now.getFullYear() + '-' + pad(now.getMonth() + 1);
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevKey = prevDate.getFullYear() + '-' + pad(prevDate.getMonth() + 1);
+
+    const current = monthMap[curKey] || 0;
+    const previous = monthMap[prevKey] || 0;
+
+    /* Veränderung zum Vormonat in Prozent */
+    let deltaPct = null;
+    if (previous > 0) deltaPct = ((current - previous) / previous) * 100;
+    else if (current > 0) deltaPct = 100;
+
+    /* Durchschnitt der letzten 3 abgeschlossenen Monate */
+    const past = [];
+    for (let i = 1; i <= 3; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const k = d.getFullYear() + '-' + pad(d.getMonth() + 1);
+        past.push(monthMap[k] || 0);
+    }
+    const avg3 = past.reduce((a, b) => a + b, 0) / 3;
+
+    /* Burn Rate und Hochrechnung auf den ganzen Monat */
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const perDay = dayOfMonth > 0 ? current / dayOfMonth : 0;
+    const projection = perDay * daysInMonth;
+
+    /* Alle Monate aufsteigend – für die Verlaufsgrafik */
+    const allMonths = Object.keys(monthMap).sort();
+
+    return { monthMap, allMonths, curKey, prevKey, current, previous, deltaPct, avg3, perDay, projection, dayOfMonth, daysInMonth };
+}
+
 /*
  * Budget-Übersicht (Zeit → Budget).
  * Zeigt IMMER Kennzahlen und Grafiken – auch wenn noch gar kein Zielbudget hinterlegt ist:
@@ -3419,6 +3477,116 @@ function renderBudgetsOverview(c) {
     });
 
     let html = '';
+
+    /* ══ GLOBALES MONATSBUDGET – Eingabe + Trendauswertung ══ */
+    const mbCur = appData.settings.monthlyBudgetCurrency || 'EUR';
+    const mbAmount = parseFloat(appData.settings.monthlyBudget) || 0;
+    const curOpts = ['EUR', 'CHF', 'USD', 'GBP'].map(cc => `<option value="${cc}" ${cc === mbCur ? 'selected' : ''}>${cc}</option>`).join('');
+
+    html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:16px 20px; margin-bottom:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
+            <div style="min-width:0;">
+                <div style="font-size:13px; font-weight:700;"><i class="fas fa-wallet" style="color:var(--primary-color); margin-right:8px;"></i>${t('mb_title')}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">${t('mb_hint')}</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                <input type="number" id="mb_amount" min="0" step="1" placeholder="0.00" value="${mbAmount > 0 ? mbAmount : ''}" style="width:120px; text-align:right;">
+                <select id="mb_currency" style="width:90px;">${curOpts}</select>
+                <button class="secondary" onclick="saveMonthlyBudget()"><i class="fas fa-check"></i> ${t('save')}</button>
+            </div>
+        </div>
+    </div>`;
+
+    if (mbAmount > 0) {
+        const tr = getMonthlyBudgetTrends(mbCur);
+        const usedPct = Math.round((tr.current / mbAmount) * 100);
+        const projPct = Math.round((tr.projection / mbAmount) * 100);
+        const remaining = mbAmount - tr.current;
+        const usedColor = usedPct > 100 ? 'var(--danger)' : (usedPct >= 80 ? 'var(--warning)' : 'var(--success)');
+        const projColor = projPct > 100 ? 'var(--danger)' : (projPct >= 80 ? 'var(--warning)' : 'var(--success)');
+        const daysLeft = Math.max(0, tr.daysInMonth - tr.dayOfMonth);
+        const dailyAllowance = daysLeft > 0 ? Math.max(0, remaining) / daysLeft : 0;
+
+        const arrow = (v) => v === null ? '' : (v > 0 ? '<i class="fas fa-arrow-up"></i>' : (v < 0 ? '<i class="fas fa-arrow-down"></i>' : '<i class="fas fa-minus"></i>'));
+        const deltaColor = tr.deltaPct === null ? 'var(--text-muted)' : (tr.deltaPct > 0 ? 'var(--danger)' : (tr.deltaPct < 0 ? 'var(--success)' : 'var(--text-muted)'));
+        const deltaTxt = tr.deltaPct === null ? '–' : (tr.deltaPct > 0 ? '+' : '') + ttNum(Math.round(tr.deltaPct * 10) / 10) + '%';
+        const avgDelta = tr.avg3 > 0 ? ((tr.current - tr.avg3) / tr.avg3) * 100 : null;
+        const avgDeltaTxt = avgDelta === null ? '–' : (avgDelta > 0 ? '+' : '') + ttNum(Math.round(avgDelta * 10) / 10) + '%';
+        const avgDeltaColor = avgDelta === null ? 'var(--text-muted)' : (avgDelta > 0 ? 'var(--danger)' : 'var(--success)');
+
+        /* Verlaufsbalken der letzten 6 Monate – eingefärbt gegen das Monatsbudget, mit Ziellinie */
+        const monthsShown = (() => {
+            const keys = [];
+            const now = new Date(); const pad = n => String(n).padStart(2, '0');
+            for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); keys.push(d.getFullYear() + '-' + pad(d.getMonth() + 1)); }
+            return keys;
+        })();
+        const maxVal = Math.max(mbAmount, ...monthsShown.map(m => tr.monthMap[m] || 0));
+        const targetPct = maxVal > 0 ? (mbAmount / maxVal) * 100 : 0;
+        const histBars = monthsShown.map(m => {
+            const val = tr.monthMap[m] || 0;
+            const h = maxVal > 0 ? Math.max(2, Math.round(val / maxVal * 100)) : 2;
+            const col = val > mbAmount ? 'var(--danger)' : (val >= mbAmount * 0.8 ? 'var(--warning)' : 'var(--success)');
+            const isCur = m === tr.curKey;
+            return `<div class="wk-tr-col" title="${m}: ${ttNum(val)} ${mbCur}${val > mbAmount ? ' — ' + t('mb_over_budget') : ''}"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${h}%;background:${col};${isCur ? 'opacity:.75;' : ''}"></span></div><u>${m.slice(5)}.${m.slice(2, 4)}</u></div>`;
+        }).join('');
+
+        html += `<section class="wk-graphs">
+            <div class="wk-graph-card">
+                <div class="wk-graph-h"><b>${t('mb_current_month')}</b><u>${t('mb_day_of')} ${tr.dayOfMonth}/${tr.daysInMonth}</u></div>
+                <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;">
+                    <span style="font-size:24px; font-weight:700; color:${usedColor};">${usedPct}%</span>
+                    <span style="font-size:12px; color:var(--text-muted);">${t('budget_used_pct')}</span>
+                </div>
+                <div class="pb-container" style="height:10px;"><div class="pb-fill" style="width:${Math.min(usedPct, 100)}%; background:${usedColor};"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:8px;">
+                    <span><b style="color:var(--text-main);">${ttNum(tr.current)}</b> / ${ttNum(mbAmount)} ${mbCur}</span>
+                    <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${mbCur}</span>
+                </div>
+            </div>
+
+            <div class="wk-graph-card">
+                <div class="wk-graph-h"><b>${t('mb_history')} (${mbCur})</b><u>${t('mb_vs_budget')}</u></div>
+                <div class="wk-trend" style="position:relative;">
+                    ${targetPct > 0 && targetPct <= 100 ? `<div title="${t('mb_title')}: ${ttNum(mbAmount)} ${mbCur}" style="position:absolute; left:0; right:0; bottom:calc(${Math.min(targetPct, 100)}% * 0.72 + 18px); border-top:2px dashed var(--primary-color); opacity:.7; z-index:2; pointer-events:none;"></div>` : ''}
+                    ${histBars}
+                </div>
+                <div style="font-size:10.5px; color:var(--text-muted); margin-top:6px;"><span style="display:inline-block; width:14px; border-top:2px dashed var(--primary-color); vertical-align:middle;"></span> ${t('mb_target_line')}</div>
+            </div>
+
+            <div class="wk-graph-card">
+                <div class="wk-graph-h"><b>${t('mb_trends')}</b><u>${t('mb_forecast')}</u></div>
+                <div style="display:flex; flex-direction:column; gap:9px; margin-top:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                        <span style="color:var(--text-muted);">${t('mb_vs_prev')}</span>
+                        <b style="color:${deltaColor};">${arrow(tr.deltaPct)} ${deltaTxt}</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                        <span style="color:var(--text-muted);">${t('mb_vs_avg3')}</span>
+                        <b style="color:${avgDeltaColor};">${arrow(avgDelta)} ${avgDeltaTxt}</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                        <span style="color:var(--text-muted);">${t('mb_burn_rate')}</span>
+                        <b>${ttNum(tr.perDay)} ${mbCur}</b>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                        <span style="color:var(--text-muted);">${t('mb_daily_left')}</span>
+                        <b>${ttNum(dailyAllowance)} ${mbCur}</b>
+                    </div>
+                    <div style="border-top:1px solid var(--border-color); padding-top:9px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:5px;">
+                            <span style="color:var(--text-muted);">${t('mb_projection')}</span>
+                            <b style="color:${projColor};">${ttNum(tr.projection)} ${mbCur} · ${projPct}%</b>
+                        </div>
+                        <div class="pb-container" style="height:6px;"><div class="pb-fill" style="width:${Math.min(projPct, 100)}%; background:${projColor};"></div></div>
+                        <div style="font-size:10.5px; color:${projColor}; margin-top:5px;">
+                            ${projPct > 100 ? '<i class="fas fa-exclamation-triangle"></i> ' + t('mb_will_exceed') : '<i class="fas fa-check-circle"></i> ' + t('mb_on_track')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>`;
+    }
 
     /* ══ GRAFIKEN OBEN (Hub-Stil) – immer sichtbar ══ */
     let graphsHtml = '';
@@ -7032,15 +7200,36 @@ function switchTimeSubView(view) {
     if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer'));
 }
 
-function renderTimeTracking(c) {
-    const subTabsHtml = `<div style="display:flex; gap:10px; margin-bottom:20px;">
-        <button class="secondary ${timeSubView==='tracking'?'active':''}" onclick="switchTimeSubView('tracking')"><i class="fas fa-stopwatch"></i> ${t('view_time')}</button>
-        <button class="secondary ${timeSubView==='budgets'?'active':''}" onclick="switchTimeSubView('budgets')"><i class="fas fa-coins"></i> ${t('time_budgets_tab')}</button>
+/* Positioniert den gelben Magneten der lokalen Linsenschiene (Zeit-Unteransichten) */
+function positionTimeLensMagnet() {
+    const rail = document.getElementById('ttLensrail');
+    if (!rail) return;
+    const act = rail.querySelector('.wk-lens[aria-selected="true"]');
+    const mag = document.getElementById('ttMagnet');
+    if (!act || !mag) return;
+    mag.style.width = act.offsetWidth + 'px';
+    mag.style.transform = 'translateX(' + (act.offsetLeft - 5) + 'px)';
+}
+
+/* Linsenschiene (wk-lensrail) für die Unteransichten von „Zeit" */
+function buildTimeSubTabsHtml() {
+    const lenses = [
+        { v: 'tracking', l: t('view_time'), i: 'fa-stopwatch' },
+        { v: 'budgets',  l: t('time_budgets_tab'), i: 'fa-coins' }
+    ];
+    return `<div class="wk-lensrail" id="ttLensrail" style="margin:0 0 20px;">
+        <span class="wk-magnet" id="ttMagnet"></span>
+        ${lenses.map(l => `<button class="wk-lens" role="tab" data-ttlens="${l.v}" aria-selected="${timeSubView === l.v}" onclick="switchTimeSubView('${l.v}')"><i class="fas ${l.i}"></i>${l.l}</button>`).join('')}
     </div>`;
+}
+
+function renderTimeTracking(c) {
+    const subTabsHtml = buildTimeSubTabsHtml();
 
     if (timeSubView === 'budgets') {
         c.innerHTML = subTabsHtml + `<div id="tt_budgets_container"></div>`;
         renderBudgetsOverview(document.getElementById('tt_budgets_container'));
+        requestAnimationFrame(positionTimeLensMagnet);
         return;
     }
 
@@ -7110,7 +7299,7 @@ function renderTimeTracking(c) {
         html += `<tr><td data-label="Datum">${log.date}</td><td data-label="Aufgabe"><b>${pausedIcon}${taskName}${deletedPill}</b></td><td data-label="Dauer"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="Notiz">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
     });
     html += `</tbody></table></div></div></div>`;
-    c.innerHTML = html; updateTimerDisplays();
+    c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(positionTimeLensMagnet);
 }
 
 function addManualTimeLog() {
