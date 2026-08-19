@@ -3282,8 +3282,7 @@ function renderView() {
 function renderPlanner(c) {
     const tabs = [
         { id: 'schedule', label: '<i class="fas fa-calendar-alt"></i> Kalender' },
-        { id: 'timeline', label: '<i class="fas fa-stream"></i> Gantt' },
-        { id: 'budgets', label: '<i class="fas fa-coins"></i> ' + t('budgets_tab') }
+        { id: 'timeline', label: '<i class="fas fa-stream"></i> Gantt' }
     ];
     let tabHtml = `<div style="display:flex; gap:0; background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; width:fit-content; margin-bottom:20px; flex-shrink:0;">`;
     tabs.forEach((tab, idx) => {
@@ -3304,7 +3303,6 @@ function renderPlanner(c) {
     subContainer.style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0;';
     c.appendChild(subContainer);
     if(plannerSubView === 'timeline') renderTimeline(subContainer);
-    else if(plannerSubView === 'budgets') renderBudgetsView(subContainer);
     else renderSchedule(subContainer);
 
     c.style.display = 'flex';
@@ -3324,18 +3322,26 @@ function getLogHourlyRate(log) {
     return getEffectiveHourlyRate(null, task, stack);
 }
 
+/* Währung einer Aufgabe: eigene > Stack-Währung > Standard */
+function getTaskCurrency(task) {
+    if (!task) return 'EUR';
+    if (task.targetBudgetCurrency) return task.targetBudgetCurrency;
+    const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
+    if (stack && stack.targetBudgetCurrency) return stack.targetBudgetCurrency;
+    return 'EUR';
+}
+
 /* Aggregiert die verbrauchten Budgetkosten (Stunden × effektiver Satz) je Kalendermonat, gruppiert nach Währung. */
 function getBudgetConsumptionByMonth() {
     const byCurrencyMonth = {}; /* { currency: { 'YYYY-MM': amount } } */
     (appData.timeLogs || []).forEach(log => {
-        if (!log.date) return;
+        if (!log || !log.date) return;
         const task = appData.tasks.find(x => x.id === log.taskId);
         if (!task) return;
-        const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
-        const rate = getEffectiveHourlyRate(null, task, stack);
+        const rate = getLogHourlyRate(log);
         if (rate <= 0) return;
-        const cur = (task.targetBudgetCurrency) || (stack && stack.targetBudgetCurrency) || 'EUR';
-        const month = (log.date || '').slice(0, 7);
+        const cur = getTaskCurrency(task);
+        const month = String(log.date).slice(0, 7);
         const cost = (parseFloat(log.hours) || 0) * rate;
         if (!byCurrencyMonth[cur]) byCurrencyMonth[cur] = {};
         byCurrencyMonth[cur][month] = (byCurrencyMonth[cur][month] || 0) + cost;
@@ -3343,10 +3349,35 @@ function getBudgetConsumptionByMonth() {
     return byCurrencyMonth;
 }
 
-function renderBudgetsView(c) {
-    /* Alle Budget-Träger einsammeln: Stacks mit Zielbudget + Einzelaufgaben (ohne Stack) mit eigenem Zielbudget */
-    const stacksWithBudget = appData.projectStacks.filter(s => parseFloat(s.targetBudget) > 0);
-    const standaloneTasksWithBudget = appData.tasks.filter(t => !t.projectStackId && parseFloat(t.targetBudget) > 0);
+/* Aggregiert alle erfassten Stunden je Kalendermonat (unabhängig von Sätzen/Budgets). */
+function getHoursByMonth() {
+    const byMonth = {};
+    (appData.timeLogs || []).forEach(log => {
+        if (!log || !log.date) return;
+        const month = String(log.date).slice(0, 7);
+        byMonth[month] = (byMonth[month] || 0) + (parseFloat(log.hours) || 0);
+    });
+    return byMonth;
+}
+
+/* Baut ein kleines Balken-Trenddiagramm im Hub-Stil. rows: [{label, value, title}] */
+function buildBudgetTrendBars(rows, color) {
+    if (!rows.length) return `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
+    const max = Math.max(0.0001, ...rows.map(r => r.value));
+    return rows.map(r => `<div class="wk-tr-col" title="${escapeHtmlToday(r.title)}"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.max(2, Math.round(r.value / max * 100))}%;background:${color}"></span></div><u>${escapeHtmlToday(r.label)}</u></div>`).join('');
+}
+
+/*
+ * Budget-Übersicht (Zeit → Budget).
+ * Zeigt IMMER Kennzahlen und Grafiken – auch wenn noch gar kein Zielbudget hinterlegt ist:
+ * dann werden ersatzweise die erfassten Stunden bzw. die bereits angefallenen Kosten dargestellt.
+ */
+function renderBudgetsOverview(c) {
+    if (!c) return;
+
+    /* ── Datenbasis ── */
+    const stacksWithBudget = (appData.projectStacks || []).filter(s => parseFloat(s.targetBudget) > 0);
+    const standaloneTasksWithBudget = (appData.tasks || []).filter(t_obj => !t_obj.projectStackId && parseFloat(t_obj.targetBudget) > 0);
 
     const items = [];
     stacksWithBudget.forEach(s => items.push({
@@ -3359,17 +3390,25 @@ function renderBudgetsView(c) {
         target: parseFloat(t_obj.targetBudget) || 0, currency: t_obj.targetBudgetCurrency || 'EUR',
         consumed: getTaskConsumedBudget(t_obj), status: t_obj.status
     }));
+    const hasBudgets = items.length > 0;
 
-    if (items.length === 0) {
-        c.innerHTML = `<div style="text-align:center; padding:60px 20px; color:var(--text-muted);">
-            <i class="fas fa-coins" style="font-size:42px; opacity:0.35; margin-bottom:16px;"></i>
-            <p style="font-size:15px;">${t('budgets_empty')}</p>
-            <p style="font-size:12px; margin-top:6px;">${t('budgets_empty_hint')}</p>
-        </div>`;
-        return;
-    }
+    /* Kosten aller Aufgaben (auch ohne Zielbudget) – nach Währung */
+    const costByCurrency = {};
+    let totalCostAll = 0;
+    (appData.tasks || []).forEach(t_obj => {
+        const cost = getTaskConsumedBudget(t_obj);
+        if (cost <= 0) return;
+        const cur = getTaskCurrency(t_obj);
+        costByCurrency[cur] = (costByCurrency[cur] || 0) + cost;
+        totalCostAll += cost;
+    });
 
-    /* Summen je Währung */
+    const totalHours = (appData.timeLogs || []).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+    const consumptionByMonth = getBudgetConsumptionByMonth();
+    const hoursByMonth = getHoursByMonth();
+    const hasCostData = Object.keys(consumptionByMonth).length > 0;
+
+    /* Summen je Währung für budgetierte Posten */
     const byCurrency = {};
     items.forEach(it => {
         if (!byCurrency[it.currency]) byCurrency[it.currency] = { target: 0, consumed: 0, count: 0, over: 0 };
@@ -3381,80 +3420,154 @@ function renderBudgetsView(c) {
 
     let html = '';
 
-    /* ── TREND-GRAFIKEN (wie im Hub, oberhalb) ── */
-    const consumptionByMonth = getBudgetConsumptionByMonth();
+    /* ══ GRAFIKEN OBEN (Hub-Stil) – immer sichtbar ══ */
     let graphsHtml = '';
-    Object.keys(byCurrency).sort().forEach(cur => {
-        const sums = byCurrency[cur];
-        const pct = sums.target > 0 ? Math.round((sums.consumed / sums.target) * 100) : 0;
-        const remaining = sums.target - sums.consumed;
-        const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
 
-        /* Monats-Trend für diese Währung (letzte 6 Monate mit Daten oder alle) */
-        const monthMap = consumptionByMonth[cur] || {};
-        const months = Object.keys(monthMap).sort();
-        const shownMonths = months.slice(-6);
-        const maxMonth = Math.max(0.01, ...shownMonths.map(m => monthMap[m]));
-        const trendBars = shownMonths.length
-            ? shownMonths.map(m => {
-                const val = monthMap[m];
-                const label = m.slice(5) + '.' + m.slice(2, 4);
-                return `<div class="wk-tr-col" title="${label}: ${ttNum(val)} ${cur}"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.round(val / maxMonth * 100)}%;background:#cca300"></span></div><u>${label}</u></div>`;
-            }).join('')
-            : `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
-
+    /* Karte 1: Trend – Kosten je Monat, sonst ersatzweise Stunden je Monat */
+    if (hasCostData) {
+        const primaryCur = Object.keys(consumptionByMonth).sort((a, b) => {
+            const sa = Object.values(consumptionByMonth[a]).reduce((x, y) => x + y, 0);
+            const sb = Object.values(consumptionByMonth[b]).reduce((x, y) => x + y, 0);
+            return sb - sa;
+        })[0];
+        const monthMap = consumptionByMonth[primaryCur] || {};
+        const shown = Object.keys(monthMap).sort().slice(-6);
+        const rows = shown.map(m => ({ label: m.slice(5) + '.' + m.slice(2, 4), value: monthMap[m], title: m + ': ' + ttNum(monthMap[m]) + ' ' + primaryCur }));
         graphsHtml += `<div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('budgets_trend')} (${cur})</b><u>${t('budgets_last_months')}</u></div>
-            <div class="wk-trend">${trendBars}</div>
-        </div>
-        <div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('budgets_overview')} (${cur})</b><u>${sums.count} ${sums.count === 1 ? t('budgets_item') : t('budgets_items')}</u></div>
-            <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;">
-                <span style="font-size:24px; font-weight:700; color:${barColor};">${pct}%</span>
-                <span style="font-size:12px; color:var(--text-muted);">${t('budget_used_pct')}</span>
-            </div>
-            <div class="pb-container" style="height:10px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:8px;">
-                <span><b style="color:var(--text-main);">${ttNum(sums.consumed)}</b> / ${ttNum(sums.target)} ${cur}</span>
-                <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${cur}</span>
-            </div>
-            ${sums.over > 0 ? `<div style="font-size:11px; color:var(--danger); margin-top:6px;"><i class="fas fa-exclamation-triangle"></i> ${sums.over} ${sums.over === 1 ? t('budgets_over_one') : t('budgets_over_many')}</div>` : ''}
+            <div class="wk-graph-h"><b>${t('budgets_trend')} (${primaryCur})</b><u>${t('budgets_last_months')}</u></div>
+            <div class="wk-trend">${buildBudgetTrendBars(rows, '#cca300')}</div>
         </div>`;
-    });
+    } else {
+        const shown = Object.keys(hoursByMonth).sort().slice(-6);
+        const rows = shown.map(m => ({ label: m.slice(5) + '.' + m.slice(2, 4), value: hoursByMonth[m], title: m + ': ' + ttNum(hoursByMonth[m]) + ' h' }));
+        graphsHtml += `<div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('budgets_hours_trend')}</b><u>${t('budgets_last_months')}</u></div>
+            <div class="wk-trend">${buildBudgetTrendBars(rows, 'var(--primary-color)')}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:8px;"><i class="fas fa-info-circle"></i> ${t('budgets_no_rates_hint')}</div>
+        </div>`;
+    }
+
+    /* Karte 2: Bisher angefallene Kosten / erfasste Stunden */
+    const costLines = Object.keys(costByCurrency).sort().map(cur =>
+        `<div style="display:flex; justify-content:space-between; font-size:12px; margin-top:4px;"><span style="color:var(--text-muted);">${cur}</span><b>${ttNum(costByCurrency[cur])}</b></div>`
+    ).join('');
+    graphsHtml += `<div class="wk-graph-card">
+        <div class="wk-graph-h"><b>${t('budgets_costs_so_far')}</b><u>${ttNum(totalHours)} h</u></div>
+        <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 4px;">
+            <span style="font-size:24px; font-weight:700; color:var(--primary-color);">${totalCostAll > 0 ? ttNum(totalCostAll) : ttNum(totalHours)}</span>
+            <span style="font-size:12px; color:var(--text-muted);">${totalCostAll > 0 ? t('budgets_total_costs') : t('budgets_total_hours')}</span>
+        </div>
+        ${costLines || `<div style="font-size:11px; color:var(--text-muted); margin-top:6px;">${t('budgets_no_costs_yet')}</div>`}
+    </div>`;
+
+    /* Karte 3: Budget-Auslastung, sonst Hinweis-Karte */
+    if (hasBudgets) {
+        /* Eine Karte je Währung – so bleiben Überschreitungen in JEDER Währung sichtbar. */
+        Object.keys(byCurrency).sort((a, b) => byCurrency[b].target - byCurrency[a].target).forEach(cur => {
+            const sums = byCurrency[cur];
+            const pct = sums.target > 0 ? Math.round((sums.consumed / sums.target) * 100) : 0;
+            const remaining = sums.target - sums.consumed;
+            const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
+            graphsHtml += `<div class="wk-graph-card">
+                <div class="wk-graph-h"><b>${t('budgets_overview')} (${cur})</b><u>${sums.count} ${sums.count === 1 ? t('budgets_item') : t('budgets_items')}</u></div>
+                <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;">
+                    <span style="font-size:24px; font-weight:700; color:${barColor};">${pct}%</span>
+                    <span style="font-size:12px; color:var(--text-muted);">${t('budget_used_pct')}</span>
+                </div>
+                <div class="pb-container" style="height:10px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:8px;">
+                    <span><b style="color:var(--text-main);">${ttNum(sums.consumed)}</b> / ${ttNum(sums.target)} ${cur}</span>
+                    <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${cur}</span>
+                </div>
+                ${sums.over > 0 ? `<div style="font-size:11px; color:var(--danger); margin-top:6px;"><i class="fas fa-exclamation-triangle"></i> ${sums.over} ${sums.over === 1 ? t('budgets_over_one') : t('budgets_over_many')}</div>` : ''}
+            </div>`;
+        });
+    } else {
+        const openStacks = (appData.projectStacks || []).filter(s => s.status !== 'completed').length;
+        const openTasks = (appData.tasks || []).filter(t_obj => !isTaskDone(t_obj)).length;
+        graphsHtml += `<div class="wk-graph-card">
+            <div class="wk-graph-h"><b>${t('budgets_overview')}</b><u>${t('budgets_not_configured')}</u></div>
+            <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;">
+                <span style="font-size:24px; font-weight:700; color:var(--text-muted);">–</span>
+                <span style="font-size:12px; color:var(--text-muted);">${t('budgets_no_target')}</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); line-height:1.6;">
+                <div><i class="fas fa-folder" style="width:14px;"></i> ${openStacks} ${t('budgets_open_stacks')}</div>
+                <div><i class="fas fa-tasks" style="width:14px;"></i> ${openTasks} ${t('budgets_open_tasks')}</div>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:10px; padding-top:8px; border-top:1px solid var(--border-color);">
+                <i class="fas fa-lightbulb"></i> ${t('budgets_empty_hint')}
+            </div>
+        </div>`;
+    }
+
     html += `<section class="wk-graphs">${graphsHtml}</section>`;
 
-    /* ── DETAIL-LISTE: pro Budget-Träger ein Fortschrittsbalken ── */
-    const sortedItems = items.slice().sort((a, b) => {
-        const pa = a.target > 0 ? a.consumed / a.target : 0;
-        const pb = b.target > 0 ? b.consumed / b.target : 0;
-        return pb - pa;
-    });
+    /* ══ DETAILLISTE ══ */
+    if (hasBudgets) {
+        const sortedItems = items.slice().sort((a, b) => {
+            const pa = a.target > 0 ? a.consumed / a.target : 0;
+            const pb = b.target > 0 ? b.consumed / b.target : 0;
+            return pb - pa;
+        });
+        html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:6px;">
+            <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-list-ul" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_details')}</h3>
+            <div style="display:flex; flex-direction:column; gap:14px;">`;
+        sortedItems.forEach(it => {
+            const pct = it.target > 0 ? Math.round((it.consumed / it.target) * 100) : 0;
+            const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
+            const remaining = it.target - it.consumed;
+            const icon = it.type === 'stack' ? 'fa-folder' : 'fa-tasks';
+            const openFn = it.type === 'stack' ? `openStackModal('${it.id}')` : `openModal('${it.id}')`;
+            const isDone = it.status === 'completed' || it.status === 'done';
+            html += `<div style="cursor:pointer; ${isDone ? 'opacity:0.6;' : ''}" onclick="${openFn}">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:10px;">
+                    <span style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:7px;"></i>${escapeHtmlToday(it.name)}</span>
+                    <span style="font-size:12px; color:${barColor}; font-weight:600; white-space:nowrap; flex-shrink:0;">${pct}%</span>
+                </div>
+                <div class="pb-container" style="height:8px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
+                <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:4px;">
+                    <span>${ttNum(it.consumed)} / ${ttNum(it.target)} ${it.currency}</span>
+                    <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${it.currency}</span>
+                </div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
 
-    html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:6px;">
-        <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-list-ul" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_details')}</h3>
-        <div style="display:flex; flex-direction:column; gap:14px;">`;
+    /* Kostentreiber – immer, sofern Kosten oder Stunden vorhanden sind */
+    const drivers = (appData.tasks || []).map(t_obj => {
+        const cost = getTaskConsumedBudget(t_obj);
+        const hours = (appData.timeLogs || []).filter(l => l.taskId === t_obj.id).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+        return { id: t_obj.id, name: t_obj.projectName || t('unnamed'), cost, hours, currency: getTaskCurrency(t_obj), done: isTaskDone(t_obj) };
+    }).filter(d => d.cost > 0 || d.hours > 0).sort((a, b) => (b.cost - a.cost) || (b.hours - a.hours)).slice(0, 10);
 
-    sortedItems.forEach(it => {
-        const pct = it.target > 0 ? Math.round((it.consumed / it.target) * 100) : 0;
-        const barColor = pct > 100 ? 'var(--danger)' : (pct >= 80 ? 'var(--warning)' : 'var(--success)');
-        const remaining = it.target - it.consumed;
-        const icon = it.type === 'stack' ? 'fa-folder' : 'fa-tasks';
-        const openFn = it.type === 'stack' ? `openStackModal('${it.id}')` : `openModal('${it.id}')`;
-        const isDone = it.status === 'completed' || it.status === 'done';
-        html += `<div style="cursor:pointer; ${isDone ? 'opacity:0.6;' : ''}" onclick="${openFn}">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:10px;">
-                <span style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:7px;"></i>${escapeHtmlToday(it.name)}</span>
-                <span style="font-size:12px; color:${barColor}; font-weight:600; white-space:nowrap; flex-shrink:0;">${pct}%</span>
-            </div>
-            <div class="pb-container" style="height:8px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:4px;">
-                <span>${ttNum(it.consumed)} / ${ttNum(it.target)} ${it.currency}</span>
-                <span>${remaining >= 0 ? t('budget_remaining') + ': ' + ttNum(remaining) : t('budget_over') + ': ' + ttNum(Math.abs(remaining))} ${it.currency}</span>
-            </div>
+    if (drivers.length > 0) {
+        const maxDriver = Math.max(...drivers.map(d => d.cost > 0 ? d.cost : d.hours));
+        html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:16px;">
+            <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-chart-bar" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_cost_drivers')}</h3>
+            <div style="display:flex; flex-direction:column; gap:12px;">`;
+        drivers.forEach(d => {
+            const val = d.cost > 0 ? d.cost : d.hours;
+            const unit = d.cost > 0 ? d.currency : 'h';
+            const w = maxDriver > 0 ? Math.max(2, Math.round(val / maxDriver * 100)) : 0;
+            html += `<div style="cursor:pointer; ${d.done ? 'opacity:0.6;' : ''}" onclick="openModal('${d.id}')">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
+                    <span style="font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas fa-tasks" style="color:var(--primary-color); margin-right:6px;"></i>${escapeHtmlToday(d.name)}</span>
+                    <span style="font-size:11.5px; color:var(--text-muted); white-space:nowrap; flex-shrink:0;"><b style="color:var(--text-main);">${ttNum(val)}</b> ${unit}${d.cost > 0 ? ' · ' + ttNum(d.hours) + ' h' : ''}</span>
+                </div>
+                <div class="pb-container" style="height:6px;"><div class="pb-fill" style="width:${w}%; background:#cca300;"></div></div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    } else if (!hasBudgets) {
+        html += `<div style="text-align:center; padding:40px 20px; color:var(--text-muted); background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-top:6px;">
+            <i class="fas fa-coins" style="font-size:34px; opacity:0.3; margin-bottom:12px;"></i>
+            <p style="font-size:14px;">${t('budgets_empty')}</p>
+            <p style="font-size:12px; margin-top:6px;">${t('budgets_empty_hint')}</p>
         </div>`;
-    });
+    }
 
-    html += `</div></div>`;
     c.innerHTML = html;
     c.style.overflowY = 'auto';
 }
