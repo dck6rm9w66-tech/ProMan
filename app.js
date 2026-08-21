@@ -3100,10 +3100,194 @@ function deleteTask() {
     saveToLocal(); closeModal(); showToast('Aufgabe in den Papierkorb verschoben.');
 }
 
+/* ═══════════════════════════════════════════════════════════
+   DATEIEN & ANHÄNGE (LOKAL)
+   Die eigentlichen Dateiinhalte leben NUR in dieser Sitzung
+   (im Arbeitsspeicher). In appData landet ausschliesslich der
+   Pfad – daher enthalten Backup/JSON-Export niemals Binärdaten.
+   ═══════════════════════════════════════════════════════════ */
+const fileBlobCache = new Map();   /* pfad → { file, url } — bewusst NICHT Teil von appData */
+
+function fileCacheKey(f) { return (f && (f.path || f.name)) ? String(f.path || f.name) : ''; }
+
+function cacheFileBlob(key, file) {
+    if (!key || !file) return;
+    const old = fileBlobCache.get(key);
+    if (old && old.url) { try { URL.revokeObjectURL(old.url); } catch (e) {} }
+    fileBlobCache.set(key, { file, url: URL.createObjectURL(file) });
+}
+function getCachedFile(key) { return key ? fileBlobCache.get(key) : null; }
+function isFileAvailable(f) { return !!getCachedFile(fileCacheKey(f)); }
+
+function guessFileKind(nameOrPath, mime) {
+    const m = (mime || '').toLowerCase();
+    const ext = String(nameOrPath || '').split('.').pop().toLowerCase();
+    if (m.startsWith('image/') || ['png','jpg','jpeg','gif','webp','bmp','svg','avif'].includes(ext)) return 'image';
+    if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
+    if (m.startsWith('video/') || ['mp4','webm','ogv','mov'].includes(ext)) return 'video';
+    if (m.startsWith('audio/') || ['mp3','wav','ogg','m4a'].includes(ext)) return 'audio';
+    if (m.startsWith('text/') || ['txt','md','csv','json','log','xml','html','js','css'].includes(ext)) return 'text';
+    return 'other';
+}
+
+/* ── In-App-Betrachter ───────────────────────────────────── */
+let _fileViewerKey = null;
+
+function openFileViewer(key, displayName) {
+    _fileViewerKey = key;
+    const modal = document.getElementById('fileViewerModal');
+    const titleEl = document.getElementById('fileViewerTitle');
+    const body = document.getElementById('fileViewerBody');
+    if (!modal || !body) return;
+    titleEl.innerText = displayName || key;
+    body.innerHTML = '';
+    modal.classList.add('active');
+
+    const cached = getCachedFile(key);
+    if (!cached) {
+        /* Nach einem Neuladen sind die Inhalte weg (sie werden absichtlich nicht gespeichert). */
+        body.style.display = 'block';
+        body.innerHTML = `<div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+            <i class="fas fa-link" style="font-size:38px; opacity:0.35; margin-bottom:14px;"></i>
+            <p style="font-size:14px; color:var(--text-main); margin-bottom:6px;">${t('fv_not_loaded')}</p>
+            <p style="font-size:12px; margin-bottom:18px;">${t('fv_not_loaded_hint')}</p>
+            <p style="font-size:11px; word-break:break-all; margin-bottom:18px;"><code>${escapeHtmlToday(key)}</code></p>
+            <button class="secondary" onclick="document.getElementById('fileViewerPick').click()"><i class="fas fa-folder-open"></i> ${t('fv_relink')}</button>
+            <input type="file" id="fileViewerPick" style="display:none;" onchange="relinkViewerFile(this)">
+        </div>`;
+        return;
+    }
+
+    body.style.display = 'flex';
+    const kind = guessFileKind(key, cached.file.type);
+    if (kind === 'image') {
+        body.innerHTML = `<img src="${cached.url}" style="max-width:100%; max-height:100%; object-fit:contain; border-radius:6px;">`;
+    } else if (kind === 'pdf') {
+        body.style.display = 'block';
+        body.innerHTML = `<iframe src="${cached.url}" style="width:100%; height:100%; border:none; background:#fff;"></iframe>`;
+    } else if (kind === 'video') {
+        body.innerHTML = `<video src="${cached.url}" controls style="max-width:100%; max-height:100%;"></video>`;
+    } else if (kind === 'audio') {
+        body.innerHTML = `<audio src="${cached.url}" controls style="width:90%;"></audio>`;
+    } else if (kind === 'text') {
+        cached.file.text().then(txt => {
+            body.style.display = 'block';
+            body.innerHTML = `<pre style="white-space:pre-wrap; word-break:break-word; font-family:var(--ff-data); font-size:12px; background:var(--surface-color); padding:15px; border-radius:6px; margin:0;">${escapeHtmlToday(txt.slice(0, 200000))}</pre>`;
+        }).catch(() => { body.innerHTML = `<p style="color:var(--text-muted);">${t('fv_cannot_display')}</p>`; });
+    } else {
+        body.innerHTML = `<div style="text-align:center; color:var(--text-muted);">
+            <i class="fas fa-file" style="font-size:38px; opacity:0.35; margin-bottom:14px;"></i>
+            <p style="font-size:13px; margin-bottom:14px;">${t('fv_cannot_display')}</p>
+            <a class="secondary" style="display:inline-block; padding:8px 14px; border-radius:12px; border:1px solid var(--border-color); text-decoration:none; color:var(--text-main);" href="${cached.url}" download="${escapeHtmlToday(cached.file.name)}"><i class="fas fa-download"></i> ${t('fv_download')}</a>
+        </div>`;
+    }
+}
+
+function relinkViewerFile(input) {
+    if (!input.files || !input.files.length || !_fileViewerKey) return;
+    cacheFileBlob(_fileViewerKey, input.files[0]);
+    const key = _fileViewerKey;
+    input.value = '';
+    openFileViewer(key);
+    if (typeof renderFileList === 'function' && document.getElementById('t_file_list')) renderFileList();
+}
+
+function closeFileViewer() {
+    const modal = document.getElementById('fileViewerModal');
+    if (modal) modal.classList.remove('active');
+    const body = document.getElementById('fileViewerBody');
+    if (body) body.innerHTML = '';   /* stoppt laufende Medien */
+    _fileViewerKey = null;
+}
+
+/* ── Aufnahme für Export (Screenshots) ───────────────────── */
+/* Liefert ein Array von DataURLs. PDFs werden seitenweise gerendert (alle Seiten). */
+async function captureFileAsImages(key, maxPages = 50) {
+    const cached = getCachedFile(key);
+    if (!cached) return [];
+    return captureFileObjectAsImages(cached.file, maxPages, cached.url);
+}
+
+/* Rendert eine Datei (Bild/PDF/Text) in ein oder mehrere PNG-DataURLs. PDFs seitenweise (alle Seiten). */
+async function captureFileObjectAsImages(file, maxPages = 50, existingUrl = null) {
+    if (!file) return [];
+    const kind = guessFileKind(file.name, file.type);
+    let tempUrl = null;
+    try {
+        const url = existingUrl || (tempUrl = URL.createObjectURL(file));
+        if (kind === 'image') {
+            const dataUrl = await new Promise((res, rej) => {
+                const img = new Image();
+                img.onload = () => {
+                    const cv = document.createElement('canvas');
+                    const maxDim = 1600;
+                    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+                    const sc = Math.min(1, maxDim / Math.max(w, h));
+                    cv.width = Math.max(1, Math.round(w * sc)); cv.height = Math.max(1, Math.round(h * sc));
+                    const ctx = cv.getContext('2d');
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+                    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+                    res(cv.toDataURL('image/png'));
+                };
+                img.onerror = rej;
+                img.src = url;
+            });
+            return [dataUrl];
+        }
+        if (kind === 'pdf') {
+            if (!window.pdfjsLib) return [];
+            const buf = await file.arrayBuffer();
+            const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+            const out = [];
+            const pages = Math.min(pdf.numPages, maxPages);
+            for (let p = 1; p <= pages; p++) {
+                const page = await pdf.getPage(p);
+                const viewport = page.getViewport({ scale: 1.6 });
+                const cv = document.createElement('canvas');
+                cv.width = Math.ceil(viewport.width); cv.height = Math.ceil(viewport.height);
+                const ctx = cv.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height);
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                out.push(cv.toDataURL('image/png'));
+            }
+            return out;
+        }
+        if (kind === 'text' && typeof html2canvas !== 'undefined') {
+            const txt = (await file.text()).slice(0, 8000);
+            const div = document.createElement('div');
+            div.style.cssText = 'position:absolute; left:-9999px; top:0; width:760px; background:#fff; color:#000; padding:16px; font-family:monospace; font-size:12px; white-space:pre-wrap; word-break:break-word;';
+            div.textContent = txt;
+            document.body.appendChild(div);
+            const cv = await html2canvas(div, { scale: 2, backgroundColor: '#ffffff' });
+            document.body.removeChild(div);
+            return [cv.toDataURL('image/png')];
+        }
+    } catch (e) { console.warn('captureFileObjectAsImages failed', e); }
+    finally { if (tempUrl) { try { URL.revokeObjectURL(tempUrl); } catch (e) {} } }
+    return [];
+}
+
+/* Sammelt Screenshots aller verfügbaren Anhänge einer Aufgabe. */
+async function captureTaskAttachments(task) {
+    const out = [];
+    for (const f of (task.files || [])) {
+        const key = fileCacheKey(f);
+        if (!key || !getCachedFile(key)) continue;
+        const imgs = await captureFileAsImages(key);
+        imgs.forEach((dataUrl, i) => out.push({ label: (f.name || f.path) + (imgs.length > 1 ? ` (${t('fv_page')} ${i + 1}/${imgs.length})` : ''), dataUrl }));
+    }
+    return out;
+}
+
 function addFilesAsPaths() { 
     const input = document.getElementById('t_files'); if(input.files.length === 0) return; 
     const baseDir = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\'; const folder = baseDir.endsWith('\\') || baseDir.endsWith('/') ? baseDir : baseDir + '\\';
-    Array.from(input.files).forEach(file => { currentTempFiles.push({ type: 'path', name: file.name, path: folder + file.name }); }); 
+    Array.from(input.files).forEach(file => {
+        const fullPath = folder + file.name;
+        currentTempFiles.push({ type: 'path', name: file.name, path: fullPath });
+        /* Inhalt nur für diese Sitzung im Speicher halten (kommt nicht ins Backup) */
+        cacheFileBlob(fullPath, file);
+    }); 
     input.value = ''; document.getElementById('t_files_fname').innerText = t('no_file_chosen'); renderFileList(); showToast('Dateipfade generiert.');
 }
 function addFilePath() { const path = document.getElementById('t_filepath').value.trim(); if(path) { currentTempFiles.push({ type: 'path', path: path }); document.getElementById('t_filepath').value = ''; renderFileList(); } }
@@ -3115,12 +3299,15 @@ function renderFileList() {
         if(f.type === 'blob' || f.type === 'missing-blob') { 
             html += `<div class="file-item" style="color:var(--danger); border:1px solid var(--danger); padding:5px 10px; margin-bottom:5px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:12px;"><i class="fas fa-exclamation-triangle"></i> ${f.name} (Veraltete Datei)</span><div><button class="secondary icon-btn" onclick="removeFile(${i})"><i class="fas fa-times"></i></button></div></div>`; 
         } else if(f.type === 'path') { 
-            let fileUrl = f.path; if(!fileUrl.startsWith('http') && !fileUrl.startsWith('file://')) { fileUrl = 'file:///' + fileUrl.replace(/\\/g, '/'); }
             let safePath = f.path.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const available = isFileAvailable(f);
+            const dotColor = available ? 'var(--success)' : 'var(--text-muted)';
+            const dotTitle = available ? t('fv_available') : t('fv_not_loaded_short');
             html += `<div class="file-item" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 10px; margin-bottom:5px; border-radius:4px; border: 1px solid var(--border-color);">
                 <span style="font-size:13px; display:flex; align-items:center; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    <i class="fas fa-external-link-alt" style="margin-right:10px; color:var(--primary-color);"></i>
-                    <a href="${fileUrl}" target="_blank" style="color:var(--text-main); text-decoration:none; outline:none;" title="Klicken zum Öffnen" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${f.path}</a>
+                    <i class="fas fa-circle" style="font-size:7px; margin-right:8px; color:${dotColor};" title="${dotTitle}"></i>
+                    <i class="fas fa-eye" style="margin-right:10px; color:var(--primary-color);"></i>
+                    <a href="javascript:void(0)" onclick="openFileViewer('${safePath}')" style="color:var(--text-main); text-decoration:none; outline:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${t('fv_open_in_app')}" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${f.path}</a>
                 </span>
                 <div style="display:flex; gap:5px; margin-left:10px; flex-shrink:0;">
                     <button class="secondary icon-btn" onclick="copyRawPath('${safePath}')" title="Pfad in Zwischenablage kopieren"><i class="fas fa-copy"></i></button>
@@ -7547,9 +7734,32 @@ function generateRichTextReport() {
     return html + `</div>`;
 }
 
-function exportWord() {
+/* Baut einen Anhang-Abschnitt mit Screenshots für den Word-Export. */
+async function buildAttachmentsHtmlForWord(tasks) {
+    let anyShots = '';
+    for (const task of tasks) {
+        const shots = await captureTaskAttachments(task);
+        if (!shots.length) continue;
+        anyShots += `<h3 style="font-family:Helvetica,Arial,sans-serif; margin-top:18px;">${task.projectName || 'Aufgabe'}</h3>`;
+        shots.forEach(s => {
+            anyShots += `<div style="margin-bottom:14px;"><div style="font-size:11px; color:#666; font-family:Helvetica,Arial,sans-serif; margin-bottom:4px;">${s.label}</div><img src="${s.dataUrl}" style="max-width:640px; border:1px solid #ccc;" /></div>`;
+        });
+    }
+    if (!anyShots) return '';
+    return `<hr style="border:0; border-top:1px solid #ccc; margin-top:24px;" /><h2 style="font-family:Helvetica,Arial,sans-serif;">Anhänge</h2>${anyShots}`;
+}
+
+async function exportWord() {
     const content = generateRichTextReport();
-    const fullHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'></head><body style="font-family:Helvetica, sans-serif;">${content}</body></html>`;
+    let attachments = '';
+    try {
+        const tasksForAttachments = (currentView === 'time') ? [] : getFilteredTasks();
+        if (tasksForAttachments.length) {
+            showToast('Anhänge werden aufbereitet...', 'info');
+            attachments = await buildAttachmentsHtmlForWord(tasksForAttachments);
+        }
+    } catch (e) { console.warn('Anhänge für Word-Export fehlgeschlagen', e); }
+    const fullHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'></head><body style="font-family:Helvetica, sans-serif;">${content}${attachments}</body></html>`;
     const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `ProMan_Export_${currentView}.doc`; a.click();
 }
 
@@ -7589,7 +7799,7 @@ function exportICS() {
     showToast(t('toast_pdf').replace('PDF', 'Kalender (.ics)'));
 }
 
-async function createPDF(tasksArray, docTitle, filename, stackObj = null) {
+async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraFiles = []) {
     if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') { return showToast('PDF Bibliotheken laden noch.', 'error'); }
     showToast('PDF wird generiert... Bitte warten.', 'info');
     const { jsPDF } = window.jspdf; const doc = new jsPDF('p', 'mm', 'a4'); const pageHeight = doc.internal.pageSize.height; const pageWidth = doc.internal.pageSize.width; const contentWidth = pageWidth - 28;
@@ -7684,12 +7894,104 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null) {
         
         yPos += 10; if(index < tasksArray.length - 1) { doc.setDrawColor(200, 200, 200); doc.line(14, yPos - 5, pageWidth - 14, yPos - 5); }
     }
+
+    /* ── Vom Nutzer ausgewählte Anhänge (optional, aus dem Export-Dialog) ── */
+    if (extraFiles && extraFiles.length > 0) {
+        doc.addPage(); yPos = 20;
+        doc.setFontSize(16); doc.setFont("helvetica", "bold"); doc.setTextColor(0, 0, 0);
+        doc.text(t('pdfx_section_title'), 14, yPos); yPos += 10;
+
+        for (const file of extraFiles) {
+            const imgs = await captureFileObjectAsImages(file);
+            if (imgs.length === 0) {
+                yPos = printWrappedText(`- ${file.name} (${t('pdfx_not_renderable')})`, 14, yPos, contentWidth, 9, false);
+                continue;
+            }
+            for (let i = 0; i < imgs.length; i++) {
+                const dataUrl = imgs[i];
+                try {
+                    const props = doc.getImageProperties(dataUrl);
+                    let imgW = contentWidth;
+                    let imgH = (props.height * imgW) / props.width;
+                    const label = file.name + (imgs.length > 1 ? ` (${t('fv_page')} ${i + 1}/${imgs.length})` : '');
+                    const maxH = pageHeight - 40;
+                    if (imgH > maxH) { imgH = maxH; imgW = (props.width * imgH) / props.height; }
+                    if (yPos + imgH + 12 > pageHeight - 12) { doc.addPage(); yPos = 20; }
+                    yPos = printWrappedText(label, 14, yPos + 2, contentWidth, 8, true);
+                    doc.addImage(dataUrl, 'PNG', 14, yPos, imgW, imgH);
+                    yPos += imgH + 8;
+                } catch (e) { console.warn('Anhang konnte nicht eingebettet werden', e); }
+            }
+        }
+    }
     doc.save(filename); showToast(t('toast_pdf'));
 }
 
-function exportPDFGefiltert() { createPDF(getFilteredTasks(), "ProMan: Gefilterte Aufgaben", "ProMan_Gefiltert.pdf"); }
-function exportSingleTaskPDF() { const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return; createPDF([t_obj], "Aufgaben-Details", `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`); }
-function exportSingleStackPDF() { const id = document.getElementById('s_id').value; const stack = appData.projectStacks.find(s => s.id === id); if(!stack) return; const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id); createPDF(tasks, "Projekt-Stack Übersicht", `Stack_${stack.name.replace(/\s+/g, '_')}.pdf`, stack); }
+/* ═══════════════════════════════════════════════════════════
+   PDF-EXPORT-DIALOG: optional Bilder/PDFs mit anhängen
+   ═══════════════════════════════════════════════════════════ */
+let _pdfExportRunner = null;      /* (extraFiles) => Promise */
+let pdfExportExtraFiles = [];     /* nur für diesen Dialog, nichts wird gespeichert */
+
+function openPdfExportModal(runner) {
+    _pdfExportRunner = runner;
+    pdfExportExtraFiles = [];
+    const inp = document.getElementById('pdfx_input'); if (inp) inp.value = '';
+    renderPdfExportFileList();
+    const m = document.getElementById('pdfExportModal'); if (m) m.classList.add('active');
+}
+function closePdfExportModal() {
+    const m = document.getElementById('pdfExportModal'); if (m) m.classList.remove('active');
+    pdfExportExtraFiles = [];
+    _pdfExportRunner = null;
+}
+function addPdfExportFiles(input) {
+    if (!input.files || !input.files.length) return;
+    Array.from(input.files).forEach(f => pdfExportExtraFiles.push(f));
+    input.value = '';
+    renderPdfExportFileList();
+}
+function removePdfExportFile(i) { pdfExportExtraFiles.splice(i, 1); renderPdfExportFileList(); }
+function renderPdfExportFileList() {
+    const c = document.getElementById('pdfx_list'); if (!c) return;
+    if (pdfExportExtraFiles.length === 0) {
+        c.innerHTML = `<p style="font-size:12px; color:var(--text-muted); text-align:center; padding:14px 0;">${t('pdfx_none')}</p>`;
+        return;
+    }
+    c.innerHTML = pdfExportExtraFiles.map((f, i) => {
+        const kind = guessFileKind(f.name, f.type);
+        const icon = kind === 'pdf' ? 'fa-file-pdf' : (kind === 'image' ? 'fa-file-image' : 'fa-file');
+        const kb = Math.max(1, Math.round(f.size / 1024));
+        return `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-color); border:1px solid var(--border-color); border-radius:6px; padding:8px 10px; margin-bottom:6px;">
+            <span style="display:flex; align-items:center; gap:9px; min-width:0; font-size:13px;">
+                <i class="fas ${icon}" style="color:var(--primary-color);"></i>
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtmlToday(f.name)}</span>
+                <span style="color:var(--text-muted); font-size:11px; flex-shrink:0;">${kb} KB</span>
+            </span>
+            <button class="secondary icon-btn" style="color:var(--danger); flex-shrink:0;" onclick="removePdfExportFile(${i})" title="${t('delete')}"><i class="fas fa-times"></i></button>
+        </div>`;
+    }).join('');
+}
+async function confirmPdfExport() {
+    const runner = _pdfExportRunner;
+    const files = pdfExportExtraFiles.slice();
+    const m = document.getElementById('pdfExportModal'); if (m) m.classList.remove('active');
+    _pdfExportRunner = null; pdfExportExtraFiles = [];
+    if (typeof runner === 'function') { try { await runner(files); } catch (e) { console.warn(e); showToast('PDF-Export fehlgeschlagen.', 'error'); } }
+}
+
+function exportPDFGefiltert() {
+    openPdfExportModal((extra) => createPDF(getFilteredTasks(), "ProMan: Gefilterte Aufgaben", "ProMan_Gefiltert.pdf", null, extra));
+}
+function exportSingleTaskPDF() {
+    const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return;
+    openPdfExportModal((extra) => createPDF([t_obj], "Aufgaben-Details", `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`, null, extra));
+}
+function exportSingleStackPDF() {
+    const id = document.getElementById('s_id').value; const stack = appData.projectStacks.find(s => s.id === id); if(!stack) return;
+    const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
+    openPdfExportModal((extra) => createPDF(tasks, "Projekt-Stack Übersicht", `Stack_${stack.name.replace(/\s+/g, '_')}.pdf`, stack, extra));
+}
 
 // --- NOTIFICATION MODAL ---
 let _notifModalQueue = [];

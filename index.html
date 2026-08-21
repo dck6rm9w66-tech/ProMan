@@ -11,6 +11,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }
+    </script>
 
     <!-- Eigenes CSS -->
     <link rel="stylesheet" href="styles.css?v=20260804-17">
@@ -229,6 +233,43 @@
             </div>
             <div class="modal-footer" style="justify-content: flex-end;">
                 <button onclick="closeAddTaskToStackModal()">Fertig</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DATEI-VORSCHAU (nur Sitzung, wird nicht gesichert) -->
+    <div class="modal-overlay" id="fileViewerModal" style="z-index: 3000;">
+        <div class="modal-content" style="width: 90vw; max-width: 1000px; height: 88vh; display:flex; flex-direction:column;">
+            <div class="modal-header">
+                <h3 id="fileViewerTitle" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Datei</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closeFileViewer()"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="fileViewerBody" style="flex:1; overflow:auto; padding:15px; background:var(--bg-color); display:flex; align-items:center; justify-content:center;"></div>
+            <div class="modal-footer" style="justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-shield-alt"></i> <span data-i18n="fv_privacy">Nur in dieser Sitzung geladen – wird nicht im Backup gespeichert.</span></span>
+                <button class="secondary" onclick="closeFileViewer()" data-i18n="close">Schliessen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF-EXPORT: optionale Anhänge -->
+    <div class="modal-overlay" id="pdfExportModal" style="z-index: 3000;">
+        <div class="modal-content bottom-sheet-mobile" style="width: 560px;">
+            <div class="modal-header">
+                <h3><i class="fas fa-file-pdf" style="color:var(--primary-color); margin-right:8px;"></i><span data-i18n="pdfx_title">PDF exportieren</span></h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="closePdfExportModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="display:flex; flex-direction:column; gap:12px;">
+                <p style="font-size:12px; color:var(--text-muted); margin:0;" data-i18n="pdfx_desc">Optional kannst du Bilder oder PDFs auswählen, die am Ende des Exports angehängt werden. Bei PDFs werden alle Seiten übernommen.</p>
+                <div>
+                    <input type="file" id="pdfx_input" accept="image/*,application/pdf" multiple style="display:none;" onchange="addPdfExportFiles(this)">
+                    <button class="secondary" onclick="document.getElementById('pdfx_input').click()" style="width:100%;"><i class="fas fa-paperclip"></i> <span data-i18n="pdfx_choose">Bilder / PDFs auswählen</span></button>
+                </div>
+                <div id="pdfx_list" style="max-height:260px; overflow-y:auto;"></div>
+            </div>
+            <div class="modal-footer" style="justify-content:flex-end; gap:8px;">
+                <button class="secondary" onclick="closePdfExportModal()" data-i18n="cancel">Abbrechen</button>
+                <button onclick="confirmPdfExport()"><i class="fas fa-download"></i> <span data-i18n="pdfx_create">PDF erstellen</span></button>
             </div>
         </div>
     </div>
