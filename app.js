@@ -159,7 +159,8 @@ let defaultData = {
         trashAutoDelete: { unit: 'days', value: 30 },
         globalHideCompleted: true,
         monthlyBudget: null,
-        monthlyBudgetCurrency: 'EUR',
+        defaultHourlyRate: null,
+        currency: 'EUR',
         globalHidePaused: false,
         currentUserId: 'u1',
         companyLogo: null,
@@ -1390,11 +1391,46 @@ function getStackProgress(stackId) {
    Verbrauchtes Budget einer Aufgabe: Summe (Checkpunkt-Dauer in Std × wirksamer Satz) über alle Checkpunkte;
    hat die Aufgabe keine Checkliste, wird stattdessen der bisherige Aufwand (spentTime) × wirksamer Satz verwendet.
    Verbrauchtes Budget eines Stacks: Summe der verbrauchten Budgets aller zugehörigen Aufgaben. */
+/* Stundensatz einer Person (aus Einstellungen → Team & Profil). */
+function getUserHourlyRate(userId) {
+    if (!userId) return null;
+    const u = appData.users.find(x => x.id === userId);
+    if (!u) return null;
+    if (u.hourlyRate === null || u.hourlyRate === undefined || u.hourlyRate === '') return null;
+    const v = parseFloat(u.hourlyRate);
+    return isNaN(v) ? null : v;
+}
+function getGlobalCurrency() {
+    const c = appData.settings ? appData.settings.currency : null;
+    return (c === 'CHF' || c === 'EUR' || c === 'USD') ? c : 'EUR';
+}
+function updateGlobalCurrency(val) {
+    appData.settings.currency = (val === 'CHF' || val === 'EUR' || val === 'USD') ? val : 'EUR';
+    saveToLocal(true);
+    const tl = document.getElementById('t_currency_label'); if (tl) tl.textContent = getGlobalCurrency();
+    const sl = document.getElementById('s_currency_label'); if (sl) sl.textContent = getGlobalCurrency();
+    renderView();
+}
+function getDefaultHourlyRate() {
+    const v = parseFloat(appData.settings ? appData.settings.defaultHourlyRate : null);
+    return isNaN(v) ? 0 : v;
+}
+/*
+ * Der Stundensatz richtet sich immer nach der zuständigen Person.
+ * Reihenfolge: Zuständiger des Checkpunkts/Milestones → der Aufgabe → des Stacks.
+ * Ist niemand zuständig (oder für die Person kein Satz hinterlegt), gilt der Standard-Lohn/h.
+ */
 function getEffectiveHourlyRate(checkpoint, task, stack) {
-    if (checkpoint && checkpoint.hourlyRate !== null && checkpoint.hourlyRate !== undefined && checkpoint.hourlyRate !== '') return parseFloat(checkpoint.hourlyRate) || 0;
-    if (task && task.hourlyRate !== null && task.hourlyRate !== undefined && task.hourlyRate !== '') return parseFloat(task.hourlyRate) || 0;
-    if (stack && stack.hourlyRate !== null && stack.hourlyRate !== undefined && stack.hourlyRate !== '') return parseFloat(stack.hourlyRate) || 0;
-    return 0;
+    const candidates = [
+        checkpoint && checkpoint.assigneeId,
+        task && task.assigneeId,
+        stack && stack.assigneeId
+    ];
+    for (const uid of candidates) {
+        const r = getUserHourlyRate(uid);
+        if (r !== null) return r;
+    }
+    return getDefaultHourlyRate();
 }
 function getTaskConsumedBudget(task) {
     if (!task) return 0;
@@ -1820,13 +1856,21 @@ function renderSettings() {
         clContainer.innerHTML = clHtml;
     }
 
-    let usrHtml = `<tr><th width="40">${t('image')}</th><th>${t('name')}</th><th>${t('avatar_url')}</th><th width="60">${t('action')}</th></tr>`;
+    let usrHtml = `<tr><th width="40">${t('image')}</th><th>${t('name')}</th><th>${t('avatar_url')}</th><th width="110">${t('hourly_rate_short')}</th><th width="60">${t('action')}</th></tr>`;
     appData.users.forEach(u => {
+        const rate = (u.hourlyRate !== undefined && u.hourlyRate !== null && u.hourlyRate !== '') ? u.hourlyRate : '';
         usrHtml += `<tr><td data-label="Bild">${getAvatarHtml(u.id)}</td><td data-label="Name"><span class="editable-cell" ondblclick="editSetting(this, 'user', '${u.id}')">${u.name}</span></td>
             <td data-label="URL"><input type="text" value="${u.avatar}" onchange="updateUserAvatar('${u.id}', this.value)" style="margin:0; padding:4px; font-size:11px; width:100%;"></td>
+            <td data-label="${t('hourly_rate_short')}"><input type="number" min="0" step="0.5" value="${rate}" placeholder="0.00" onchange="updateUserHourlyRate('${u.id}', this.value)" style="margin:0; padding:4px; font-size:11px; width:100%; text-align:right;"></td>
             <td data-label="Aktion" style="flex-direction:row;">${u.id !== appData.settings.currentUserId ? `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`;
     });
     document.getElementById('settings_users_table').innerHTML = usrHtml;
+
+    const dhr = document.getElementById('set_default_hourly_rate');
+    if (dhr) dhr.value = (appData.settings.defaultHourlyRate !== undefined && appData.settings.defaultHourlyRate !== null) ? appData.settings.defaultHourlyRate : '';
+
+    const curSel = document.getElementById('set_currency');
+    if (curSel) curSel.value = getGlobalCurrency();
 
     let curOpts = ''; appData.users.forEach(u => { curOpts += `<option value="${u.id}" ${u.id===appData.settings.currentUserId?'selected':''}>${u.name}</option>`; });
     document.getElementById('set_current_user').innerHTML = curOpts;
@@ -1871,7 +1915,9 @@ function deleteBucket(name) { appData.buckets = appData.buckets.filter(b => b !=
 function addDefClItem() { const n = document.getElementById('new_def_cl_name').value.trim(); if(n) { appData.defaultChecklist.push(n); document.getElementById('new_def_cl_name').value = ''; renderSettings(); } }
 function deleteDefCl(i) { appData.defaultChecklist.splice(i, 1); renderSettings(); }
 function moveDefCl(i, dir) { if(i+dir>=0 && i+dir<appData.defaultChecklist.length) { const t_obj = appData.defaultChecklist[i]; appData.defaultChecklist[i] = appData.defaultChecklist[i+dir]; appData.defaultChecklist[i+dir] = t_obj; renderSettings(); } }
-function addUser() { const n = document.getElementById('new_user_name').value.trim(); const a = document.getElementById('new_user_avatar').value.trim(); if(n) { appData.users.push({ id: generateId(), name: n, avatar: a }); document.getElementById('new_user_name').value = ''; document.getElementById('new_user_avatar').value = ''; renderSettings(); } }
+function addUser() { const n = document.getElementById('new_user_name').value.trim(); const a = document.getElementById('new_user_avatar').value.trim(); const r = document.getElementById('new_user_rate') ? document.getElementById('new_user_rate').value : ''; if(n) { appData.users.push({ id: generateId(), name: n, avatar: a, hourlyRate: (r !== '' ? parseFloat(r) : null) }); document.getElementById('new_user_name').value = ''; document.getElementById('new_user_avatar').value = ''; if(document.getElementById('new_user_rate')) document.getElementById('new_user_rate').value = ''; renderSettings(); } }
+function updateUserHourlyRate(id, val) { const u = appData.users.find(x => x.id === id); if(u) { u.hourlyRate = (val !== '' && !isNaN(parseFloat(val))) ? parseFloat(val) : null; saveToLocal(true); } }
+function updateDefaultHourlyRate(val) { appData.settings.defaultHourlyRate = (val !== '' && !isNaN(parseFloat(val))) ? parseFloat(val) : null; saveToLocal(true); }
 function deleteUser(id) { 
     if(id === appData.settings.currentUserId) return showToast('Eigenes Profil kann nicht gelöscht werden', 'error');
     appData.users = appData.users.filter(u => u.id !== id); 
@@ -2634,7 +2680,7 @@ function addModalClDragHandlers(div) {
     div.draggable = false;
 }
 
-function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null, hourlyRate = null, showBudget = false) {
+function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null) {
     let sd = '', stime = ''; if (startDate) { if (startDate.includes('T')) [sd, stime] = startDate.split('T'); else sd = startDate; }
     /* Dauer in Minuten → Dezimalstunden (Standard 60 Min = 1 Stunde) */
     let durMin = (duration === null || duration === undefined || duration === '') ? 0 : parseInt(duration, 10);
@@ -2672,7 +2718,6 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
                 <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="Startzeit (optional)" onchange="clStartChanged(this)">
             </span>
             <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="Dauer in Stunden" onchange="clSumDuration()"><span class="cl-durunit">Std</span></span>
-            ${showBudget ? `<span class="cl-datespan cl-ratespan"><span class="cl-datelbl">Lohn</span><input type="number" class="cl-hourly-rate" value="${(hourlyRate !== null && hourlyRate !== undefined && hourlyRate !== '') ? hourlyRate : ''}" min="0" step="0.5" placeholder="–" title="Stundenlohn für diesen Checkpunkt (optional, überschreibt den Stundenlohn der Aufgabe)"><span class="cl-durunit">/h</span></span>` : ''}
             <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="Löschen"><i class="fas fa-trash"></i></button>
         </div>
@@ -2741,8 +2786,8 @@ function openStackModal(id = null) {
     const container = document.getElementById('s_checklist_container'); container.innerHTML = '';
     const tasksContainer = document.getElementById('s_tasks_container'); tasksContainer.innerHTML = '';
     
-    ['s_id','s_name','s_start_date','s_start_time','s_due_date','s_due_time', 's_history', 's_assignee', 's_stakeholder', 's_bucket', 's_target_budget', 's_hourly_rate'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
-    document.getElementById('s_target_budget_currency').value = 'EUR';
+    ['s_id','s_name','s_start_date','s_start_time','s_due_date','s_due_time', 's_history', 's_assignee', 's_stakeholder', 's_bucket', 's_target_budget'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
+    { const _sl = document.getElementById('s_currency_label'); if(_sl) _sl.textContent = getGlobalCurrency(); }
     { const _sbs = document.getElementById('s_budget_summary'); if(_sbs) { _sbs.style.display = 'none'; _sbs.innerHTML = ''; } }
     document.getElementById('s_notes_rte').innerHTML = '';
     document.getElementById('s_assignee').innerHTML = `<option value="" data-i18n="nobody">${t('nobody')}</option>` + appData.users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
@@ -2767,8 +2812,8 @@ function openStackModal(id = null) {
         document.getElementById('s_start_date').value = sStartDate; document.getElementById('s_start_time').value = sStartTime;
         document.getElementById('s_due_date').value = sDueDate; document.getElementById('s_due_time').value = sDueTime;
         document.getElementById('s_notes_rte').innerHTML = s.notes || ''; document.getElementById('s_history').value = s.history || ''; document.getElementById('s_assignee').value = s.assigneeId || ''; document.getElementById('s_stakeholder').value = s.stakeholderId || ''; document.getElementById('s_bucket').value = s.bucket || '';
-        document.getElementById('s_target_budget').value = s.targetBudget || ''; document.getElementById('s_target_budget_currency').value = s.targetBudgetCurrency || 'EUR'; document.getElementById('s_hourly_rate').value = (s.hourlyRate !== undefined && s.hourlyRate !== null) ? s.hourlyRate : '';
-        { const _sbs = document.getElementById('s_budget_summary'); if(_sbs) { const _bh = buildBudgetSummaryHtml(s.targetBudget, s.targetBudgetCurrency || 'EUR', getStackConsumedBudget(s)); _sbs.innerHTML = _bh; _sbs.style.display = _bh ? 'block' : 'none'; } }
+        document.getElementById('s_target_budget').value = s.targetBudget || ''; { const _sl = document.getElementById('s_currency_label'); if(_sl) _sl.textContent = getGlobalCurrency(); }
+        { const _sbs = document.getElementById('s_budget_summary'); if(_sbs) { const _bh = buildBudgetSummaryHtml(s.targetBudget, getGlobalCurrency(), getStackConsumedBudget(s)); _sbs.innerHTML = _bh; _sbs.style.display = _bh ? 'block' : 'none'; } }
         
         const isCompleted = s.status === 'completed'; const isPaused = s.status === 'paused';
         if(!isCompleted) {
@@ -2939,7 +2984,7 @@ function saveStack() {
             startDate: getCombinedDateTime('s_start_date', 's_start_time'), 
             dueDate: getCombinedDateTime('s_due_date', 's_due_time'), 
             notes: document.getElementById('s_notes_rte').innerHTML, history: finalHistory, assigneeId: document.getElementById('s_assignee').value, stakeholderId: document.getElementById('s_stakeholder').value, bucket: document.getElementById('s_bucket').value, checklist: checklist, predecessors: tempPredecessors[id] || [],
-            targetBudget: document.getElementById('s_target_budget').value !== '' ? parseFloat(document.getElementById('s_target_budget').value) : null, targetBudgetCurrency: document.getElementById('s_target_budget_currency').value || 'EUR', hourlyRate: document.getElementById('s_hourly_rate').value !== '' ? parseFloat(document.getElementById('s_hourly_rate').value) : null
+            targetBudget: document.getElementById('s_target_budget').value !== '' ? parseFloat(document.getElementById('s_target_budget').value) : null
         };
         
         if(sData.startDate) checkWorkdayWarning(sData.startDate, sData.name);
@@ -2995,10 +3040,10 @@ function populateTaskDropdowns() {
 }
 function toggleCustomRecurrence() { document.getElementById('custom_recurrence_div').style.display = (document.getElementById('t_recurrence').value === 'custom') ? 'flex' : 'none'; }
 
-function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null, hourlyRate=null) {
+function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null) {
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     if(id) div.setAttribute('data-id', id);
-    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration, hourlyRate, true); addModalClDragHandlers(div); container.appendChild(div);
+    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration); addModalClDragHandlers(div); container.appendChild(div);
 }
 
 function openTaskToCheckpoint(taskId, checkpointId) { openModal(taskId, checkpointId); }
@@ -3007,7 +3052,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
     populateTaskDropdowns(); document.getElementById('taskModal').classList.add('active'); switchTaskTab('tab-general', document.querySelector('#taskModal .modal-tab-btn')); 
     const container = document.getElementById('t_checklist_container'); container.innerHTML = '';
     document.getElementById('t_file_list').innerHTML = ''; document.getElementById('t_files').value = ''; document.getElementById('t_filepath').value = ''; currentTempFiles = [];
-    ['t_projectStack','t_project','t_start_date','t_start_time','t_due_date','t_due_time','t_estTime','t_spentTime','t_notes','t_filepath', 't_assignee', 't_target_budget', 't_hourly_rate'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
+    ['t_projectStack','t_project','t_start_date','t_start_time','t_due_date','t_due_time','t_estTime','t_spentTime','t_notes','t_filepath', 't_assignee', 't_target_budget'].forEach(elId => { const el = document.getElementById(elId); if(el) el.value = ''; });
     document.getElementById('t_desc_rte').innerHTML = '';
     const baseFolderDisplay = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\'; document.getElementById('t_base_folder_display').innerText = baseFolderDisplay;
 
@@ -3039,16 +3084,16 @@ function openModal(taskId = null, _scrollToCpId = null) {
         document.getElementById('t_due_date').value = tDueDate; document.getElementById('t_due_time').value = tDueTime;
         
         document.getElementById('t_estTime').value = (t_obj.estimatedTimeBase !== undefined ? t_obj.estimatedTimeBase : (t_obj.estimatedTime || '')); document.getElementById('t_spentTime').value = t_obj.spentTime || ''; document.getElementById('t_desc_rte').innerHTML = t_obj.description || ''; document.getElementById('t_notes').value = t_obj.notes || '';
-        document.getElementById('t_target_budget').value = t_obj.targetBudget || ''; document.getElementById('t_target_budget_currency').value = t_obj.targetBudgetCurrency || 'EUR'; document.getElementById('t_hourly_rate').value = (t_obj.hourlyRate !== undefined && t_obj.hourlyRate !== null) ? t_obj.hourlyRate : '';
+        document.getElementById('t_target_budget').value = t_obj.targetBudget || ''; { const _tl = document.getElementById('t_currency_label'); if(_tl) _tl.textContent = getGlobalCurrency(); }
         
-        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null), (c.hourlyRate !== undefined ? c.hourlyRate : null))); 
+        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null))); 
         if(t_obj.files) { currentTempFiles = [...t_obj.files]; renderFileList(); }
         updateDepDisplay();
         clSumDuration();
     } else {
         document.getElementById('modalTitle').innerText = t('task_new'); document.getElementById('taskId').value = ''; document.getElementById('btnDeleteTask').style.display = 'none'; document.getElementById('dropdownShareTask').style.display = 'none';
         renderInteractiveRating('t_interactive_rating', null);
-        document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence(); document.getElementById('t_target_budget_currency').value = 'EUR';
+        document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence(); { const _tl = document.getElementById('t_currency_label'); if(_tl) _tl.textContent = getGlobalCurrency(); }
         if(appData.statuses.length > 0) document.getElementById('t_status').value = appData.statuses[0].id;
         document.getElementById('t_assignee').value = appData.settings.currentUserId || '';
         populatePresetPicker('task');
@@ -3353,9 +3398,7 @@ function saveTask() {
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            const rateVal = item.querySelector('.cl-hourly-rate')?.value;
-            const cHourlyRate = (rateVal !== undefined && rateVal !== '') ? parseFloat(rateVal) : null;
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds, hourlyRate: cHourlyRate };
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds };
         });
 
         // Diff Checklist für Historie
@@ -3382,7 +3425,7 @@ function saveTask() {
             startDate: getCombinedDateTime('t_start_date', 't_start_time'), 
             dueDate: getCombinedDateTime('t_due_date', 't_due_time'), 
             estimatedTimeBase: getVal('t_estTime'), estimatedTime: (function(){ const base = parseFloat(getVal('t_estTime')) || 0; const cpMin = (checklist||[]).reduce((s,c)=> s + (parseInt(c.duration,10)||0), 0); const total = base + cpMin/60; return (base || cpMin) ? String(Number(total.toFixed(2))) : ''; })(), spentTime: getVal('t_spentTime'), description: document.getElementById('t_desc_rte').innerHTML, notes: finalNotes, checklist: checklist, files: currentTempFiles,
-            targetBudget: getVal('t_target_budget') !== '' ? parseFloat(getVal('t_target_budget')) : null, targetBudgetCurrency: getVal('t_target_budget_currency') || 'EUR', hourlyRate: getVal('t_hourly_rate') !== '' ? parseFloat(getVal('t_hourly_rate')) : null,
+            targetBudget: getVal('t_target_budget') !== '' ? parseFloat(getVal('t_target_budget')) : null,
             predecessors: tempPredecessors[id] || []
         };
         
@@ -3513,11 +3556,8 @@ function getLogHourlyRate(log) {
 
 /* Währung einer Aufgabe: eigene > Stack-Währung > Standard */
 function getTaskCurrency(task) {
-    if (!task) return 'EUR';
-    if (task.targetBudgetCurrency) return task.targetBudgetCurrency;
-    const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
-    if (stack && stack.targetBudgetCurrency) return stack.targetBudgetCurrency;
-    return 'EUR';
+    /* Die Währung ist global (Einstellungen) - frühere Einzelwährungen werden ignoriert. */
+    return getGlobalCurrency();
 }
 
 /* Aggregiert die verbrauchten Budgetkosten (Stunden × effektiver Satz) je Kalendermonat, gruppiert nach Währung. */
@@ -3559,11 +3599,9 @@ function buildBudgetTrendBars(rows, color) {
 /* Speichert das globale Monatsbudget aus der Budget-Ansicht */
 function saveMonthlyBudget() {
     const amtEl = document.getElementById('mb_amount');
-    const curEl = document.getElementById('mb_currency');
     if (!amtEl) return;
     const raw = amtEl.value;
     appData.settings.monthlyBudget = (raw !== '' && parseFloat(raw) > 0) ? parseFloat(raw) : null;
-    appData.settings.monthlyBudgetCurrency = (curEl && curEl.value) ? curEl.value : 'EUR';
     saveToLocal(true);
     renderTimeTracking(document.getElementById('mainContainer'));
     showToast(appData.settings.monthlyBudget ? t('mb_saved') : t('mb_cleared'));
@@ -3627,12 +3665,12 @@ function renderBudgetsOverview(c) {
     const items = [];
     stacksWithBudget.forEach(s => items.push({
         type: 'stack', id: s.id, name: s.name || t('unnamed'),
-        target: parseFloat(s.targetBudget) || 0, currency: s.targetBudgetCurrency || 'EUR',
+        target: parseFloat(s.targetBudget) || 0, currency: getGlobalCurrency(),
         consumed: getStackConsumedBudget(s), status: s.status
     }));
     standaloneTasksWithBudget.forEach(t_obj => items.push({
         type: 'task', id: t_obj.id, name: t_obj.projectName || t('unnamed'),
-        target: parseFloat(t_obj.targetBudget) || 0, currency: t_obj.targetBudgetCurrency || 'EUR',
+        target: parseFloat(t_obj.targetBudget) || 0, currency: getGlobalCurrency(),
         consumed: getTaskConsumedBudget(t_obj), status: t_obj.status
     }));
     const hasBudgets = items.length > 0;
@@ -3666,9 +3704,8 @@ function renderBudgetsOverview(c) {
     let html = '';
 
     /* ══ GLOBALES MONATSBUDGET – Eingabe + Trendauswertung ══ */
-    const mbCur = appData.settings.monthlyBudgetCurrency || 'EUR';
+    const mbCur = getGlobalCurrency();
     const mbAmount = parseFloat(appData.settings.monthlyBudget) || 0;
-    const curOpts = ['EUR', 'CHF', 'USD', 'GBP'].map(cc => `<option value="${cc}" ${cc === mbCur ? 'selected' : ''}>${cc}</option>`).join('');
 
     html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:16px 20px; margin-bottom:14px;">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;">
@@ -3678,7 +3715,7 @@ function renderBudgetsOverview(c) {
             </div>
             <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
                 <input type="number" id="mb_amount" min="0" step="1" placeholder="0.00" value="${mbAmount > 0 ? mbAmount : ''}" style="width:120px; text-align:right;">
-                <select id="mb_currency" style="width:90px;">${curOpts}</select>
+                <span style="display:inline-flex; align-items:center; padding:0 10px; font-size:12px; color:var(--text-muted); border:1px solid var(--border-color); border-radius:var(--radius);">${mbCur}</span>
                 <button class="secondary" onclick="saveMonthlyBudget()"><i class="fas fa-check"></i> ${t('save')}</button>
             </div>
         </div>
@@ -5566,7 +5603,15 @@ function quickCompleteEvent(type, id, parentId) {
     saveToLocal(); safeRenderSchedule(); showToast(`"${changedName}" erledigt!`);
 }
 
+/* Wechselt zur Zeiterfassung und stellt sicher, dass nicht die Budget-Unteransicht offen bleibt. */
+function goToTimeTracking() {
+    timeSubView = 'tracking';
+    switchView('time');
+}
+
 function quickTrackTime(taskId, noteText = '') {
+    /* Immer zur Zeiterfassung wechseln – war zuvor „Budget" offen, fehlt sonst das Formular. */
+    timeSubView = 'tracking';
     switchView('time');
     setTimeout(() => {
         const sel = document.getElementById('tt_task');
@@ -6864,9 +6909,9 @@ function updateTimerDisplays() {
                 if(delItem) tName = delItem.data.projectName;
             }
             
-            globalHtml += `<div class="global-timer" onclick="switchView('time')" style="cursor:pointer;" title="Klicken um zur Zeiterfassung zu wechseln"><i class="fas fa-circle"></i> ${timeStr} <span class="gt-task-name" style="font-weight:normal; max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${tName}</span> <button class="icon-btn" style="background:transparent; border:none; padding:0; color:var(--danger);" onclick="event.stopPropagation(); stopTimer('${id}')" title="Stoppen"><i class="fas fa-stop"></i></button></div>`;
+            globalHtml += `<div class="global-timer" onclick="goToTimeTracking()" style="cursor:pointer;" title="Klicken um zur Zeiterfassung zu wechseln"><i class="fas fa-circle"></i> ${timeStr} <span class="gt-task-name" style="font-weight:normal; max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${tName}</span> <button class="icon-btn" style="background:transparent; border:none; padding:0; color:var(--danger);" onclick="event.stopPropagation(); stopTimer('${id}')" title="Stoppen"><i class="fas fa-stop"></i></button></div>`;
             
-            mobileTimerHtml += `<div style="background:var(--danger); color:white; padding:15px; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('time')">
+            mobileTimerHtml += `<div style="background:var(--danger); color:white; padding:15px; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;" onclick="closeMobileMoreMenu(); goToTimeTracking()">
                 <div style="overflow:hidden;">
                     <div style="font-weight:bold; font-size:20px; display:flex; align-items:center; gap:8px;"><i class="fas fa-circle" style="font-size:12px; animation:pulse 2s infinite;"></i> ${timeStr}</div>
                     <div style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.9;">${tName}</div>
@@ -8723,7 +8768,7 @@ function renderToday(c) {
                 ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
                 : t('today_complete').replace('{n}', overdue.length + dueToday.length)}</p>
             <div class="wk-hero-acts">
-                <button class="wk-hero-cta" onclick="switchView('time')"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
+                <button class="wk-hero-cta" onclick="goToTimeTracking()"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
             </div>
         </div>
         <div class="wk-hero-stats">
@@ -8860,7 +8905,7 @@ function renderToday(c) {
         html += `<div class="wk-strip-h"><b>${t('today_running')}</b><span class="wk-count">${running.length}</span><span class="wk-rule"></span></div>
         <div class="wk-run">`;
         running.forEach(tk => {
-            html += `<button class="wk-run-card" onclick="switchView('time')">
+            html += `<button class="wk-run-card" onclick="goToTimeTracking()">
                 <span class="wk-run-dot"></span>
                 <span class="wk-run-name">${escapeHtmlToday(tk.projectName)}</span>
                 <i class="fas fa-stopwatch"></i>
@@ -8870,7 +8915,7 @@ function renderToday(c) {
     }
 
     html += `<div class="wk-strip-h"><b>${t('today_unbooked')}</b><span class="wk-count">${openDays.length}</span><span class="wk-rule"></span>
-        <button class="wk-linkbtn" onclick="switchView('time')">${t('view_time')}</button></div>`;
+        <button class="wk-linkbtn" onclick="goToTimeTracking()">${t('view_time')}</button></div>`;
     if (openDays.length) {
         openDays.slice(-5).reverse().forEach(d => {
             html += `<div class="wk-quickrow">
@@ -8919,7 +8964,7 @@ function createTodayItemCard(it) {
         card.classList.add('wk-today-absence');
         card.style.setProperty('--card-strip', col);
         card.style.cursor = 'pointer';
-        card.onclick = () => { try { switchView('time'); } catch(e){} };
+        card.onclick = () => { try { goToTimeTracking(); } catch(e){} };
         const dueStr = (it.dueDate || '').split('T')[0];
         card.innerHTML = `<div class="wk-card">
             <div class="wk-card-top">
@@ -9011,6 +9056,7 @@ function ttHeuteAbs(iso, type){
     renderView();
 }
 function ttHeuteBook(iso){
+    timeSubView = 'tracking';
     switchView('time');
     setTimeout(() => {
         const d = document.getElementById('tt_date');

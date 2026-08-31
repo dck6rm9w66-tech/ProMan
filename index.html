@@ -121,7 +121,7 @@
             <div class="modal-body-simple" style="padding: 10px 20px 30px;">
                 <div id="mobileActiveTimerContainer" style="margin-bottom: 15px;"></div>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom: 20px;">
-                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); switchView('time')">
+                    <div style="background:var(--bg-color); padding:15px; border-radius:var(--radius); text-align:center; cursor:pointer;" onclick="closeMobileMoreMenu(); goToTimeTracking()">
                         <i class="fas fa-clock" style="font-size:24px; color:var(--primary-color); margin-bottom:5px;"></i><br>
                         <span style="font-size:13px; font-weight:bold;" data-i18n="view_time">Zeiterfassung</span>
                     </div>
@@ -476,17 +476,12 @@
                                 <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_target_budget">Zielbudget</span>
                                 <div style="display:flex; gap:5px;">
                                     <input type="number" id="t_target_budget" min="0" step="0.01" placeholder="0.00" style="flex:2;">
-                                    <select id="t_target_budget_currency" style="flex:1;">
-                                        <option value="EUR">EUR</option>
-                                        <option value="CHF">CHF</option>
-                                        <option value="USD">USD</option>
-                                        <option value="GBP">GBP</option>
-                                    </select>
+                                    <span id="t_currency_label" style="flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted); border:1px solid var(--border-color); border-radius:var(--radius); min-height:38px;">EUR</span>
                                 </div>
                             </div>
                             <div>
-                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_hourly_rate">Stundenlohn (pro Std)</span>
-                                <input type="number" id="t_hourly_rate" min="0" step="0.5" placeholder="0.00">
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="rate_from_assignee">Lohn/h</span>
+                                <p style="font-size:11px; color:var(--text-muted); margin:0; line-height:1.5;" data-i18n="rate_from_assignee_hint">Richtet sich nach der zuständigen Person (Einstellungen → Team &amp; Profil).</p>
                             </div>
                         </div>
                     </div>
@@ -678,17 +673,12 @@
                                 <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="t_target_budget">Zielbudget</span>
                                 <div style="display:flex; gap:5px;">
                                     <input type="number" id="s_target_budget" min="0" step="0.01" placeholder="0.00" style="flex:2;">
-                                    <select id="s_target_budget_currency" style="flex:1;">
-                                        <option value="EUR">EUR</option>
-                                        <option value="CHF">CHF</option>
-                                        <option value="USD">USD</option>
-                                        <option value="GBP">GBP</option>
-                                    </select>
+                                    <span id="s_currency_label" style="flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted); border:1px solid var(--border-color); border-radius:var(--radius); min-height:38px;">EUR</span>
                                 </div>
                             </div>
                             <div>
-                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="s_hourly_rate_fallback">Stundenlohn (Standard für Aufgaben ohne eigenen Satz)</span>
-                                <input type="number" id="s_hourly_rate" min="0" step="0.5" placeholder="0.00">
+                                <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="rate_from_assignee">Lohn/h</span>
+                                <p style="font-size:11px; color:var(--text-muted); margin:0; line-height:1.5;" data-i18n="rate_from_assignee_hint">Richtet sich nach der zuständigen Person (Einstellungen → Team &amp; Profil).</p>
                             </div>
                         </div>
                         <div id="s_budget_summary" style="margin-top:12px; display:none;"></div>
@@ -830,6 +820,16 @@
                             <option value="de">Deutsch</option>
                             <option value="en">English</option>
                             <option value="fr">Français</option>
+                        </select>
+                    </div>
+
+                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
+                        <h4><i class="fas fa-coins"></i> <span data-i18n="set_currency">Währung</span></h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_currency_desc">Gilt global für alle Budgets und Auswertungen.</p>
+                        <select id="set_currency" style="max-width:300px; margin-top:0;" onchange="updateGlobalCurrency(this.value)">
+                            <option value="CHF">CHF</option>
+                            <option value="EUR">EUR</option>
+                            <option value="USD">USD</option>
                         </select>
                     </div>
 
@@ -1024,8 +1024,15 @@
                         <div style="display:flex; gap:10px; background:var(--bg-color); padding:10px; border-radius:var(--radius); align-items:flex-end; flex-wrap: wrap;">
                             <div style="flex:1; min-width: 150px;"><span class="form-label" data-i18n="name">Name</span><input type="text" id="new_user_name" placeholder="..."></div>
                             <div style="flex:2; min-width: 150px;"><span class="form-label" data-i18n="avatar_url">Avatar URL (Optional)</span><input type="text" id="new_user_avatar" placeholder="https://..."></div>
+                            <div style="flex:0 0 110px;"><span class="form-label" data-i18n="hourly_rate_short">Lohn/h</span><input type="number" id="new_user_rate" min="0" step="0.5" placeholder="0.00" style="text-align:right;"></div>
                             <button onclick="addUser()" style="margin-top: 15px; min-height:44px;"><i class="fas fa-plus"></i></button>
                         </div>
+                    </div>
+
+                    <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);">
+                        <h4 data-i18n="default_rate_title">Standard Lohn/h</h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="default_rate_desc">Wird für Checkpunkte, Milestones, Aufgaben und Stacks verwendet, wenn keine zuständige Person hinterlegt ist.</p>
+                        <input type="number" id="set_default_hourly_rate" min="0" step="0.5" placeholder="0.00" onchange="updateDefaultHourlyRate(this.value)" style="max-width:200px; text-align:right;">
                     </div>
                 </div>
 
