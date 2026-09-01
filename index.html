@@ -803,15 +803,15 @@
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-users', this)" data-i18n="set_team">Team & Profil</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-data', this)" data-i18n="set_data">Stammdaten</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
-                <button class="modal-tab-btn" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-wand-magic-sparkles"></i> Voreinstellungen</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-wand-magic-sparkles"></i> Vorlagen</button>
             </div>
             <div class="modal-body-simple" style="padding-top:0;">
                 
                 <!-- TAB: Allgemein -->
                 <div id="set-general" class="modal-tab-content active" style="padding: 20px 0;">
                     <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
-                        <h4><i class="fas fa-compass"></i> Einführung</h4>
-                        <button class="secondary" style="margin-top:10px;" onclick="closeSettings(); if(window.startOnboarding) startOnboarding();"><i class="fas fa-play"></i> Product-Tour &amp; Einrichtung starten</button>
+                        <h4 data-i18n="set_intro"><i class="fas fa-compass"></i> Einführung</h4>
+                        <button class="secondary" style="margin-top:10px;" onclick="closeSettings(); if(window.startOnboarding) startOnboarding();"><i class="fas fa-play"></i> <span data-i18n="set_start_tour">Product-Tour &amp; Einrichtung starten</span></button>
                     </div>
                     
                     <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
@@ -865,8 +865,8 @@
                                 </div>
                             </div>
 
-                            <h4 style="margin-top:20px;"><i class="fas fa-calendar-alt"></i> Arbeitstage (Zeitplan)</h4>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Definiere deine Arbeitstage für den Kalender. Du erhältst Warnungen bei Fehlplanung.</p>
+                            <h4 style="margin-top:20px;" data-i18n="set_workdays"><i class="fas fa-calendar-alt"></i> Arbeitstage (Zeitplan)</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_workdays_desc">Definiere deine Arbeitstage für den Kalender. Du erhältst Warnungen bei Fehlplanung.</p>
                             <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; flex-wrap:wrap; gap:10px;">
                                 <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="1" class="workday-cb"> Mo</label>
                                 <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="2" class="workday-cb"> Di</label>
@@ -877,11 +877,11 @@
                                 <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="0" class="workday-cb"> So</label>
                             </div>
 
-                            <h4 style="margin-top:20px;"><i class="fas fa-clock"></i> Arbeitszeiten (Tagesansicht)</h4>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Arbeitszeiten bestimmen die Anzeige in der Tagesansicht des Zeitplans.</p>
+                            <h4 style="margin-top:20px;" data-i18n="set_workhours"><i class="fas fa-clock"></i> Arbeitszeiten (Tagesansicht)</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_workhours_desc">Arbeitszeiten bestimmen die Anzeige in der Tagesansicht des Zeitplans.</p>
                             <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px;">
-                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;">Von <input type="time" id="set_wd_start"></label>
-                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;">Bis <input type="time" id="set_wd_end"></label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;"><span data-i18n="lbl_from">Von</span> <input type="time" id="set_wd_start"></label>
+                                <label style="font-size:12px; display:flex; align-items:center; gap:4px;"><span data-i18n="lbl_to">Bis</span> <input type="time" id="set_wd_end"></label>
                             </div>
 
                             <h4 style="margin-top:20px;"><i class="fas fa-calendar-check"></i> <span data-i18n="set_timeacct">Zeitkonto (Soll-Zeiten)</span></h4>
@@ -895,14 +895,14 @@
                         <!-- Right Column -->
                         <div>
                             <h4 data-i18n="set_notif"><i class="fas fa-bell"></i> Benachrichtigungskanäle</h4>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;">Wähle für jedes Ereignis, über welche Kanäle du benachrichtigt werden möchtest.</p>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:12px;" data-i18n="set_notif_desc">Wähle für jedes Ereignis, über welche Kanäle du benachrichtigt werden möchtest.</p>
 
                             <div class="notif-channels-wrap">
                                 <table class="notif-channels-table" id="notifChannelsTable">
                                     <thead>
                                         <tr>
-                                            <th>Ereignis</th>
-                                            <th title="In der Benachrichtigungsglocke anzeigen"><i class="fas fa-bell"></i><br><span style="font-size:10px;">Glocke</span></th>
+                                            <th data-i18n="notif_event">Ereignis</th>
+                                            <th title="In der Benachrichtigungsglocke anzeigen"><i class="fas fa-bell"></i><br><span style="font-size:10px;" data-i18n="notif_bell">Glocke</span></th>
                                             <th title="Toast-Meldung am Bildschirmrand"><i class="fas fa-comment-dots"></i><br><span style="font-size:10px;">Toast</span></th>
                                             <th title="Modale Popup-Meldung"><i class="fas fa-window-maximize"></i><br><span style="font-size:10px;">Modal</span></th>
                                             <th title="Browser-Push-Benachrichtigung"><i class="fas fa-mobile-alt"></i><br><span style="font-size:10px;">Push</span></th>
@@ -911,7 +911,7 @@
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td><i class="fas fa-exclamation-triangle" style="color:var(--danger); margin-right:5px;"></i> Überfällig</td>
+                                            <td><i class="fas fa-exclamation-triangle" style="color:var(--danger); margin-right:5px;"></i> <span data-i18n="notif_overdue">Überfällig</span></td>
                                             <td><input type="checkbox" id="nc_overdue_bell"></td>
                                             <td><input type="checkbox" id="nc_overdue_toast"></td>
                                             <td><input type="checkbox" id="nc_overdue_modal"></td>
@@ -919,7 +919,7 @@
                                             <td><input type="checkbox" id="nc_overdue_email"></td>
                                         </tr>
                                         <tr>
-                                            <td><i class="fas fa-clock" style="color:var(--warning); margin-right:5px;"></i> Heute fällig</td>
+                                            <td><i class="fas fa-clock" style="color:var(--warning); margin-right:5px;"></i> <span data-i18n="notif_duetoday">Heute fällig</span></td>
                                             <td><input type="checkbox" id="nc_dueToday_bell"></td>
                                             <td><input type="checkbox" id="nc_dueToday_toast"></td>
                                             <td><input type="checkbox" id="nc_dueToday_modal"></td>
@@ -927,7 +927,7 @@
                                             <td><input type="checkbox" id="nc_dueToday_email"></td>
                                         </tr>
                                         <tr>
-                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> Erinnerung 1</td>
+                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> <span data-i18n="notif_rem1">Erinnerung 1</span></td>
                                             <td><input type="checkbox" id="nc_reminder1_bell"></td>
                                             <td><input type="checkbox" id="nc_reminder1_toast"></td>
                                             <td><input type="checkbox" id="nc_reminder1_modal"></td>
@@ -935,7 +935,7 @@
                                             <td><input type="checkbox" id="nc_reminder1_email"></td>
                                         </tr>
                                         <tr>
-                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> Erinnerung 2</td>
+                                            <td><i class="fas fa-bell" style="color:var(--primary-color); margin-right:5px;"></i> <span data-i18n="notif_rem2">Erinnerung 2</span></td>
                                             <td><input type="checkbox" id="nc_reminder2_bell"></td>
                                             <td><input type="checkbox" id="nc_reminder2_toast"></td>
                                             <td><input type="checkbox" id="nc_reminder2_modal"></td>
@@ -943,7 +943,7 @@
                                             <td><input type="checkbox" id="nc_reminder2_email"></td>
                                         </tr>
                                         <tr style="border-top: 2px solid var(--border-color);">
-                                            <td><i class="fas fa-info-circle" style="color:var(--success); margin-right:5px;"></i> Systemmeldungen</td>
+                                            <td><i class="fas fa-info-circle" style="color:var(--success); margin-right:5px;"></i> <span data-i18n="notif_system">Systemmeldungen</span></td>
                                             <td><input type="checkbox" id="nc_system_bell"></td>
                                             <td><input type="checkbox" id="nc_system_toast"></td>
                                             <td><input type="checkbox" id="nc_system_modal"></td>
@@ -956,15 +956,15 @@
 
                             <!-- E-Mail Adresse -->
                             <div id="notifEmailRow" style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:10px;">
-                                <label style="font-weight:bold; font-size:12px; display:flex; align-items:center; gap:6px; margin-bottom:5px;"><i class="fas fa-envelope" style="color:var(--primary-color);"></i> E-Mail für Benachrichtigungen</label>
+                                <label style="font-weight:bold; font-size:12px; display:flex; align-items:center; gap:6px; margin-bottom:5px;"><i class="fas fa-envelope" style="color:var(--primary-color);"></i> <span data-i18n="set_notif_email">E-Mail für Benachrichtigungen</span></label>
                                 <input type="email" id="set_notif_email" placeholder="max@example.com" style="margin:0;">
-                                <p style="font-size:10px; color:var(--text-muted); margin-top:5px;"><i class="fas fa-info-circle"></i> Öffnet deinen lokalen E-Mail-Client (mailto:). Keine Simulation.</p>
+                                <p style="font-size:10px; color:var(--text-muted); margin-top:5px;"><i class="fas fa-info-circle"></i> <span data-i18n="set_notif_email_hint">Öffnet deinen lokalen E-Mail-Client (mailto:). Keine Simulation.</span></p>
                             </div>
 
                             <!-- Push Test & Info -->
                             <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                                <p style="font-size:11px; color:var(--text-muted); margin:0;"><i class="fas fa-mobile-alt"></i> Push erfordert Browser-Berechtigung.</p>
-                                <button class="secondary" style="font-size:11px; padding:4px 10px; flex-shrink:0;" onclick="testPushNotification()"><i class="fas fa-bell"></i> Push testen</button>
+                                <p style="font-size:11px; color:var(--text-muted); margin:0;"><i class="fas fa-mobile-alt"></i> <span data-i18n="set_push_hint">Push erfordert Browser-Berechtigung.</span></p>
+                                <button class="secondary" style="font-size:11px; padding:4px 10px; flex-shrink:0;" onclick="testPushNotification()"><i class="fas fa-bell"></i> <span data-i18n="set_push_test">Push testen</span></button>
                             </div>
 
                             <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); margin-bottom: 20px;">
@@ -1095,7 +1095,7 @@
                             <div style="display:flex; gap:10px; flex-wrap: wrap;">
                                 <select id="wf_edit_trigger" style="flex:1; min-width: 200px;" onchange="renderWfTriggerValueOptions()">
                                     <option value="" data-i18n="wf_trig_select">-- Auslöser wählen --</option>
-                                    <option value="entity_exists">Aufgabe oder Stack existiert (Wird bei jeder Änderung geprüft)</option>
+                                    <option value="entity_exists" data-i18n="wf_t_entity_exists">Aufgabe oder Stack existiert (Wird bei jeder Änderung geprüft)</option>
                                     <option value="task_created" data-i18n="wf_t_t_created">Aufgabe wird erstellt</option>
                                     <option value="task_updated" data-i18n="wf_t_t_updated">Aufgabe aktualisiert</option>
                                     <option value="task_status_changed" data-i18n="wf_t_t_status">Aufgabe wechselt Status auf...</option>
@@ -1133,7 +1133,7 @@
                         </div>
 
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
-                            <button class="secondary" onclick="testCurrentWorkflow()" title="Prüft, auf wie viele Elemente die Bedingungen zutreffen, ohne Aktionen auszuführen."><i class="fas fa-flask" style="color:var(--primary-color);"></i> Workflow testen</button>
+                            <button class="secondary" onclick="testCurrentWorkflow()" title="Prüft, auf wie viele Elemente die Bedingungen zutreffen, ohne Aktionen auszuführen."><i class="fas fa-flask" style="color:var(--primary-color);"></i> <span data-i18n="wf_test">Workflow testen</span></button>
                             <div id="wf_test_result" class="wf-test-result" style="display:none;"></div>
                             <div style="display:flex; gap:10px;">
                                 <button class="secondary" onclick="closeWfEditor()" data-i18n="wf_cancel">Abbrechen</button>
@@ -1143,7 +1143,7 @@
                     </div>
                 </div>
 
-                <!-- TAB: Voreinstellungen / Presets -->
+                <!-- TAB: Vorlagen / Presets -->
                 <div id="set-presets" class="modal-tab-content" style="padding:20px 0; display:none; flex-direction:column; gap:16px;">
                     <div class="preset-intro">
                         <p style="font-size:13px; color:var(--text-muted); margin:0;">

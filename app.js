@@ -2035,9 +2035,9 @@ function renderWorkflows() {
                         <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf.id}')" title="Löschen"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>
-                <div class="wf-row"><span class="wf-badge">WENN</span> <span style="font-size:13px;">${triggerLabel}</span></div>
-                ${wf.conditions && wf.conditions.length > 0 ? `<div class="wf-row"><span class="wf-badge" style="background:var(--warning); color:white;">${wf.conditionLogic === 'AND' ? 'UND' : 'ODER'}</span> <span style="font-size:12px; color:var(--text-muted);">${wf.conditions.length} Bedingung(en)</span></div>` : ''}
-                <div class="wf-row"><span class="wf-badge" style="background:var(--success); color:white;">DANN</span> <span style="font-size:12px; color:var(--text-muted);">${wf.actions.length} Aktion(en)</span></div>
+                <div class="wf-row"><span class="wf-badge">${t('wf_if')}</span> <span style="font-size:13px;">${triggerLabel}</span></div>
+                ${wf.conditions && wf.conditions.length > 0 ? `<div class="wf-row"><span class="wf-badge" style="background:var(--warning); color:white;">${wf.conditionLogic === 'AND' ? t('wf_and') : t('wf_or')}</span> <span style="font-size:12px; color:var(--text-muted);">${wf.conditions.length} ${t('wf_conditions_n')}</span></div>` : ''}
+                <div class="wf-row"><span class="wf-badge" style="background:var(--success); color:white;">${t('wf_then')}</span> <span style="font-size:12px; color:var(--text-muted);">${wf.actions.length} ${t('wf_actions_n')}</span></div>
             </div>`;
           } catch(err) {
             console.error('Workflow konnte nicht dargestellt werden', wf, err);
@@ -2093,27 +2093,27 @@ function getWfFieldOptionsHtml(selected = '') {
         { v: 'stakeholderId',  l: t('wf_f_sh'),           grp: 'Auswahl' },
         { v: 'projectStackId', l: t('wf_f_stack'),        grp: 'Auswahl' },
         { v: 'recurrence',     l: t('wf_f_rec'),          grp: 'Auswahl' },
-        { v: 'isPaused',       l: 'Pausiert',             grp: 'Status' },
-        { v: 'hasChecklist',   l: 'Hat Checkliste',       grp: 'Status' },
-        { v: 'hasAttachment',  l: 'Hat Anhänge',          grp: 'Status' },
-        { v: 'isOverdue',      l: 'Überfällig',           grp: 'Status' },
+        { v: 'isPaused',       l: t('wf_f_paused'),        grp: 'Status' },
+        { v: 'hasChecklist',   l: t('wf_f_has_cl'),        grp: 'Status' },
+        { v: 'hasAttachment',  l: t('wf_f_has_att'),       grp: 'Status' },
+        { v: 'isOverdue',      l: t('wf_f_overdue'),       grp: 'Status' },
         { v: 'dueDate',        l: t('wf_f_due'),          grp: 'Datum' },
         { v: 'startDate',      l: t('wf_f_start'),        grp: 'Datum' },
         { v: 'estimatedTime',  l: t('wf_f_est'),          grp: 'Zahl' },
         { v: 'spentTime',      l: t('wf_f_spent'),        grp: 'Zahl' },
-        { v: 'spentTime_thisWeek', l: 'Aufwand diese Woche (Std)', grp: 'Zahl' }, // NEU FÜR DIE KALENDERWOCHE
+        { v: 'spentTime_thisWeek', l: t('wf_f_spent_week'), grp: 'Zahl' }, // NEU FÜR DIE KALENDERWOCHE
         { v: 'duration_days',  l: t('wf_f_duration'),     grp: 'Zahl' },
         { v: 'effort_remaining', l: t('wf_f_effort_rem'), grp: 'Zahl' },
-        { v: 'checklistDone',  l: 'Checkliste erledigt %',grp: 'Zahl' },
-        { v: 'checklistOpenCount', l: 'Anzahl offener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
-        { v: 'checklistDoneCount', l: 'Anzahl abgeschlossener Checklistenpunkte/Meilensteine', grp: 'Zahl' },
-        { v: 'taskCount',      l: 'Anzahl Aufgaben',      grp: 'Zahl' },
-        { v: 'budgetRemainingPct', l: 'Budget: Verbleibende Limite (%)', grp: 'Zahl' },
-        { v: 'budgetConsumedPct', l: 'Budget: Verbrauchte Limite (%)', grp: 'Zahl' },
-        { v: 'budgetRemainingAmount', l: 'Budget: Verbleibende Summe', grp: 'Zahl' },
-        { v: 'budgetConsumedAmount', l: 'Budget: Verbrauchte Summe', grp: 'Zahl' },
-        { v: 'checklistOpenText', l: 'Text in offenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
-        { v: 'checklistDoneText', l: 'Text in abgeschlossenen Checklistenpunkten/Meilensteinen', grp: 'Text' },
+        { v: 'checklistDone',  l: t('wf_f_cl_done_pct'),   grp: 'Zahl' },
+        { v: 'checklistOpenCount', l: t('wf_f_cl_open_n'), grp: 'Zahl' },
+        { v: 'checklistDoneCount', l: t('wf_f_cl_done_n'), grp: 'Zahl' },
+        { v: 'taskCount',      l: t('wf_f_task_count'),    grp: 'Zahl' },
+        { v: 'budgetRemainingPct', l: t('wf_f_bud_rem_pct'), grp: 'Zahl' },
+        { v: 'budgetConsumedPct', l: t('wf_f_bud_used_pct'), grp: 'Zahl' },
+        { v: 'budgetRemainingAmount', l: t('wf_f_bud_rem_amt'), grp: 'Zahl' },
+        { v: 'budgetConsumedAmount', l: t('wf_f_bud_used_amt'), grp: 'Zahl' },
+        { v: 'checklistOpenText', l: t('wf_f_cl_open_txt'), grp: 'Text' },
+        { v: 'checklistDoneText', l: t('wf_f_cl_done_txt'), grp: 'Text' },
     ];
     const groups = ['Text', 'Auswahl', 'Status', 'Datum', 'Zahl'];
     let html = '';
@@ -2138,11 +2138,11 @@ function getWfFieldType(field) {
 
 function getWfOpOptionsHtml(selected = '', fieldType = 'text') {
     const ops = {
-        text:    [['equals','= gleich'],['not_equals','≠ ungleich'],['contains','enthält'],['not_contains','enthält nicht'],['is_empty','ist leer'],['not_empty','ist nicht leer']],
-        select:  [['equals','= ist'],['not_equals','≠ ist nicht'],['is_empty','nicht gesetzt'],['not_empty','ist gesetzt']],
-        boolean: [['is_true','ist aktiv / ja'],['is_false','ist inaktiv / nein']],
-        date:    [['date_past','liegt in der Vergangenheit'],['date_future','liegt in der Zukunft'],['date_less','fällig in weniger als X Tagen'],['date_more','fällig in mehr als X Tagen'],['date_equals','ist genau (Datum)'],['is_empty','nicht gesetzt'],['not_empty','ist gesetzt']],
-        number:  [['equals','= gleich'],['not_equals','≠ ungleich'],['greater_than','> grösser als'],['less_than','< kleiner als'],['is_empty','ist leer / 0']],
+        text:    [['equals',t('wfo_eq')],['not_equals',t('wfo_neq')],['contains',t('wfo_contains')],['not_contains',t('wfo_ncontains')],['is_empty',t('wfo_empty')],['not_empty',t('wfo_nempty')]],
+        select:  [['equals',t('wfo_is')],['not_equals',t('wfo_is_not')],['is_empty',t('wfo_unset')],['not_empty',t('wfo_set')]],
+        boolean: [['is_true',t('wfo_true')],['is_false',t('wfo_false')]],
+        date:    [['date_past',t('wfo_past')],['date_future',t('wfo_future')],['date_less',t('wfo_less_days')],['date_more',t('wfo_more_days')],['date_equals',t('wfo_exact_date')],['is_empty',t('wfo_unset')],['not_empty',t('wfo_set')]],
+        number:  [['equals',t('wfo_eq')],['not_equals',t('wfo_neq')],['greater_than',t('wfo_gt')],['less_than',t('wfo_lt')],['is_empty',t('wfo_empty_zero')]],
     };
     return (ops[fieldType] || ops.text).map(([v,l]) => `<option value="${v}" ${selected===v?'selected':''}>${l}</option>`).join('');
 }
@@ -2156,7 +2156,7 @@ function renderWfConditionValueInput(rowEl) {
     let html = '';
 
     if(['date_past','date_future','is_empty','not_empty','is_true','is_false'].includes(op)) {
-        html = `<input type="hidden" class="wf-cond-val" value="1"><span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; height:100%; padding:0 8px;">kein Wert nötig</span>`;
+        html = `<input type="hidden" class="wf-cond-val" value="1"><span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; height:100%; padding:0 8px;">${t('wfo_no_value')}</span>`;
         container.innerHTML = html; return;
     }
     if(op === 'date_less' || op === 'date_more') {
@@ -2172,7 +2172,7 @@ function renderWfConditionValueInput(rowEl) {
         container.innerHTML = html; return;
     }
     if(field === 'priority') {
-        html = `<select class="wf-cond-val"><option value="low" ${preselect==='low'?'selected':''}>Niedrig</option><option value="medium" ${preselect==='medium'?'selected':''}>Mittel</option><option value="high" ${preselect==='high'?'selected':''}>Hoch</option></select>`;
+        html = `<select class="wf-cond-val"><option value="low" ${preselect==='low'?'selected':''}>${t('prio_low')}</option><option value="medium" ${preselect==='medium'?'selected':''}>${t('prio_med')}</option><option value="high" ${preselect==='high'?'selected':''}>${t('prio_high')}</option></select>`;
     } else if(field === 'status') {
         html = `<select class="wf-cond-val"><option value="">-- Auswählen --</option>` + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id==='done'?t('col_completed'):s.title}</option>`).join('') + `</select>`;
     } else if(field === 'bucket') {
@@ -2226,10 +2226,10 @@ function getWfActionOptionsHtml(selected = '') {
     <option value="notif_toast" ${selected==='notif_toast'?'selected':''}>${t('wf_act_notif_toast')}</option>
     <option value="notif_modal" ${selected==='notif_modal'?'selected':''}>${t('wf_act_notif_modal')}</option>
     <option value="notif_push" ${selected==='notif_push'?'selected':''}>${t('wf_act_notif_push')}</option>
-    <option value="create_task" ${selected==='create_task'?'selected':''}>Erzeuge neue Aufgabe...</option>
-    <option value="create_stack" ${selected==='create_stack'?'selected':''}>Erzeuge neuen Stack...</option>
-    <option value="create_cl" ${selected==='create_cl'?'selected':''}>Erzeuge Checklistenpunkt (Aufgabe)...</option>
-    <option value="create_ms" ${selected==='create_ms'?'selected':''}>Erzeuge Milestone (Stack)...</option>
+    <option value="create_task" ${selected==='create_task'?'selected':''}>${t('wf_a_create_task')}</option>
+    <option value="create_stack" ${selected==='create_stack'?'selected':''}>${t('wf_a_create_stack')}</option>
+    <option value="create_cl" ${selected==='create_cl'?'selected':''}>${t('wf_a_create_cl')}</option>
+    <option value="create_ms" ${selected==='create_ms'?'selected':''}>${t('wf_a_create_ms')}</option>
     <option value="send_email" ${selected==='send_email'?'selected':''}>${t('wf_act_send_email')}</option>
     `;
 }
@@ -2237,7 +2237,7 @@ function getWfActionOptionsHtml(selected = '') {
 function renderWfActionValueInput(actionSelectEl, preselect = '') {
     const action = actionSelectEl.value; const container = actionSelectEl.parentElement.querySelector('.wf-act-val-container'); let html = '';
     if(action === 'set_status') { html = `<select class="wf-act-val">` + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('') + `</select>`; } 
-    else if(action === 'set_priority') { html = `<select class="wf-act-val"><option value="low" ${preselect==='low'?'selected':''}>Niedrig</option><option value="medium" ${preselect==='medium'?'selected':''}>Mittel</option><option value="high" ${preselect==='high'?'selected':''}>Hoch</option></select>`; } 
+    else if(action === 'set_priority') { html = `<select class="wf-act-val"><option value="low" ${preselect==='low'?'selected':''}>${t('prio_low')}</option><option value="medium" ${preselect==='medium'?'selected':''}>${t('prio_med')}</option><option value="high" ${preselect==='high'?'selected':''}>${t('prio_high')}</option></select>`; } 
     else if(action === 'set_assignee') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`; } 
     else if(action === 'set_bucket') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`; } 
     else if(action === 'set_stakeholder') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.stakeholders.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`; } 
@@ -2250,7 +2250,7 @@ function renderWfActionValueInput(actionSelectEl, preselect = '') {
         if(preselect && preselect.includes('|||')) { [pEmail, pMsg] = preselect.split('|||'); } else { pMsg = preselect; }
         html = `<div style="display:flex; gap:5px; width:100%;">
             <input type="email" placeholder="E-Mail (leer=global)" value="${pEmail}" style="width:140px; min-width:140px; flex:none;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.value + '|||' + this.nextElementSibling.value">
-            <input type="text" placeholder="Nachricht..." value="${pMsg}" style="flex:1;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.previousElementSibling.value + '|||' + this.value">
+            <input type="text" placeholder="${t('wf_msg_ph')}" value="${pMsg}" style="flex:1;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.previousElementSibling.value + '|||' + this.value">
             <input type="hidden" class="wf-act-val" value="${preselect}">
         </div>`;
     }
@@ -2338,10 +2338,10 @@ function testCurrentWorkflow() {
     const total = hitTasks.length + hitStacks.length;
     const condTxt = wfData.conditions.length === 0
         ? 'Ohne Bedingungen trifft der Workflow auf <b>alle</b> passenden Elemente zu.'
-        : `${wfData.conditions.length} Bedingung(en), verknüpft mit <b>${wfData.conditionLogic === 'OR' ? 'ODER' : 'UND'}</b>.`;
+        : `${wfData.conditions.length} ${t('wf_conditions_n')}, ${t('wf_linked_with')} <b>${wfData.conditionLogic === 'OR' ? t('wf_or') : t('wf_and')}</b>.`;
     const actTxt = wfData.actions.length === 0
         ? '<span style="color:var(--danger);">Achtung: Es ist noch keine Aktion definiert – der Workflow würde nichts bewirken.</span>'
-        : `${wfData.actions.length} Aktion(en) würden ausgeführt.`;
+        : `${wfData.actions.length} ${t('wf_actions_n')} ${t('wf_would_run')}`;
 
     let list = '';
     if (total > 0) {
@@ -5514,7 +5514,7 @@ function renderGroupedStack(sId, showTimeStats, groupKey, targetGroupVal) {
 }
 
 function renderStakeholder(c) { renderGroupedView(c, 'stakeholderId', appData.stakeholders, t('none'), true); }
-function renderBuckets(c) { const bObj = appData.buckets.map(b => ({id: b, name: b, color: 'var(--primary-color)'})); renderGroupedView(c, 'bucket', bObj, t('none'), true); }
+function renderBuckets(c) { const bObj = appData.buckets.map(b => ({id: b, name: b, color: getBucketColor(b)})); renderGroupedView(c, 'bucket', bObj, t('none'), true); }
 
 // SCHEDULE / CALENDAR / TIMELINE HELPERS
 
@@ -6603,7 +6603,7 @@ function renderTimeline(c) {
         <div style="flex:1;">${sortHtml}</div>
         
         <div style="display:flex; align-items:center; background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; margin-bottom:10px; box-shadow: var(--shadow);">
-            <button class="secondary" style="border:none; border-radius:0; height:36px; border-right:1px solid var(--border-color); font-size:12px; font-weight:bold; padding: 0 15px;" onclick="scrollToTodayTimeline()" title="Zum heutigen Datum springen"><i class="fas fa-bullseye" style="color:var(--primary-color);"></i> Heute</button>
+            <button class="secondary" style="border:none; border-radius:0; height:36px; border-right:1px solid var(--border-color); font-size:12px; font-weight:bold; padding: 0 15px;" onclick="scrollToTodayTimeline()" title="Zum heutigen Datum springen"><i class="fas fa-bullseye" style="color:var(--primary-color);"></i> ${t('gantt_today')}</button>
             <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px; border-right:1px solid var(--border-color);" onclick="zoomTimeline(-1)" title="Herauszoomen"><i class="fas fa-minus"></i></button>
             <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px;" onclick="zoomTimeline(1)" title="Hineinzoomen"><i class="fas fa-plus"></i></button>
         </div>
@@ -6611,7 +6611,7 @@ function renderTimeline(c) {
 
     <div class="timeline-actions-header" style="background: var(--surface-color); padding: 5px 15px; border-radius: var(--radius); border: 1px solid var(--border-color); box-shadow: var(--shadow); display:flex; align-items:center; gap: 15px; margin-bottom: 10px;">
         <button draggable="true" ondragstart="event.dataTransfer.setData('markerId', 'new');" onclick="openMarkerModal()" class="secondary" title="${t('marker_hint')}" style="cursor:grab; padding: 4px 10px; font-size: 12px;">
-            <i class="fas fa-map-marker-alt"></i> Neuer Marker
+            <i class="fas fa-map-marker-alt"></i> ${t('gantt_new_marker')}
         </button>
         <span style="font-size:11px; color:var(--text-muted); flex:1; min-width:200px;">${t('marker_hint')}</span>
     </div>`;
@@ -9762,6 +9762,27 @@ function ttHeuteBook(iso){
       const p = PLACES.find(x => x.k === el.closest('[data-wkplace]').dataset.wkplace);
       if (p) el.textContent = placeLabel(p);
     });
+    /* Unterkategorien (Linsen) mitziehen */
+    document.querySelectorAll('[data-wklens]').forEach(el => {
+      const v = el.dataset.wklens;
+      let lens = null;
+      PLACES.forEach(p => p.lenses.forEach(l => { if (l.v === v) lens = l; }));
+      if (!lens) return;
+      const span = el.querySelector('span');
+      if (span) span.textContent = lensLabel(lens);
+      else {
+        const icon = el.querySelector('i');
+        el.innerHTML = (icon ? icon.outerHTML : '') + lensLabel(lens);
+      }
+    });
+    /* „Neue Aufgabe“ / „Neuer Stack“ im +-Menü */
+    const fabT = document.querySelector('[data-wknew="task"] span');
+    if (fabT) fabT.textContent = labelNewTask();
+    const fabS = document.querySelector('[data-wknew="stack"] span');
+    if (fabS) fabS.textContent = labelNewStack();
+    /* Titel der Schienen-Knöpfe */
+    const railNew = document.getElementById('wkRailNew');
+    if (railNew) { const lbl = t('wk_new_title'); if (lbl && lbl !== 'wk_new_title') { railNew.title = lbl; railNew.setAttribute('aria-label', lbl); } }
     sync();
   }
 
