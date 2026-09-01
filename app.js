@@ -1671,15 +1671,56 @@ function switchSettingsTab(tabId, btn) {
     if(tabId === 'set-workflows' && typeof renderWorkflows === 'function') { window.wfEditorActive = false; renderWorkflows(); }
 }
 
+/*
+ * Normalisiert ein hochgeladenes Logo: skaliert es auf eine sinnvolle Groesse herunter
+ * und wandelt es einheitlich in PNG um. Das ist noetig, weil
+ *  - grosse JPGs als Base64 den localStorage sprengen (Speichern schlaegt fehl, Logo verschwindet),
+ *  - die PDF-Einbettung ein einheitliches Format erwartet.
+ * Transparenz bleibt erhalten, JPG-Fotos werden auf weissem Grund gerendert.
+ */
+function normalizeLogoDataUrl(dataUrl, isJpeg) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = function () {
+            try {
+                const maxW = 600, maxH = 300;
+                let w = img.naturalWidth || img.width || 1;
+                let h = img.naturalHeight || img.height || 1;
+                const sc = Math.min(1, maxW / w, maxH / h);
+                const cv = document.createElement('canvas');
+                cv.width = Math.max(1, Math.round(w * sc));
+                cv.height = Math.max(1, Math.round(h * sc));
+                const ctx = cv.getContext('2d');
+                if (isJpeg) { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, cv.width, cv.height); }
+                ctx.drawImage(img, 0, 0, cv.width, cv.height);
+                resolve(cv.toDataURL('image/png'));
+            } catch (err) { resolve(dataUrl); }
+        };
+        img.onerror = () => reject(new Error('image decode failed'));
+        img.src = dataUrl;
+    });
+}
+
 function handleLogoUpload(e) {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = function(ev) { appData.settings.companyLogo = ev.target.result; renderLogoPreview(); saveToLocal(); };
+    reader.onload = function (ev) {
+        const isJpeg = /jpe?g/i.test(file.type || '') || /\.jpe?g$/i.test(file.name || '');
+        normalizeLogoDataUrl(ev.target.result, isJpeg).then(function (clean) {
+            appData.settings.companyLogo = clean;
+            renderLogoPreview();
+            if (typeof renderLogoPreviewTE === 'function') renderLogoPreviewTE();
+            try { saveToLocal(); showToast(t('logo_saved')); }
+            catch (err) { showToast(t('logo_too_large'), 'error'); }
+        }).catch(function () { showToast(t('logo_invalid'), 'error'); });
+    };
     reader.readAsDataURL(file);
+    e.target.value = '';   /* gleiche Datei erneut waehlbar */
 }
 
 function renderLogoPreview() {
     const container = document.getElementById('logo_preview_container');
+    if (!container) return;                     /* Bereich (noch) nicht im DOM */
     if (appData.settings.companyLogo) {
         container.innerHTML = `<img src="${appData.settings.companyLogo}" style="max-height:60px; max-width:200px; border:1px solid var(--border-color); border-radius:4px; display:block;"><button class="secondary icon-btn" style="color:var(--danger); margin-top:5px;" onclick="appData.settings.companyLogo=null; renderLogoPreview(); saveToLocal();"><i class="fas fa-trash"></i> ${t('delete')}</button>`;
     } else {
@@ -7768,13 +7809,25 @@ function importJSON(event) {
     reader.readAsText(file); event.target.value = '';
 }
 
+/* Brandingkopf für Excel-Exporte: Firmenname/Titel oberhalb der Tabelle.
+   (Bilder kann die eingesetzte Excel-Bibliothek nicht einbetten – das Logo
+    erscheint deshalb in PDF und Word, hier stattdessen die Textkennung.) */
+function xlsxAddBrandHeader(worksheet, title) {
+    try {
+        const company = (appData.settings && appData.settings.companyName) ? appData.settings.companyName : '';
+        const line = [company ? company + ' – ' + title : title];
+        XLSX.utils.sheet_add_aoa(worksheet, [line, [new Date().toLocaleDateString('de-DE')], []], { origin: 'A1' });
+    } catch (e) { console.warn('Excel-Kopf konnte nicht gesetzt werden', e); }
+    return worksheet;
+}
+
 function exportExcel() {
     if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
     const wsData = getFilteredTasks().map(t_obj => {
         const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); const plainDesc = t_obj.description ? t_obj.description.replace(/<[^>]*>?/gm, '') : '';
         return { Projekt_Stack: stack ? stack.name : '-', Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime, Notizen: plainDesc };
     });
-    const worksheet = XLSX.utils.json_to_sheet(wsData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgaben"); XLSX.writeFile(workbook, "Projekte.xlsx");
+    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, "Aufgaben"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgaben"); XLSX.writeFile(workbook, "Projekte.xlsx");
 }
 
 function exportSingleTaskExcel() {
@@ -7782,7 +7835,7 @@ function exportSingleTaskExcel() {
     const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return;
     const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); const plainDesc = t_obj.description ? t_obj.description.replace(/<[^>]*>?/gm, '') : '';
     const wsData = [{ Projekt_Stack: stack ? stack.name : '-', Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime, Notizen: plainDesc }];
-    const worksheet = XLSX.utils.json_to_sheet(wsData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgabe"); XLSX.writeFile(workbook, `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.xlsx`);
+    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, t_obj.projectName || "Aufgabe"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgabe"); XLSX.writeFile(workbook, `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.xlsx`);
 }
 
 function exportSingleStackExcel() {
@@ -7794,7 +7847,7 @@ function exportSingleStackExcel() {
         return { Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime };
     });
     if(wsData.length === 0) wsData.push({ Notiz: 'Keine Aufgaben in diesem Stack vorhanden.' });
-    const worksheet = XLSX.utils.json_to_sheet(wsData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, stack.name.substring(0, 31)); XLSX.writeFile(workbook, `Stack_${stack.name.replace(/\s+/g, '_')}.xlsx`);
+    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, stack.name || "Stack"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, stack.name.substring(0, 31)); XLSX.writeFile(workbook, `Stack_${stack.name.replace(/\s+/g, '_')}.xlsx`);
 }
 
 function exportTimeExcel() {
@@ -7873,27 +7926,236 @@ async function buildAttachmentsHtmlForWord(tasks) {
     for (const task of tasks) {
         const shots = await captureTaskAttachments(task);
         if (!shots.length) continue;
-        anyShots += `<h3 style="font-family:Helvetica,Arial,sans-serif; margin-top:18px;">${task.projectName || 'Aufgabe'}</h3>`;
+        anyShots += `<h3 style="font-family:Helvetica,Arial,sans-serif; margin-top:18px;">${escapeHtmlToday(task.projectName || 'Aufgabe')}</h3>`;
         shots.forEach(s => {
-            anyShots += `<div style="margin-bottom:14px;"><div style="font-size:11px; color:#666; font-family:Helvetica,Arial,sans-serif; margin-bottom:4px;">${s.label}</div><img src="${s.dataUrl}" style="max-width:640px; border:1px solid #ccc;" /></div>`;
+            anyShots += `<div style="margin-bottom:14px;"><div style="font-size:11px; color:#666; font-family:Helvetica,Arial,sans-serif; margin-bottom:4px;">${escapeHtmlToday(s.label)}</div><img src="${s.dataUrl}" style="max-width:640px; border:1px solid #ccc;" /></div>`;
         });
     }
     if (!anyShots) return '';
-    return `<hr style="border:0; border-top:1px solid #ccc; margin-top:24px;" /><h2 style="font-family:Helvetica,Arial,sans-serif;">Anhänge</h2>${anyShots}`;
+    return `<h2 style="font-family:Helvetica,Arial,sans-serif; font-size:15pt; border-bottom:1.5pt solid #cccccc; padding-bottom:4pt; margin-top:26pt;">${t('pdfx_section_title')}</h2>${anyShots}`;
 }
 
-async function exportWord() {
-    const content = generateRichTextReport();
+/* ── Bausteine für ein professionelles Word-Layout ───────────── */
+function wordAccent() { return (appData.customColor || '#0070f2'); }
+
+/* Farbige Pill wie in der Webapp – als Tabelle, damit Word sie zuverlässig rendert */
+function wordPill(text, color) {
+    const c = color || '#6e7681';
+    return `<span style="border:0.75pt solid ${c}; color:${c}; padding:1pt 6pt; font-size:8.5pt; font-weight:bold; white-space:nowrap;">${escapeHtmlToday(text || '-')}</span>`;
+}
+
+function wordMetaTable(rows) {
+    let h = `<table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; margin:6pt 0 10pt 0; font-family:Helvetica,Arial,sans-serif;">`;
+    rows.forEach(r => {
+        h += `<tr>
+            <td style="width:28%; padding:3pt 8pt 3pt 0; font-size:8.5pt; color:#6e7681; text-transform:uppercase; vertical-align:top;">${escapeHtmlToday(r[0])}</td>
+            <td style="padding:3pt 0; font-size:10pt; color:#22262b; vertical-align:top;">${r[2] ? r[1] : escapeHtmlToday(r[1] || '-')}</td>
+        </tr>`;
+    });
+    return h + `</table>`;
+}
+
+function wordSection(title) {
+    return `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; font-weight:bold; color:#22262b; text-transform:uppercase; letter-spacing:0.4pt; margin:12pt 0 4pt 0;">${escapeHtmlToday(title)}</div>`;
+}
+
+/* Checklistenpunkte / Milestones als saubere Liste mit Status und Zeitangaben */
+function wordChecklist(items) {
+    if (!items || !items.length) return '';
+    let h = `<table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; margin-bottom:4pt;">`;
+    items.forEach(ci => {
+        const meta = (typeof pdfChecklistMeta === 'function') ? pdfChecklistMeta(ci) : '';
+        const done = !!ci.done;
+        h += `<tr>
+            <td style="width:14pt; padding:2pt 0; font-size:10pt; vertical-align:top; color:${done ? wordAccent() : '#9aa0a6'};">${done ? '&#9745;' : '&#9744;'}</td>
+            <td style="padding:2pt 6pt 2pt 0; font-size:10pt; vertical-align:top; color:${done ? '#6e7681' : '#22262b'};">${escapeHtmlToday(ci.title || '')}</td>
+            <td style="padding:2pt 0; font-size:8.5pt; color:#6e7681; text-align:right; white-space:nowrap; vertical-align:top;">${escapeHtmlToday(meta)}</td>
+        </tr>`;
+    });
+    return h + `</table>`;
+}
+
+function wordFilesList(files) {
+    if (!files || !files.length) return '';
+    let h = `<table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; font-family:Helvetica,Arial,sans-serif;">`;
+    files.forEach(f => {
+        const name = f.type === 'blob' ? f.name : f.path;
+        h += `<tr><td style="padding:2pt 0; font-size:9.5pt; color:#22262b;">&#8226; ${escapeHtmlToday(name || '')}</td></tr>`;
+    });
+    return h + `</table>`;
+}
+
+/* Kopfblock eines Projekt-Stacks: Eckdaten, Notizen und Milestones */
+function wordStackBlock(stack) {
+    const accent = wordAccent();
+    const fmt = (iso) => (typeof pdfFormatDateTime === 'function') ? pdfFormatDateTime(iso) : (iso || '-');
+    const assignee = (appData.users.find(u => u.id === stack.assigneeId) || {}).name || '-';
+    let shName = '-';
+    if (stack.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === stack.stakeholderId); if (sh) shName = sh.name; }
+
+    let h = `<div style="border-left:3pt solid ${accent}; padding-left:10pt; margin:0 0 18pt 0;">`;
+    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; text-transform:uppercase; letter-spacing:0.4pt;">Projekt-Stack</div>`;
+    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(stack.name || '-')}</div>`;
+    h += wordMetaTable([
+        ['Stakeholder', shName],
+        ['Zuständig', assignee],
+        ['Start', fmt(stack.startDate)],
+        ['Ziel', fmt(stack.dueDate)],
+        ['Aufgaben', String(appData.tasks.filter(x => x.projectStackId === stack.id).length)]
+    ]);
+    if (stack.notes && String(stack.notes).trim() && stack.notes !== '<br>') {
+        h += wordSection(t('sec_notes'));
+        h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:10pt; color:#22262b;">${stack.notes}</div>`;
+    }
+    if (stack.checklist && stack.checklist.length) {
+        h += wordSection('Milestones');
+        h += wordChecklist(stack.checklist);
+    }
+    return h + `</div>`;
+}
+
+/* Eine vollständige Aufgabenkarte inkl. Notizen, Checkliste, Dateien und Historie */
+function wordTaskBlock(task) {
+    const accent = wordAccent();
+    let shName = '-', shColor = accent;
+    if (task.stakeholderId) {
+        const sh = appData.stakeholders.find(s => s.id === task.stakeholderId);
+        if (sh) { shName = sh.name; shColor = sh.color || accent; }
+    }
+    const st = appData.statuses.find(s => s.id === task.status);
+    const statusLabel = st ? (st.id === 'done' ? t('col_completed') : st.title) : '-';
+    const statusColor = (typeof getStatusColor === 'function') ? getStatusColor(st) : accent;
+    const bucketColor = task.bucket && typeof getBucketColor === 'function' ? getBucketColor(task.bucket) : '#6e7681';
+    const PRIO = { high: '#d9342b', medium: '#e8a317', low: '#1f9463' };
+    const prioColor = PRIO[task.priority] || '#6e7681';
+    const prioLabel = task.priority === 'high' ? t('prio_high') : (task.priority === 'medium' ? t('prio_med') : (task.priority === 'low' ? t('prio_low') : (task.priority || '-')));
+    const assignee = (appData.users.find(u => u.id === task.assigneeId) || {}).name || '-';
+    const fmt = (iso) => (typeof pdfFormatDateTime === 'function') ? pdfFormatDateTime(iso) : (iso || '-');
+
+    let stackName = '';
+    if (task.projectStackId) { const s = appData.projectStacks.find(x => x.id === task.projectStackId); if (s) stackName = s.name; }
+
+    let h = `<div style="border-left:3pt solid ${shColor}; padding-left:10pt; margin:0 0 18pt 0;">`;
+    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(task.projectName || 'Unbenannte Aufgabe')}</div>`;
+    if (stackName) h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; margin-top:1pt;">${escapeHtmlToday(stackName)}</div>`;
+
+    h += wordMetaTable([
+        ['Stakeholder', wordPill(shName, shColor), true],
+        ['Status', wordPill(statusLabel, statusColor), true],
+        ['Kategorie', wordPill(task.bucket || '-', bucketColor), true],
+        ['Priorität', wordPill(prioLabel, prioColor), true],
+        ['Zuständig', assignee],
+        ['Start', fmt(task.startDate)],
+        ['Ziel', fmt(task.dueDate)],
+        ['Aufwand (Ist/Soll)', `${task.spentTime || 0} / ${task.estimatedTime || 0} h`]
+    ]);
+
+    if (task.description && task.description.trim() && task.description !== '<br>') {
+        h += wordSection(t('sec_notes'));
+        h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:10pt; color:#22262b;">${task.description}</div>`;
+    }
+    if (task.checklist && task.checklist.length) {
+        h += wordSection(t('sec_checklist'));
+        h += wordChecklist(task.checklist);
+    }
+    if (task.files && task.files.length) {
+        h += wordSection(t('sec_files'));
+        h += wordFilesList(task.files);
+    }
+    if (task.notes && String(task.notes).trim()) {
+        h += wordSection(t('sec_history'));
+        h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; color:#6e7681; white-space:pre-wrap;">${escapeHtmlToday(task.notes)}</div>`;
+    }
+    return h + `</div>`;
+}
+
+/* Word-Export einer einzelnen Aufgabe (aus dem Aufgaben-Modal, Teilen > Word) */
+function exportSingleTaskWord() {
+    const id = document.getElementById('taskId').value;
+    const t_obj = appData.tasks.find(x => x.id === id);
+    if (!t_obj) return;
+    return exportWord({ tasks: [t_obj], title: t_obj.projectName || 'Aufgabe', filename: `Aufgabe_${String(t_obj.projectName || 'Aufgabe').replace(/\s+/g, '_')}.doc` });
+}
+
+/* Word-Export eines Projekt-Stacks inkl. seiner Aufgaben (Teilen > Word) */
+function exportSingleStackWord() {
+    const id = document.getElementById('s_id').value;
+    const stack = appData.projectStacks.find(s => s.id === id);
+    if (!stack) return;
+    const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
+    return exportWord({ tasks, stack, title: stack.name || 'Projekt-Stack', filename: `Stack_${String(stack.name || 'Stack').replace(/\s+/g, '_')}.doc` });
+}
+
+async function exportWord(opts) {
+    const accent = wordAccent();
+    const logo = appData.settings.companyLogo;
+    const company = appData.settings.companyName || '';
+    const today = new Date().toLocaleDateString('de-DE');
+    const scoped = opts && Array.isArray(opts.tasks);
+
+    /* Welche Aufgaben gehören in den Bericht? */
+    let tasks = [];
+    if (scoped) tasks = opts.tasks;
+    else { try { tasks = (currentView === 'time') ? [] : getFilteredTasks(); } catch (e) { tasks = []; } }
+
+    const docTitle = (opts && opts.title) ? opts.title
+        : ((tasks.length === 1)
+            ? (tasks[0].projectName || 'Aufgabe')
+            : `ProMan – ${t('view_' + currentView) !== 'view_' + currentView ? t('view_' + currentView) : currentView}`);
+
+    /* Kopfbereich: Logo oben links, Titel daneben, dünne Trennlinie */
+    let header = `<table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; margin-bottom:6pt;"><tr>`;
+    if (logo) {
+        header += `<td style="width:3cm; vertical-align:middle; padding-right:10pt;"><img src="${logo}" width="85" style="max-width:3cm; width:3cm; height:auto;" /></td>`;
+    }
+    header += `<td style="vertical-align:middle;">
+            <div style="font-family:Helvetica,Arial,sans-serif; font-size:18pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(docTitle)}</div>
+            ${company ? `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; color:#6e7681; margin-top:2pt;">${escapeHtmlToday(company)}</div>` : ''}
+        </td>
+        <td style="vertical-align:middle; text-align:right; font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; white-space:nowrap;">${today}</td>
+    </tr></table>
+    <div style="border-bottom:2pt solid ${accent}; margin-bottom:16pt;"></div>`;
+
+    /* Inhalt: bestehender Bericht + vollständige Aufgabendetails */
+    let body = '';
+    if (!scoped) { try { body = generateRichTextReport() || ''; } catch (e) { body = ''; } }
+    else if (opts.stack) { body = wordStackBlock(opts.stack); }
+
+    let details = '';
+    if (tasks.length) {
+        details += `<h2 style="font-family:Helvetica,Arial,sans-serif; font-size:15pt; color:#22262b; border-bottom:1.5pt solid #cccccc; padding-bottom:4pt; margin-top:24pt;">${t('sec_details')}</h2>`;
+        tasks.forEach(tk => { details += wordTaskBlock(tk); });
+    }
+
     let attachments = '';
     try {
-        const tasksForAttachments = (currentView === 'time') ? [] : getFilteredTasks();
-        if (tasksForAttachments.length) {
+        if (tasks.length) {
             showToast('Anhänge werden aufbereitet...', 'info');
-            attachments = await buildAttachmentsHtmlForWord(tasksForAttachments);
+            attachments = await buildAttachmentsHtmlForWord(tasks);
         }
     } catch (e) { console.warn('Anhänge für Word-Export fehlgeschlagen', e); }
-    const fullHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'></head><body style="font-family:Helvetica, sans-serif;">${content}${attachments}</body></html>`;
-    const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `ProMan_Export_${currentView}.doc`; a.click();
+
+    const footer = `<div style="border-top:1pt solid #cccccc; margin-top:22pt; padding-top:5pt; font-family:Helvetica,Arial,sans-serif; font-size:8pt; color:#6e7681;">
+        ${escapeHtmlToday(docTitle)}${company ? ' · ' + escapeHtmlToday(company) : ''} · ${today}
+    </div>`;
+
+    const fullHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset='utf-8'>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: Helvetica, Arial, sans-serif; color:#22262b; font-size:10pt; }
+  h2, h3 { font-family: Helvetica, Arial, sans-serif; color:#22262b; }
+  table { border-collapse: collapse; }
+</style>
+</head>
+<body>${header}${body}${details}${attachments}${footer}</body></html>`;
+
+    const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (opts && opts.filename) ? opts.filename : `ProMan_Export_${currentView}.doc`;
+    a.click();
 }
 
 function exportICS() {
@@ -8830,14 +9092,17 @@ function handleLogoUploadThemeEditor(e) {
     const file = e.target.files[0]; if(!file) return;
     const reader = new FileReader();
     reader.onload = function(ev) {
-        appData.settings.companyLogo = ev.target.result;
-        // Sync with the original logo_fname span and logo_preview_container
-        renderLogoPreview();
-        renderLogoPreviewTE();
-        saveToLocal(true);
-        showToast('Logo gespeichert.', 'success');
+        const isJpeg = /jpe?g/i.test(file.type || '') || /\.jpe?g$/i.test(file.name || '');
+        normalizeLogoDataUrl(ev.target.result, isJpeg).then(function (clean) {
+            appData.settings.companyLogo = clean;
+            renderLogoPreview();
+            renderLogoPreviewTE();
+            try { saveToLocal(true); showToast(t('logo_saved')); }
+            catch (err) { showToast(t('logo_too_large'), 'error'); }
+        }).catch(function () { showToast(t('logo_invalid'), 'error'); });
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
 }
 
 function syncGlassSlider(blurVal) {
