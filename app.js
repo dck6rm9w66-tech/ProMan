@@ -1392,6 +1392,38 @@ function getStackProgress(stackId) {
    hat die Aufgabe keine Checkliste, wird stattdessen der bisherige Aufwand (spentTime) × wirksamer Satz verwendet.
    Verbrauchtes Budget eines Stacks: Summe der verbrauchten Budgets aller zugehörigen Aufgaben. */
 /* Stundensatz einer Person (aus Einstellungen → Team & Profil). */
+/* Arbeitszeiten (Tagesansicht) aus den Einstellungen */
+function getWorkDayStart() { return (appData.settings && appData.settings.workDayStart) ? appData.settings.workDayStart : '08:00'; }
+function getWorkDayEnd()   { return (appData.settings && appData.settings.workDayEnd)   ? appData.settings.workDayEnd   : '17:00'; }
+function _hhmmToMin(s) { const p = String(s || '').split(':'); return ((parseInt(p[0], 10) || 0) * 60) + (parseInt(p[1], 10) || 0); }
+
+/*
+ * Ermittelt Start/Ende eines Checklistenpunkts bzw. Milestones.
+ * - Mit Uhrzeit: Start wie eingegeben, Ende = Start + Dauer.
+ * - Ohne Uhrzeit: ganztägiger Termin auf Basis der Arbeitszeiten aus den Einstellungen
+ *   (früher wurde hier fest 09:00 gesetzt). Ohne Dauer läuft er von Arbeitsbeginn bis Arbeitsende.
+ */
+function computeChecklistSchedule(sDateVal, sTimeVal, durationMin) {
+    if (!sDateVal) return { startDate: '', dueDate: '', duration: durationMin || 0, allDay: false };
+
+    const pad = n => String(n).padStart(2, '0');
+    const isAllDay = !sTimeVal;
+    const startTime = sTimeVal || getWorkDayStart();
+
+    let dur = parseInt(durationMin, 10) || 0;
+    if (isAllDay && dur <= 0) {
+        /* Ganztägig: von Arbeitsbeginn bis Arbeitsende laut Einstellungen */
+        dur = Math.max(0, _hhmmToMin(getWorkDayEnd()) - _hhmmToMin(getWorkDayStart()));
+    }
+
+    const base = new Date(sDateVal + 'T' + startTime);
+    if (isNaN(base.getTime())) return { startDate: sDateVal, dueDate: '', duration: dur, allDay: isAllDay };
+
+    const end = new Date(base.getTime() + dur * 60000);
+    const fmt = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return { startDate: sDateVal + 'T' + startTime, dueDate: fmt(end), duration: dur, allDay: isAllDay };
+}
+
 function getUserHourlyRate(userId) {
     if (!userId) return null;
     const u = appData.users.find(x => x.id === userId);
@@ -1432,17 +1464,23 @@ function getEffectiveHourlyRate(checkpoint, task, stack) {
     }
     return getDefaultHourlyRate();
 }
+/* Tatsächlich erfasste Stunden einer Aufgabe (Zeitbuchungen; ersatzweise der Ist-Aufwand). */
+function getTaskTrackedHours(task) {
+    if (!task) return 0;
+    const logged = (appData.timeLogs || []).filter(l => l.taskId === task.id)
+        .reduce((sum, l) => sum + (parseFloat(l.hours) || 0), 0);
+    if (logged > 0) return logged;
+    return parseFloat(task.spentTime) || 0;
+}
+/*
+ * Verbrauchtes Budget einer Aufgabe = tatsächlich erfasste Zeit × Stundensatz.
+ * (Früher wurden bei vorhandener Checkliste die GEPLANTEN Dauern gerechnet – das
+ *  hat den Verbrauch massiv überschätzt und passte nicht zur Verlaufsgrafik.)
+ */
 function getTaskConsumedBudget(task) {
     if (!task) return 0;
     const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
-    const cl = task.checklist || [];
-    if (cl.length > 0) {
-        return cl.reduce((sum, ci) => {
-            const durH = (parseInt(ci.duration, 10) || 0) / 60;
-            return sum + (durH * getEffectiveHourlyRate(ci, task, stack));
-        }, 0);
-    }
-    return (parseFloat(task.spentTime) || 0) * getEffectiveHourlyRate(null, task, stack);
+    return getTaskTrackedHours(task) * getEffectiveHourlyRate(null, task, stack);
 }
 function getStackConsumedBudget(stack) {
     if (!stack) return 0;
@@ -2945,24 +2983,17 @@ function saveStack() {
             const sDateVal = item.querySelector('.cl-start-date')?.value || ''; const sTimeVal = item.querySelector('.cl-start-time')?.value || '';
             const durHours = parseFloat(item.querySelector('.cl-dur-hours')?.value || '0') || 0;
             const durationMin = Math.round(durHours * 60);
-            /* Start (Datum + optional Uhrzeit) zusammensetzen; Ende = Start + Dauer automatisch berechnen */
-            let finalStart = sDateVal; if(finalStart && sTimeVal) finalStart += 'T' + sTimeVal;
-            let finalDue = '';
-            if(finalStart){
-                const _st = sTimeVal || '09:00';
-                const _base = new Date(sDateVal + 'T' + _st);
-                if(!isNaN(_base.getTime())){
-                    const _end = new Date(_base.getTime() + durationMin * 60000);
-                    const _p = n => String(n).padStart(2,'0');
-                    finalDue = _end.getFullYear() + '-' + _p(_end.getMonth()+1) + '-' + _p(_end.getDate()) + 'T' + _p(_end.getHours()) + ':' + _p(_end.getMinutes());
-                    if(!sTimeVal) finalStart = sDateVal + 'T' + _st;
-                }
-            }
+            /* Ohne Uhrzeit -> ganztaegig gemaess Arbeitszeiten aus den Einstellungen */
+            const _sched = computeChecklistSchedule(sDateVal, sTimeVal, durationMin);
+            const finalStart = _sched.startDate;
+            const finalDue = _sched.dueDate;
+            const _finalDuration = _sched.duration;
+            const _isAllDay = _sched.allDay;
             
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds }
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: _finalDuration, allDay: _isAllDay, dueDate: finalDue, predecessors: cPreds }
         });
 
         // Diff Checklist für Historie
@@ -3381,24 +3412,17 @@ function saveTask() {
             const sDateVal = item.querySelector('.cl-start-date')?.value || ''; const sTimeVal = item.querySelector('.cl-start-time')?.value || '';
             const durHours = parseFloat(item.querySelector('.cl-dur-hours')?.value || '0') || 0;
             const durationMin = Math.round(durHours * 60);
-            /* Start (Datum + optional Uhrzeit) zusammensetzen; Ende = Start + Dauer automatisch berechnen */
-            let finalStart = sDateVal; if(finalStart && sTimeVal) finalStart += 'T' + sTimeVal;
-            let finalDue = '';
-            if(finalStart){
-                const _st = sTimeVal || '09:00';
-                const _base = new Date(sDateVal + 'T' + _st);
-                if(!isNaN(_base.getTime())){
-                    const _end = new Date(_base.getTime() + durationMin * 60000);
-                    const _p = n => String(n).padStart(2,'0');
-                    finalDue = _end.getFullYear() + '-' + _p(_end.getMonth()+1) + '-' + _p(_end.getDate()) + 'T' + _p(_end.getHours()) + ':' + _p(_end.getMinutes());
-                    if(!sTimeVal) finalStart = sDateVal + 'T' + _st;
-                }
-            }
+            /* Ohne Uhrzeit -> ganztaegig gemaess Arbeitszeiten aus den Einstellungen */
+            const _sched = computeChecklistSchedule(sDateVal, sTimeVal, durationMin);
+            const finalStart = _sched.startDate;
+            const finalDue = _sched.dueDate;
+            const _finalDuration = _sched.duration;
+            const _isAllDay = _sched.allDay;
             
             let cId = item.getAttribute('data-id');
             if(!cId) cId = generateId();
             const cPreds = tempPredecessors[cId] || [];
-            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: durationMin, dueDate: finalDue, predecessors: cPreds };
+            return { id: cId, done: item.querySelector('.cl-done')?.checked || false, title: item.querySelector('.cl-title')?.value || '', assigneeId: item.querySelector('.cl-assignee')?.value || '', startDate: finalStart, duration: _finalDuration, allDay: _isAllDay, dueDate: finalDue, predecessors: cPreds };
         });
 
         // Diff Checklist für Historie
@@ -3638,16 +3662,51 @@ function getMonthlyBudgetTrends(currency) {
     }
     const avg3 = past.reduce((a, b) => a + b, 0) / 3;
 
-    /* Burn Rate und Hochrechnung auf den ganzen Monat */
+    /* Burn Rate und Hochrechnung – auf Basis der ARBEITSTAGE aus den Einstellungen,
+       damit Wochenenden den Tagesschnitt nicht verfälschen. */
     const dayOfMonth = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const perDay = dayOfMonth > 0 ? current / dayOfMonth : 0;
-    const projection = perDay * daysInMonth;
+    const wd = (appData.settings && appData.settings.workDays && appData.settings.workDays.length)
+        ? appData.settings.workDays : [1, 2, 3, 4, 5];
+    let workDaysElapsed = 0, workDaysTotal = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(now.getFullYear(), now.getMonth(), d).getDay();
+        if (!wd.includes(dow)) continue;
+        workDaysTotal++;
+        if (d <= dayOfMonth) workDaysElapsed++;
+    }
+    const workDaysLeft = Math.max(0, workDaysTotal - workDaysElapsed);
+
+    /*
+     * Tagesverbrauch über ein gleitendes 30-Tage-Fenster statt nur über den laufenden Monat.
+     * Sonst ergibt eine einzelne Buchung am Monatsanfang einen absurd hohen Tageswert
+     * (z. B. 1.000 statt ~45) und damit eine völlig überzogene Hochrechnung.
+     */
+    const windowDays = 30;
+    const winStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (windowDays - 1));
+    let windowSpend = 0, windowWorkDays = 0;
+    for (let i = 0; i < windowDays; i++) {
+        const d = new Date(winStart.getFullYear(), winStart.getMonth(), winStart.getDate() + i);
+        const key = d.getFullYear() + '-' + pad(d.getMonth() + 1);
+        const dayKey = key + '-' + pad(d.getDate());
+        if (wd.includes(d.getDay())) windowWorkDays++;
+        /* Tageswerte aus den Buchungen dieses Tages */
+        (appData.timeLogs || []).forEach(log => {
+            if (!log || log.date !== dayKey) return;
+            const task = appData.tasks.find(x => x.id === log.taskId);
+            if (!task || getTaskCurrency(task) !== currency) return;
+            const rate = getLogHourlyRate(log);
+            if (rate > 0) windowSpend += (parseFloat(log.hours) || 0) * rate;
+        });
+    }
+    const perDay = windowWorkDays > 0 ? windowSpend / windowWorkDays : 0;
+    /* Hochrechnung = bereits verbraucht + erwarteter Verbrauch der verbleibenden Arbeitstage */
+    const projection = current + (perDay * workDaysLeft);
 
     /* Alle Monate aufsteigend – für die Verlaufsgrafik */
     const allMonths = Object.keys(monthMap).sort();
 
-    return { monthMap, allMonths, curKey, prevKey, current, previous, deltaPct, avg3, perDay, projection, dayOfMonth, daysInMonth };
+    return { monthMap, allMonths, curKey, prevKey, current, previous, deltaPct, avg3, perDay, projection, dayOfMonth, daysInMonth, workDaysElapsed, workDaysTotal, workDaysLeft };
 }
 
 /*
@@ -3728,7 +3787,7 @@ function renderBudgetsOverview(c) {
         const remaining = mbAmount - tr.current;
         const usedColor = usedPct > 100 ? 'var(--danger)' : (usedPct >= 80 ? 'var(--warning)' : 'var(--success)');
         const projColor = projPct > 100 ? 'var(--danger)' : (projPct >= 80 ? 'var(--warning)' : 'var(--success)');
-        const daysLeft = Math.max(0, tr.daysInMonth - tr.dayOfMonth);
+        const daysLeft = Math.max(0, tr.workDaysLeft || 0);
         const dailyAllowance = daysLeft > 0 ? Math.max(0, remaining) / daysLeft : 0;
 
         const arrow = (v) => v === null ? '' : (v > 0 ? '<i class="fas fa-arrow-up"></i>' : (v < 0 ? '<i class="fas fa-arrow-down"></i>' : '<i class="fas fa-minus"></i>'));
@@ -4639,7 +4698,11 @@ function renderChecklists(c, mode = 'checklists') {
         else {
             list.forEach((item) => {
                 const originalIdx = item._origIdx; let d = '', time = '';
-                if(item.dueDate) { if(item.dueDate.includes('T')) [d, time] = item.dueDate.split('T'); else d = item.dueDate; }
+                /* Wie im Modal: Datum/Uhrzeit beziehen sich auf den START; ältere Punkte ohne Start nutzen das Fälligkeitsdatum */
+                const _src = item.startDate || item.dueDate || '';
+                if(_src) { if(_src.includes('T')) [d, time] = _src.split('T'); else d = _src; }
+                const _durH = (parseInt(item.duration, 10) || 0) / 60;
+                const _durVal = _durH > 0 ? (Math.round(_durH * 100) / 100) : '';
                 let userOpts = `<option value="">-- Benutzer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===item.assigneeId?'selected':''}>${u.name}</option>`).join('');
                 let lineThrough = item.done ? 'text-decoration:line-through; opacity:0.6;' : '';
                 let clLocked = isEntityLocked(item.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
@@ -4661,8 +4724,8 @@ function renderChecklists(c, mode = 'checklists') {
                         <div class="cl-controls">
                             ${getAvatarHtml(item.assigneeId, 'avatar-sm')}
                             <select class="cl-assignee" onchange="updateGlobalCl('${parentType}', '${parentId}', ${originalIdx}, 'assigneeId', this.value)">${userOpts}</select>
-                            <input type="date" value="${d}" onchange="updateGlobalClDate('${parentType}', '${parentId}', ${originalIdx}, this.value, this.nextElementSibling.value)">
-                            <input type="time" value="${time}" onchange="updateGlobalClDate('${parentType}', '${parentId}', ${originalIdx}, this.previousElementSibling.value, this.value)">
+                            <span class="cl-datespan cl-startspan"><input type="date" class="cl-g-date cl-start-date" value="${d}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><input type="time" class="cl-g-time cl-start-time" value="${time}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"></span>
+                            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="Dauer in Stunden" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">Std</span></span>
                             <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
                             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="Löschen"><i class="fas fa-trash"></i></button>
                         </div>
@@ -4733,6 +4796,31 @@ function updateGlobalCl(type, parentId, idx, field, val) {
         if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
     }
 }
+/*
+ * Übernimmt Datum, Uhrzeit und Dauer aus der Wissen-Ansicht – identisch zur Logik im Modal
+ * (ohne Uhrzeit entsteht ein ganztägiger Termin gemäss der eingestellten Arbeitszeiten).
+ */
+function updateGlobalClSchedule(type, parentId, idx, srcEl) {
+    const row = srcEl && srcEl.closest ? srcEl.closest('.cl-controls') : null;
+    if (!row) return;
+    const dateVal = (row.querySelector('.cl-g-date') || {}).value || '';
+    const timeVal = (row.querySelector('.cl-g-time') || {}).value || '';
+    const durHours = parseFloat((row.querySelector('.cl-g-dur') || {}).value || '0') || 0;
+
+    const parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
+    if (!(parent && parent.checklist && parent.checklist[idx])) return;
+
+    const sched = computeChecklistSchedule(dateVal, timeVal, Math.round(durHours * 60));
+    const cl = parent.checklist[idx];
+    cl.startDate = sched.startDate;
+    cl.dueDate = sched.dueDate;
+    cl.duration = sched.duration;
+    cl.allDay = sched.allDay;
+
+    checkWorkdayWarning(sched.dueDate, 'Checklistenpunkt');
+    saveToLocal(true);
+}
+
 function updateGlobalClDate(type, parentId, idx, dateVal, timeVal) {
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent && parent.checklist && parent.checklist[idx]) {
@@ -7844,15 +7932,226 @@ function exportICS() {
     showToast(t('toast_pdf').replace('PDF', 'Kalender (.ics)'));
 }
 
+/* Wandelt einen Hex-Farbwert in ein [r,g,b]-Array (mit Fallback). */
+function pdfHexToRgb(hex, fallback = [34, 38, 43]) {
+    if (!hex || typeof hex !== 'string') return fallback;
+    const h = hex.replace('#', '').trim();
+    if (h.length !== 6) return fallback;
+    const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+    return (isNaN(r) || isNaN(g) || isNaN(b)) ? fallback : [r, g, b];
+}
+/* Mischt eine Farbe mit Weiss auf (0 = Original, 1 = weiss) – für dezente Flächen. */
+function pdfTint(rgb, amount) {
+    return rgb.map(c => Math.round(c + (255 - c) * amount));
+}
+/* "2026-09-05T09:00" -> "05.09.2026" / "09:00" */
+function pdfSplitIso(iso) {
+    if (!iso) return { date: '', time: '' };
+    const [d, tm] = String(iso).split('T');
+    const parts = String(d).split('-');
+    const date = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : d;
+    return { date, time: tm ? tm.substring(0, 5) : '' };
+}
+function pdfFormatDateTime(iso) {
+    const { date, time } = pdfSplitIso(iso);
+    if (!date) return '-';
+    return time ? `${date}, ${time}` : date;
+}
+/*
+ * Meta-Text eines Checklistenpunkts / Meilensteins – identisch zur Darstellung
+ * in der Webapp: Startdatum + Startzeit, Dauer und daraus errechnetes Ende.
+ * (Früher wurde nur die Endzeit aus dueDate gezeigt, was nicht zur App passte.)
+ */
+/*
+ * Berechnet das Ende eines Checklistenpunkts aus Start + Dauer – aber auf Basis der
+ * in den Einstellungen hinterlegten Arbeitsstunden pro Tag (z. B. 8.5) und der Arbeitstage.
+ * Eine Dauer von 10 h bei 8,5 h Tagessoll endet also am nächsten Arbeitstag, nicht 10 echte Stunden später.
+ */
+function pdfWorkEnd(startIso, durationMin) {
+    if (!startIso) return null;
+    const [dPart, tPart] = String(startIso).split('T');
+    const p = dPart.split('-');
+    if (p.length !== 3) return null;
+    const startTime = (tPart && tPart.length >= 4) ? tPart.substring(0, 5) : '09:00';
+    const [sh, sm] = startTime.split(':').map(n => parseInt(n, 10) || 0);
+    let cur = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]), sh, sm);
+    if (isNaN(cur.getTime())) return null;
+
+    let remaining = Math.max(0, parseInt(durationMin, 10) || 0);
+    const perDayMin = Math.round(((parseFloat(appData.settings && appData.settings.targetHoursPerDay) || 8)) * 60);
+    const workDays = (appData.settings && appData.settings.workDays && appData.settings.workDays.length)
+        ? appData.settings.workDays : [1, 2, 3, 4, 5];
+
+    if (remaining <= perDayMin) return new Date(cur.getTime() + remaining * 60000);
+
+    let guard = 0;
+    while (remaining > perDayMin && guard++ < 3650) {
+        remaining -= perDayMin;
+        /* nächster Arbeitstag, wieder zur Startzeit */
+        do { cur.setDate(cur.getDate() + 1); } while (!workDays.includes(cur.getDay()) && guard++ < 3650);
+        cur.setHours(sh, sm, 0, 0);
+    }
+    return new Date(cur.getTime() + remaining * 60000);
+}
+
+function pdfChecklistMeta(cl) {
+    const meta = [];
+    const s = pdfSplitIso(cl.startDate);
+    const durMin = parseInt(cl.duration, 10) || 0;
+
+    /* Ende bevorzugt aus Arbeitsstunden berechnen, sonst gespeichertes Fälligkeitsdatum.
+       Ganztägige Termine behalten ihre gespeicherte Spanne (Arbeitsbeginn–Arbeitsende). */
+    let e = pdfSplitIso(cl.dueDate);
+    if (!cl.allDay && cl.startDate && durMin > 0) {
+        const endDt = pdfWorkEnd(cl.startDate, durMin);
+        if (endDt) {
+            const _p = n => String(n).padStart(2, '0');
+            e = {
+                date: `${_p(endDt.getDate())}.${_p(endDt.getMonth() + 1)}.${endDt.getFullYear()}`,
+                time: `${_p(endDt.getHours())}:${_p(endDt.getMinutes())}`
+            };
+        }
+    }
+
+    if (s.date) {
+        let str = s.date;
+        if (s.time) {
+            str += `, ${s.time}`;
+            if (e.time && e.date === s.date) str += `–${e.time}`;
+        }
+        if (e.date && e.date !== s.date) str += ` – ${e.date}${e.time ? ', ' + e.time : ''}`;
+        meta.push(str);
+    } else if (e.date) {
+        meta.push(e.time ? `${e.date}, ${e.time}` : e.date);
+    }
+    if (durMin > 0) {
+        const h = Math.floor(durMin / 60), m = durMin % 60;
+        meta.push(h > 0 ? (m > 0 ? `${h} Std ${m} Min` : `${h} Std`) : `${m} Min`);
+    }
+    if (cl.assigneeId) { const u = appData.users.find(x => x.id === cl.assigneeId); if (u) meta.push(u.name); }
+    return meta.join(' · ');
+}
+
 async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraFiles = []) {
     if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') { return showToast('PDF Bibliotheken laden noch.', 'error'); }
     showToast('PDF wird generiert... Bitte warten.', 'info');
-    const { jsPDF } = window.jspdf; const doc = new jsPDF('p', 'mm', 'a4'); const pageHeight = doc.internal.pageSize.height; const pageWidth = doc.internal.pageSize.width; const contentWidth = pageWidth - 28;
-    
+    const { jsPDF } = window.jspdf; const doc = new jsPDF('p', 'mm', 'a4');
+    const pageHeight = doc.internal.pageSize.height; const pageWidth = doc.internal.pageSize.width;
+    const M = 14;                       /* Seitenrand */
+    const contentWidth = pageWidth - (M * 2);
+    const FOOTER_H = 14;                /* reservierter Fussbereich */
+    const bottomLimit = pageHeight - FOOTER_H;
+
+    /* ── Farbschema aus den Nutzereinstellungen ── */
+    const ACCENT = pdfHexToRgb(appData.customColor, [0, 112, 242]);
+    const INK = [34, 38, 43];           /* Haupttext (Graphit wie in der App) */
+    const MUTED = [110, 118, 129];      /* Sekundärtext */
+    const BORDER = [226, 229, 233];     /* Linien */
+    const SOFT = pdfTint(ACCENT, 0.90); /* sehr helle Akzentfläche */
+
+    const setInk = () => doc.setTextColor(INK[0], INK[1], INK[2]);
+    const setMuted = () => doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+
+    function ensureSpace(needed, y) {
+        if (y + needed > bottomLimit) { doc.addPage(); return 20; }
+        return y;
+    }
+
     function printWrappedText(text, x, y, maxWidth, fontSize = 10, isBold = false) { 
         if(!text) return y; doc.setFontSize(fontSize); doc.setFont("helvetica", isBold ? "bold" : "normal"); 
-        const lines = doc.splitTextToSize(String(text), maxWidth); if (y + (lines.length * 5) > pageHeight - 20) { doc.addPage(); y = 20; } 
-        doc.text(lines, x, y); return y + (lines.length * (fontSize > 10 ? 7 : 5)); 
+        const lines = doc.splitTextToSize(String(text), maxWidth);
+        const lh = fontSize > 10 ? 6.4 : 5;
+        if (y + (lines.length * lh) > bottomLimit) { doc.addPage(); y = 20; } 
+        doc.text(lines, x, y); return y + (lines.length * lh); 
+    }
+
+    /* Abschnittstitel */
+    function sectionTitle(label, y) {
+        y = ensureSpace(10, y);
+        doc.setFontSize(10); doc.setFont("helvetica", "bold"); setInk();
+        doc.text(String(label).toUpperCase(), M, y);
+        return y + 5.5;
+    }
+
+    /* Zweispaltige Kennzahl-Zeile */
+    function metaRow(l1, v1, l2, v2, y) {
+        y = ensureSpace(7, y);
+        const colW = contentWidth / 2;
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); setMuted();
+        doc.text(String(l1).toUpperCase(), M, y);
+        if (l2) doc.text(String(l2).toUpperCase(), M + colW, y);
+        doc.setFontSize(10); doc.setFont("helvetica", "normal"); setInk();
+        doc.text(doc.splitTextToSize(String(v1 || '-'), colW - 6)[0] || '-', M, y + 4.6);
+        if (l2) doc.text(doc.splitTextToSize(String(v2 || '-'), colW - 6)[0] || '-', M + colW, y + 4.6);
+        return y + 10;
+    }
+
+    /* Farbige Pill-Bubble (wie die Chips in der Webapp): helle Tönung + farbiger Rand/Text */
+    function drawPill(text, rgb, x, y, maxW) {
+        const label = String(text || '-');
+        doc.setFontSize(8.8); doc.setFont("helvetica", "bold");
+        const padX = 2.6, h = 5.4;
+        let txt = label;
+        let tw = doc.getTextWidth ? doc.getTextWidth(txt) : (txt.length * 1.8);
+        if (tw + padX * 2 > maxW) {
+            /* Text kürzen, damit die Pille nicht über die Spalte hinausläuft */
+            while (txt.length > 1 && (doc.getTextWidth ? doc.getTextWidth(txt + '…') : (txt.length + 1) * 1.8) + padX * 2 > maxW) txt = txt.slice(0, -1);
+            txt += '…';
+            tw = doc.getTextWidth ? doc.getTextWidth(txt) : (txt.length * 1.8);
+        }
+        const w = Math.min(maxW, tw + padX * 2);
+        const fill = pdfTint(rgb, 0.82);
+        doc.setFillColor(fill[0], fill[1], fill[2]);
+        doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.25);
+        doc.roundedRect(x, y - h + 1.5, w, h, h / 2, h / 2, 'FD');
+        doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+        doc.text(txt, x + padX, y);
+        setInk();
+        return w;
+    }
+
+    /* Zweispaltige Zeile mit farbigen Pill-Bubbles */
+    function metaRowPills(l1, v1, c1, l2, v2, c2, y) {
+        y = ensureSpace(8, y);
+        const colW = contentWidth / 2;
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); setMuted();
+        doc.text(String(l1).toUpperCase(), M, y);
+        if (l2) doc.text(String(l2).toUpperCase(), M + colW, y);
+        drawPill(v1, c1, M, y + 5.2, colW - 8);
+        if (l2) drawPill(v2, c2, M + colW, y + 5.2, colW - 8);
+        return y + 10.5;
+    }
+
+    /* Checklisten-/Milestone-Eintrag mit gezeichneter Checkbox */
+    function checklistRow(cl, y, indent = 0) {
+        const x = M + indent;
+        const metaStr = pdfChecklistMeta(cl);
+        doc.setFontSize(9.5); doc.setFont("helvetica", "normal");
+        const titleW = contentWidth - indent - 8 - (metaStr ? 62 : 0);
+        const lines = doc.splitTextToSize(String(cl.title || ''), Math.max(20, titleW));
+        const rowH = Math.max(5.6, lines.length * 4.6);
+        y = ensureSpace(rowH + 2, y);
+
+        /* Checkbox */
+        doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.3);
+        if (cl.done) {
+            doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+            doc.roundedRect(x, y - 3.1, 3.6, 3.6, 0.6, 0.6, 'F');
+            doc.setDrawColor(255, 255, 255); doc.setLineWidth(0.45);
+            doc.line(x + 0.9, y - 1.3, x + 1.6, y - 0.6);
+            doc.line(x + 1.6, y - 0.6, x + 2.8, y - 2.3);
+            doc.setLineWidth(0.3);
+        } else {
+            doc.roundedRect(x, y - 3.1, 3.6, 3.6, 0.6, 0.6, 'S');
+        }
+
+        if (cl.done) { setMuted(); } else { setInk(); }
+        doc.text(lines, x + 6, y);
+        if (metaStr) {
+            doc.setFontSize(8); setMuted();
+            doc.text(metaStr, pageWidth - M, y, { align: 'right' });
+        }
+        return y + rowH + 1.2;
     }
 
     async function renderRTFToPDF(htmlStr, x, y, maxWidth) {
@@ -7861,95 +8160,166 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         try {
             const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, windowWidth: 720 });
             if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
-
-            const bottomMargin = 12;
-            /* Skalierung: Quell-Pixel → mm im PDF */
             const pxPerMm = canvas.width / maxWidth;
-
-            if (y + 12 > pageHeight) { doc.addPage(); y = 20; }
-            let srcY = 0;                        /* aktuelle Position in Quell-Pixeln */
-            let destY = y;                       /* aktuelle Position im PDF (mm) */
-            const totalSrcH = canvas.height;
-
+            if (y + 12 > bottomLimit) { doc.addPage(); y = 20; }
+            let srcY = 0; let destY = y; const totalSrcH = canvas.height;
             while (srcY < totalSrcH) {
-                const availMm = pageHeight - bottomMargin - destY;      /* verfügbarer Platz auf dieser Seite (mm) */
+                const availMm = bottomLimit - destY;
                 if (availMm < 8) { doc.addPage(); destY = 20; continue; }
-                let sliceSrcH = Math.min(totalSrcH - srcY, availMm * pxPerMm);   /* Höhe des Ausschnitts in Quell-Pixeln */
-
-                /* Ausschnitt in ein eigenes Canvas kopieren */
+                let sliceSrcH = Math.min(totalSrcH - srcY, availMm * pxPerMm);
                 const slice = document.createElement('canvas');
                 slice.width = canvas.width; slice.height = Math.ceil(sliceSrcH);
                 const sctx = slice.getContext('2d');
                 sctx.fillStyle = '#ffffff'; sctx.fillRect(0, 0, slice.width, slice.height);
                 sctx.drawImage(canvas, 0, srcY, canvas.width, sliceSrcH, 0, 0, canvas.width, sliceSrcH);
-
                 const sliceMmH = sliceSrcH / pxPerMm;
                 doc.addImage(slice.toDataURL('image/png'), 'PNG', x, destY, maxWidth, sliceMmH);
-
-                srcY += sliceSrcH;
-                destY += sliceMmH;
+                srcY += sliceSrcH; destY += sliceMmH;
                 if (srcY < totalSrcH) { doc.addPage(); destY = 20; }
             }
-            return destY + 5;
-        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText("Fehler beim Laden des formatieren Textes.", x, y, maxWidth); }
+            return destY + 4;
+        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText("Fehler beim Laden des formatierten Textes.", x, y, maxWidth); }
     }
 
-    let yPos = 20; let titleX = 14;
-    if(appData.settings.companyLogo) { try { const imgProps = doc.getImageProperties(appData.settings.companyLogo); const logoWidth = 30; const logoHeight = (imgProps.height * logoWidth) / imgProps.width; doc.addImage(appData.settings.companyLogo, 'PNG', 14, 15, logoWidth, logoHeight); titleX = 50; yPos = Math.max(20, 15 + logoHeight + 5); } catch(e) { console.warn('Logo konnte nicht geladen werden', e); } }
-    doc.setFontSize(22); doc.setFont("helvetica", "bold"); doc.text(docTitle, titleX, 25); doc.setFontSize(10); doc.setFont("helvetica", "normal"); doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')}`, titleX, 32); yPos = Math.max(yPos, 45); 
-    
+    /* ── Kopfbereich: ohne Hintergrundfarbe, Titel in Schwarz ── */
+    const bandH = 26;
+    let titleX = M;
+    if(appData.settings.companyLogo) {
+        try {
+            const imgProps = doc.getImageProperties(appData.settings.companyLogo);
+            const logoH = 12; const logoW = (imgProps.width * logoH) / imgProps.height;
+            doc.addImage(appData.settings.companyLogo, 'PNG', M, (bandH - logoH) / 2, logoW, logoH);
+            titleX = M + logoW + 6;
+        } catch(e) { console.warn('Logo konnte nicht geladen werden', e); }
+    }
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(16); doc.setFont("helvetica", "bold");
+    doc.text(doc.splitTextToSize(String(docTitle), pageWidth - titleX - M - 46)[0], titleX, 15);
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+    setMuted();
+    const companyName = (appData.settings && appData.settings.companyName) ? appData.settings.companyName : '';
+    if (companyName) doc.text(companyName, titleX, 20.5);
+    doc.text(new Date().toLocaleDateString('de-DE'), pageWidth - M, 15, { align: 'right' });
+    doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.4);
+    doc.line(M, bandH, pageWidth - M, bandH);
+
+    let yPos = bandH + 12;
+    setInk();
+
+    /* ── Projekt-Stack-Kopf ── */
     if(stackObj) {
-        doc.setFillColor(240, 240, 240); doc.rect(14, yPos, contentWidth, 12, 'F'); doc.setFontSize(14); doc.setFont("helvetica", "bold"); doc.text(`Projekt-Stack: ${stackObj.name}`, 18, yPos + 8); yPos += 18; doc.setFontSize(10); doc.setFont("helvetica", "normal");
-        if(stackObj.startDate || stackObj.dueDate) yPos = printWrappedText(`Zeitraum: ${stackObj.startDate||'-'} bis ${stackObj.dueDate||'-'}`, 14, yPos, contentWidth);
-        if(stackObj.notes) { yPos = printWrappedText("Notizen:", 14, yPos+2, contentWidth, 10, true); yPos = await renderRTFToPDF(stackObj.notes, 14, yPos, contentWidth); }
-        if(stackObj.checklist && stackObj.checklist.length > 0) {
-            yPos = printWrappedText("Milestones:", 14, yPos+2, contentWidth, 10, true);
-            stackObj.checklist.forEach(cl => { const boxStr = cl.done ? "[ X ]" : "[   ]"; let meta = []; if(cl.dueDate) { let [d, t] = cl.dueDate.split('T'); meta.push(`${d.split('-').reverse().join('.')}${t ? ' ' + t + ' Uhr' : ''}`); } if(cl.assigneeId) { const u = appData.users.find(x => x.id === cl.assigneeId); if(u) meta.push(`${u.name}`); } let metaStr = meta.length > 0 ? ` (${meta.join(' | ')})` : ''; yPos = printWrappedText(`${boxStr} ${cl.title}${metaStr}`, 16, yPos, contentWidth - 4); });
+        const boxH = 15;
+        doc.setFillColor(SOFT[0], SOFT[1], SOFT[2]);
+        doc.roundedRect(M, yPos, contentWidth, boxH, 2, 2, 'F');
+        doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+        doc.rect(M, yPos, 2.5, boxH, 'F');
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); setMuted();
+        doc.text('PROJEKT-STACK', M + 7, yPos + 5.5);
+        doc.setFontSize(13); doc.setFont("helvetica", "bold"); setInk();
+        doc.text(doc.splitTextToSize(String(stackObj.name || '-'), contentWidth - 14)[0], M + 7, yPos + 11.5);
+        yPos += boxH + 8;
+
+        if(stackObj.startDate || stackObj.dueDate) {
+            yPos = metaRow('Start', pdfFormatDateTime(stackObj.startDate), 'Ziel', pdfFormatDateTime(stackObj.dueDate), yPos);
         }
-        yPos += 10; doc.setDrawColor(100, 100, 100); doc.line(14, yPos, pageWidth - 14, yPos); yPos += 10;
+        if(stackObj.notes) { yPos = sectionTitle('Notizen', yPos); yPos = await renderRTFToPDF(stackObj.notes, M, yPos, contentWidth); yPos += 2; }
+        if(stackObj.checklist && stackObj.checklist.length > 0) {
+            yPos = sectionTitle('Milestones', yPos);
+            stackObj.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
+            yPos += 3;
+        }
+        doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.4);
+        doc.line(M, yPos, pageWidth - M, yPos); yPos += 9;
     }
 
-    if(tasksArray.length === 0) { doc.setFontSize(12); doc.text("Keine Aufgaben vorhanden.", 14, yPos); }
+    if(tasksArray.length === 0) { doc.setFontSize(11); setMuted(); doc.text("Keine Aufgaben vorhanden.", M, yPos); }
 
+    /* ── Aufgabenkarten ── */
     for (let index = 0; index < tasksArray.length; index++) {
         const task = tasksArray[index];
-        if (yPos > pageHeight - 60) { doc.addPage(); yPos = 20; }
-        let headerColor = [0, 112, 242]; let shName = '-';
-        
-        if(task.stakeholderId) { const sh = appData.stakeholders.find(s => s.id === task.stakeholderId); if(sh) { shName = sh.name; const hex = sh.color.replace('#',''); headerColor = [parseInt(hex.substring(0,2), 16), parseInt(hex.substring(2,4), 16), parseInt(hex.substring(4,6), 16)]; } }
-        if(!task.stakeholderId) { const hex = appData.customColor.replace('#',''); headerColor = [parseInt(hex.substring(0,2), 16), parseInt(hex.substring(2,4), 16), parseInt(hex.substring(4,6), 16)]; }
-        
-        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]); doc.rect(14, yPos, contentWidth, 12, 'F'); doc.setTextColor(255, 255, 255); 
-        doc.setFont("helvetica", "bold"); doc.setFontSize(12); const title = task.projectName || 'Unbenannte Aufgabe'; doc.text(title.length > 70 ? title.substring(0, 70) + '...' : title, 18, yPos + 8);
-        
-        if(!stackObj && task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if(stack) { doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.text(`Stack: ${stack.name}`, pageWidth - 60, yPos + 8); } }
-        
-        yPos += 18; doc.setTextColor(0, 0, 0); const st = appData.statuses.find(s => s.id === task.status); const leftColX = 14; const rightColX = 110;
-        doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.text("Stakeholder:", leftColX, yPos); doc.setFont("helvetica", "normal"); doc.text(shName, leftColX + 30, yPos); 
-        doc.setFont("helvetica", "bold"); doc.text("Status:", rightColX, yPos); doc.setFont("helvetica", "normal"); doc.text(st ? (st.id==='done'?t('col_completed'):st.title) : '-', rightColX + 25, yPos); yPos += 6; 
-        doc.setFont("helvetica", "bold"); doc.text("Kategorie:", leftColX, yPos); doc.setFont("helvetica", "normal"); doc.text(task.bucket || '-', leftColX + 30, yPos); 
-        doc.setFont("helvetica", "bold"); doc.text("Priorität:", rightColX, yPos); doc.setFont("helvetica", "normal"); doc.text(task.priority, rightColX + 25, yPos); yPos += 6; 
-        doc.setFont("helvetica", "bold"); doc.text("Start/Ziel:", leftColX, yPos); doc.setFont("helvetica", "normal"); doc.text(`${task.startDate||'-'} bis ${task.dueDate||'-'}`, leftColX + 30, yPos); 
-        doc.setFont("helvetica", "bold"); doc.text("Zeiten (h):", rightColX, yPos); doc.setFont("helvetica", "normal"); doc.text(`${task.spentTime||0} / ${task.estimatedTime||0}`, rightColX + 25, yPos); yPos += 10;
-        
-        if(task.description) { yPos = printWrappedText("Notizen:", leftColX, yPos, contentWidth, 10, true); yPos = await renderRTFToPDF(task.description, leftColX, yPos, contentWidth); yPos += 4; }
-        if(task.checklist && task.checklist.length > 0) { yPos = printWrappedText("Checkliste:", leftColX, yPos, contentWidth, 10, true); task.checklist.forEach(cl => { const boxStr = cl.done ? "[ X ]" : "[   ]"; let meta = []; if(cl.dueDate) { let [d, t] = cl.dueDate.split('T'); meta.push(`${d.split('-').reverse().join('.')}${t ? ' ' + t + ' Uhr' : ''}`); } if(cl.assigneeId) { const u = appData.users.find(x => x.id === cl.assigneeId); if(u) meta.push(`${u.name}`); } let metaStr = meta.length > 0 ? ` (${meta.join(' | ')})` : ''; yPos = printWrappedText(`${boxStr} ${cl.title}${metaStr}`, leftColX + 2, yPos, contentWidth - 4, 10, false); }); yPos += 4; }
-        if(task.notes) { yPos = printWrappedText("Historie:", leftColX, yPos, contentWidth, 10, true); yPos = printWrappedText(task.notes, leftColX, yPos, contentWidth, 10, false); yPos += 4; }
-        if(task.files && task.files.length > 0) { yPos = printWrappedText("Dateien/Pfade:", leftColX, yPos, contentWidth, 10, true); task.files.forEach(f => { const fname = f.type === 'blob' ? f.name : f.path; yPos = printWrappedText(`- ${fname}`, leftColX + 2, yPos, contentWidth - 4, 9, false); }); }
-        
-        yPos += 10; if(index < tasksArray.length - 1) { doc.setDrawColor(200, 200, 200); doc.line(14, yPos - 5, pageWidth - 14, yPos - 5); }
+        yPos = ensureSpace(46, yPos);
+
+        /* Akzentfarbe: Stakeholder-Farbe, sonst Nutzerfarbe */
+        let cardColor = ACCENT; let shName = '-';
+        if(task.stakeholderId) {
+            const sh = appData.stakeholders.find(s => s.id === task.stakeholderId);
+            if(sh) { shName = sh.name; cardColor = pdfHexToRgb(sh.color, ACCENT); }
+        }
+
+        /* Kopfzeile der Karte – entfällt, wenn der Aufgabenname bereits als Dokumenttitel oben steht */
+        const nameIsDocTitle = (tasksArray.length === 1 && !stackObj && String(docTitle) === String(task.projectName || ''));
+        if (!nameIsDocTitle) {
+            const headH = 11;
+            doc.setFillColor(cardColor[0], cardColor[1], cardColor[2]);
+            doc.roundedRect(M, yPos, contentWidth, headH, 1.8, 1.8, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont("helvetica", "bold"); doc.setFontSize(11.5);
+            let stackSuffix = '';
+            if(!stackObj && task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if(stack) stackSuffix = stack.name; }
+            const titleMax = contentWidth - 10 - (stackSuffix ? 52 : 0);
+            doc.text(doc.splitTextToSize(String(task.projectName || 'Unbenannte Aufgabe'), titleMax)[0], M + 5, yPos + 7.4);
+            if(stackSuffix) {
+                doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+                doc.text(doc.splitTextToSize(stackSuffix, 48)[0], pageWidth - M - 5, yPos + 7.2, { align: 'right' });
+            }
+            yPos += headH + 7;
+            setInk();
+        } else if(task.projectStackId) {
+            /* Stack-Zugehörigkeit trotzdem ausweisen */
+            const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId);
+            if(stack) { doc.setFontSize(9); setMuted(); doc.text(`Stack: ${stack.name}`, M, yPos); setInk(); yPos += 6; }
+        }
+
+        /* Kennzahlen */
+        const st = appData.statuses.find(s => s.id === task.status);
+        const statusLabel = st ? (st.id === 'done' ? t('col_completed') : st.title) : '-';
+        const statusColor = pdfHexToRgb(getStatusColor(st), [51, 59, 68]);
+        const shColor = task.stakeholderId ? cardColor : [130, 138, 148];
+        const bucketColor = task.bucket ? pdfHexToRgb(getBucketColor(task.bucket), ACCENT) : [130, 138, 148];
+        const PRIO_COLORS = { high: [217, 52, 43], medium: [232, 163, 23], low: [31, 148, 99] };
+        const prioColor = PRIO_COLORS[task.priority] || [130, 138, 148];
+        const prioLabel = task.priority === 'high' ? t('prio_high') : (task.priority === 'medium' ? t('prio_med') : (task.priority === 'low' ? t('prio_low') : (task.priority || '-')));
+
+        yPos = metaRowPills('Stakeholder', shName, shColor, 'Status', statusLabel, statusColor, yPos);
+        yPos = metaRowPills('Kategorie', task.bucket || '-', bucketColor, 'Priorität', prioLabel, prioColor, yPos);
+        yPos = metaRow('Start', pdfFormatDateTime(task.startDate), 'Ziel', pdfFormatDateTime(task.dueDate), yPos);
+        yPos = metaRow('Aufwand (Ist/Soll)', `${task.spentTime || 0} / ${task.estimatedTime || 0} h`, 'Zuständig', (() => { const u = appData.users.find(x => x.id === task.assigneeId); return u ? u.name : '-'; })(), yPos);
+        yPos += 1;
+
+        if(task.description) { yPos = sectionTitle('Notizen', yPos); yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth); yPos += 2; }
+        if(task.checklist && task.checklist.length > 0) {
+            yPos = sectionTitle('Checkliste', yPos);
+            task.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
+            yPos += 3;
+        }
+        if(task.notes) { yPos = sectionTitle('Historie', yPos); doc.setFontSize(9.5); setMuted(); yPos = printWrappedText(task.notes, M, yPos, contentWidth, 9.5, false); setInk(); yPos += 3; }
+        if(task.files && task.files.length > 0) {
+            yPos = sectionTitle('Dateien / Pfade', yPos);
+            doc.setFontSize(9); setMuted();
+            task.files.forEach(f => { const fname = f.type === 'blob' ? f.name : f.path; yPos = printWrappedText(`• ${fname}`, M + 2, yPos, contentWidth - 4, 9, false); });
+            setInk(); yPos += 3;
+        }
+
+        yPos += 6;
+        if(index < tasksArray.length - 1) {
+            yPos = ensureSpace(6, yPos);
+            doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.3);
+            doc.line(M, yPos - 3, pageWidth - M, yPos - 3);
+            yPos += 3;
+        }
     }
 
     /* ── Vom Nutzer ausgewählte Anhänge (optional, aus dem Export-Dialog) ── */
     if (extraFiles && extraFiles.length > 0) {
         doc.addPage(); yPos = 20;
-        doc.setFontSize(16); doc.setFont("helvetica", "bold"); doc.setTextColor(0, 0, 0);
-        doc.text(t('pdfx_section_title'), 14, yPos); yPos += 10;
+        yPos = sectionTitle(t('pdfx_section_title'), yPos); yPos += 2;
 
         for (const file of extraFiles) {
             const imgs = await captureFileObjectAsImages(file);
             if (imgs.length === 0) {
-                yPos = printWrappedText(`- ${file.name} (${t('pdfx_not_renderable')})`, 14, yPos, contentWidth, 9, false);
+                doc.setFontSize(9); setMuted();
+                yPos = printWrappedText(`• ${file.name} (${t('pdfx_not_renderable')})`, M, yPos, contentWidth, 9, false);
+                setInk();
                 continue;
             }
             for (let i = 0; i < imgs.length; i++) {
@@ -7959,16 +8329,35 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
                     let imgW = contentWidth;
                     let imgH = (props.height * imgW) / props.width;
                     const label = file.name + (imgs.length > 1 ? ` (${t('fv_page')} ${i + 1}/${imgs.length})` : '');
-                    const maxH = pageHeight - 40;
+                    const maxH = bottomLimit - 28;
                     if (imgH > maxH) { imgH = maxH; imgW = (props.width * imgH) / props.height; }
-                    if (yPos + imgH + 12 > pageHeight - 12) { doc.addPage(); yPos = 20; }
-                    yPos = printWrappedText(label, 14, yPos + 2, contentWidth, 8, true);
-                    doc.addImage(dataUrl, 'PNG', 14, yPos, imgW, imgH);
+                    if (yPos + imgH + 12 > bottomLimit) { doc.addPage(); yPos = 20; }
+                    doc.setFontSize(8.5); setMuted();
+                    doc.text(label, M, yPos + 2); yPos += 5;
+                    setInk();
+                    doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.3);
+                    doc.rect(M, yPos, imgW, imgH, 'S');
+                    doc.addImage(dataUrl, 'PNG', M, yPos, imgW, imgH);
                     yPos += imgH + 8;
                 } catch (e) { console.warn('Anhang konnte nicht eingebettet werden', e); }
             }
         }
     }
+
+    /* ── Fusszeile auf allen Seiten ── */
+    try {
+        const total = typeof doc.getNumberOfPages === 'function' ? doc.getNumberOfPages() : (doc.internal.getNumberOfPages ? doc.internal.getNumberOfPages() : 1);
+        for (let p = 1; p <= total; p++) {
+            if (typeof doc.setPage === 'function') doc.setPage(p);
+            doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.3);
+            doc.line(M, pageHeight - 10, pageWidth - M, pageHeight - 10);
+            doc.setFontSize(8); doc.setFont("helvetica", "normal");
+            doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+            doc.text(String(docTitle), M, pageHeight - 6);
+            doc.text(`${p} / ${total}`, pageWidth - M, pageHeight - 6, { align: 'right' });
+        }
+    } catch(e) { console.warn('Fusszeile konnte nicht gesetzt werden', e); }
+
     doc.save(filename); showToast(t('toast_pdf'));
 }
 
@@ -8030,7 +8419,7 @@ function exportPDFGefiltert() {
 }
 function exportSingleTaskPDF() {
     const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return;
-    openPdfExportModal((extra) => createPDF([t_obj], "Aufgaben-Details", `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`, null, extra));
+    openPdfExportModal((extra) => createPDF([t_obj], t_obj.projectName || 'Aufgabe', `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`, null, extra));
 }
 function exportSingleStackPDF() {
     const id = document.getElementById('s_id').value; const stack = appData.projectStacks.find(s => s.id === id); if(!stack) return;
@@ -8084,7 +8473,10 @@ function snoozeNotifModal(minutes = 30) {
             appData.settings.firedNotifChannels = appData.settings.firedNotifChannels.filter(id => id !== _currentNotifModalId);
         }
         saveToLocal(true);
-        showToast(`Erinnerung in ${minutes} Minuten erneut.`);
+        const label = minutes >= 60
+            ? ((minutes % 60 === 0) ? `${minutes / 60} ${minutes === 60 ? 'Stunde' : 'Stunden'}` : `${Math.floor(minutes / 60)} Std ${minutes % 60} Min`)
+            : `${minutes} Minuten`;
+        showToast(`Erinnerung in ${label} erneut.`);
     }
     dismissNotifModal();
 }

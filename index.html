@@ -1170,7 +1170,16 @@
             <h3 id="notifModalTitle"></h3>
             <p id="notifModalBody"></p>
             <button class="nm-dismiss" onclick="dismissNotifModal()"><i class="fas fa-check"></i> Verstanden</button>
-            <button class="nm-snooze" id="notifModalSnoozeBtn" style="display:none;" onclick="snoozeNotifModal()"><i class="fas fa-clock"></i> In 30 Minuten erinnern</button>
+            <div class="nm-snooze-wrap" id="notifModalSnoozeBtn" style="display:none;">
+                <label for="notifModalSnoozeSelect"><i class="fas fa-clock"></i> <span data-i18n="nm_remind_again">Erneut erinnern</span></label>
+                <select id="notifModalSnoozeSelect" onchange="if(this.value){ snoozeNotifModal(parseInt(this.value,10)); this.selectedIndex=0; }">
+                    <option value="" data-i18n="nm_remind_choose">Später erinnern …</option>
+                    <option value="15" data-i18n="nm_remind_15">In 15 Minuten erinnern</option>
+                    <option value="30" data-i18n="nm_remind_30">In 30 Minuten erinnern</option>
+                    <option value="60" data-i18n="nm_remind_60">In 1 Stunde erinnern</option>
+                    <option value="120" data-i18n="nm_remind_120">In 2 Stunden erinnern</option>
+                </select>
+            </div>
         </div>
     </div>
 
