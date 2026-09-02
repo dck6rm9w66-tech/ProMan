@@ -651,6 +651,10 @@ function openMobileFilterMenu() {
     document.getElementById('mobileFilterMenu').classList.add('active');
 }
 
+/* …-Menue der Kopfzeile (Telefon/Tablet) */
+function openTopMoreMenu() { const m = document.getElementById('topMoreMenu'); if (m) m.classList.add('active'); }
+function closeTopMoreMenu() { const m = document.getElementById('topMoreMenu'); if (m) m.classList.remove('active'); }
+
 function openMobileExportMenu() {
     /* Robust: über die stabile ID statt über das (durch i18n veränderbare) title-Attribut */
     const src = document.getElementById('desktopExportContent')
@@ -1152,8 +1156,16 @@ function toggleFilterMenu(e) {
     else { el.style.display = 'none'; btn.classList.remove('open'); }
 }
 
+/* …-Menue (Export & Backup) per Klick oeffnen – auf Touchgeraeten gibt es kein Hover. */
+function toggleExportMenu(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('exportDropdown');
+    if (dd) dd.classList.toggle('open');
+}
+
 function closeAllMultiSelects(e) { 
     if(!e.target.closest('.ms-wrapper')) { document.querySelectorAll('.ms-dropdown').forEach(d => d.classList.remove('open')); } 
+    if(!e.target.closest('#exportDropdown')) { const _ed = document.getElementById('exportDropdown'); if(_ed) _ed.classList.remove('open'); }
     if(!e.target.closest('.filter-dropdown-container') && !e.target.closest('#mobileFilterMenu')) {
         const fm = document.getElementById('filterMenu'); const btn = document.getElementById('mainFilterDropdown');
         if(fm) { fm.style.display = 'none'; } if(btn) { btn.classList.remove('open'); }
@@ -2876,7 +2888,7 @@ function openStackModal(id = null) {
     const actionsContainer = document.getElementById('stack_header_actions'); let actionsHtml = '';
 
     if (id) {
-        document.getElementById('stackModalTitle').innerText = t('s_edit'); { const _pr = document.getElementById('s_preset_row'); if(_pr) _pr.style.display='none'; }
+        document.getElementById('stackModalTitle').innerText = t('s_edit');   /* wird unten durch den Stack-Namen ersetzt */ { const _pr = document.getElementById('s_preset_row'); if(_pr) _pr.style.display='none'; }
         document.getElementById('btnDeleteStack').style.display = 'block'; document.getElementById('dropdownShareStack').style.display = 'block';
         { const _bat = document.getElementById('btnAddExistingTaskToStack'); if(_bat) _bat.style.display = 'inline-flex'; }
         const s = appData.projectStacks.find(x => x.id === id);
@@ -2887,7 +2899,7 @@ function openStackModal(id = null) {
         let sDueDate = '', sDueTime = '';
         if(s.dueDate) { if(s.dueDate.includes('T')) [sDueDate, sDueTime] = s.dueDate.split('T'); else sDueDate = s.dueDate; }
 
-        document.getElementById('s_id').value = s.id; document.getElementById('s_name').value = s.name || ''; 
+        document.getElementById('s_id').value = s.id; document.getElementById('s_name').value = s.name || ''; document.getElementById('stackModalTitle').innerText = s.name || t('s_edit'); 
         document.getElementById('s_start_date').value = sStartDate; document.getElementById('s_start_time').value = sStartTime;
         document.getElementById('s_due_date').value = sDueDate; document.getElementById('s_due_time').value = sDueTime;
         document.getElementById('s_notes_rte').innerHTML = s.notes || ''; document.getElementById('s_history').value = s.history || ''; document.getElementById('s_assignee').value = s.assigneeId || ''; document.getElementById('s_stakeholder').value = s.stakeholderId || ''; document.getElementById('s_bucket').value = s.bucket || '';
@@ -2936,6 +2948,15 @@ function openStackModal(id = null) {
     }
     actionsContainer.innerHTML = actionsHtml;
 }
+/* Haelt den Modal-Titel mit dem eingegebenen Namen synchron, damit in jedem Tab
+   sichtbar bleibt, welche Aufgabe bzw. welcher Stack bearbeitet wird. */
+function syncModalTitle(titleElId, value, fallbackKey) {
+    const el = document.getElementById(titleElId);
+    if (!el) return;
+    const v = (value || '').trim();
+    el.innerText = v || t(fallbackKey);
+}
+
 function renderStackTasksContainer(stackId) {
     const tasksContainer = document.getElementById('s_tasks_container');
     if(!tasksContainer) return;
@@ -3131,7 +3152,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
     const actionsContainer = document.getElementById('task_header_actions'); let actionsHtml = '';
 
     if (taskId) {
-        document.getElementById('modalTitle').innerText = t('task_edit'); { const _pr = document.getElementById('t_preset_row'); if(_pr) _pr.style.display='none'; } const t_obj = appData.tasks.find(x => x.id === taskId);
+        document.getElementById('modalTitle').innerText = t('task_edit');   /* wird unten durch den Aufgaben-Namen ersetzt */ { const _pr = document.getElementById('t_preset_row'); if(_pr) _pr.style.display='none'; } const t_obj = appData.tasks.find(x => x.id === taskId);
         document.getElementById('taskId').value = t_obj.id; document.getElementById('btnDeleteTask').style.display = 'block'; document.getElementById('dropdownShareTask').style.display = 'block';
         
         const isCompleted = isTaskDone(t_obj);
@@ -3149,7 +3170,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
         let tDueDate = '', tDueTime = '';
         if(t_obj.dueDate) { if(t_obj.dueDate.includes('T')) [tDueDate, tDueTime] = t_obj.dueDate.split('T'); else tDueDate = t_obj.dueDate; }
 
-        document.getElementById('t_projectStack').value = t_obj.projectStackId || ''; document.getElementById('t_project').value = t_obj.projectName || ''; document.getElementById('t_stakeholder').value = t_obj.stakeholderId || ''; document.getElementById('t_bucket').value = t_obj.bucket || ''; document.getElementById('t_status').value = t_obj.status || (appData.statuses.length ? appData.statuses[0].id : ''); document.getElementById('t_priority').value = t_obj.priority || 'medium'; document.getElementById('t_assignee').value = t_obj.assigneeId || ''; document.getElementById('t_recurrence').value = t_obj.recurrence || 'none'; toggleCustomRecurrence();
+        document.getElementById('t_projectStack').value = t_obj.projectStackId || ''; document.getElementById('t_project').value = t_obj.projectName || ''; document.getElementById('modalTitle').innerText = t_obj.projectName || t('task_edit'); document.getElementById('t_stakeholder').value = t_obj.stakeholderId || ''; document.getElementById('t_bucket').value = t_obj.bucket || ''; document.getElementById('t_status').value = t_obj.status || (appData.statuses.length ? appData.statuses[0].id : ''); document.getElementById('t_priority').value = t_obj.priority || 'medium'; document.getElementById('t_assignee').value = t_obj.assigneeId || ''; document.getElementById('t_recurrence').value = t_obj.recurrence || 'none'; toggleCustomRecurrence();
         if(t_obj.recurrence === 'custom' && t_obj.customRecurrence) { document.getElementById('t_rec_num').value = t_obj.customRecurrence.num; document.getElementById('t_rec_type').value = t_obj.customRecurrence.type; }
         
         document.getElementById('t_start_date').value = tStartDate; document.getElementById('t_start_time').value = tStartTime;
@@ -9882,17 +9903,17 @@ function ttHeuteBook(iso){
        Auf dem Telefon der einzige Weg dorthin, deshalb immer sichtbar. */
     const bar = document.querySelector('.topbar-actions');
     if (bar && !document.getElementById('wkUserChip')) {
-      /* Export & Backup — nur auf Tablet/Telefon, links neben dem Profil-Kürzel.
-         Auf dem Desktop bleibt der vorhandene Topbar-Knopf, dieser hier ist ausgeblendet. */
-      if (!document.getElementById('wkExportChip')) {
-        const exp = document.createElement('button');
-        exp.className = 'wk-userchip wk-exportchip';
-        exp.id = 'wkExportChip';
-        exp.title = 'Export & Backup';
-        exp.setAttribute('aria-label', 'Export & Backup');
-        exp.innerHTML = '<i class="fas fa-file-export"></i>';
-        exp.onclick = function () { if (typeof openMobileExportMenu === 'function') openMobileExportMenu(); };
-        bar.appendChild(exp);
+      /* Telefon/Tablet: Darkmode, Export & Backup und Profil liegen gebuendelt
+         im …-Menue ganz rechts. Auf dem Desktop bleibt das Profil-Kuerzel. */
+      if (!document.getElementById('wkMoreChip')) {
+        const more = document.createElement('button');
+        more.className = 'wk-userchip wk-morechip';
+        more.id = 'wkMoreChip';
+        more.title = 'Mehr';
+        more.setAttribute('aria-label', 'Mehr');
+        more.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+        more.onclick = function (e) { e.stopPropagation(); if (typeof openTopMoreMenu === 'function') openTopMoreMenu(); };
+        bar.appendChild(more);
       }
       const chip = document.createElement('button');
       chip.className = 'wk-userchip';
@@ -10876,6 +10897,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const sum = appData.timeLogs.filter(l => l.taskId === tk.id).reduce((a, l) => a + (parseFloat(l.hours) || 0), 0);
             tk.spentTime = String(Math.round(sum * 100) / 100);
         });
+
+        /* Jede Kanban-Spalte soll mindestens eine Aufgabe zeigen (auch z. B. "Prüfung"). */
+        try {
+            const cols = appData.statuses.map(st => st.id);
+            cols.forEach(colId => {
+                if (appData.tasks.some(tk => tk.status === colId)) return;
+                /* eine noch offene Aufgabe aus der am staerksten besetzten Spalte umhaengen */
+                const counts = {};
+                appData.tasks.forEach(tk => { counts[tk.status] = (counts[tk.status] || 0) + 1; });
+                const donor = appData.tasks
+                    .filter(tk => tk.status !== colId && (counts[tk.status] || 0) > 1)
+                    .sort((a, b) => (counts[b.status] || 0) - (counts[a.status] || 0))[0];
+                if (donor) donor.status = colId;
+            });
+        } catch (e) { console.warn('Demo: Spaltenverteilung', e); }
 
         /* Stundensätze der Beteiligten (Basis für alle Budgetauswertungen) */
         if (appData.users[0]) appData.users[0].hourlyRate = 95;

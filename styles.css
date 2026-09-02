@@ -94,6 +94,7 @@ body { background-color: var(--bg-color); color: var(--text-main); display: flex
 }
 .topbar-left { display: flex; align-items: center; gap: 15px; margin-right: 16px; }
 .topbar-actions { display: flex; gap: 10px; align-items: center; }
+.mobile-only-action { display: none; }
 
 /* Content-Area */
 .content-area { flex: 1; padding: 20px; overflow: visible; position: relative; z-index: 1; }
@@ -631,16 +632,41 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     .mobile-fab:active { transform: scale(0.95); }
 
     .global-timer-container { display: none !important; }
-    #mainFilterDropdown, .topbar .dropdown[title="Export & Backup"], .topbar .dropdown:has(.fa-plus) { display: none !important; }
+    /* Mobil sichtbar: Suche, Filter, Benachrichtigungen und das …-Menue.
+       Nur das alte Plus-Dropdown und das Benutzer-Dropdown bleiben ausgeblendet. */
+    .topbar .dropdown:has(.fa-plus) { display: none !important; }
     .topbar .dropdown[title="Aktueller Benutzer (Profil-Einstellungen)"] { display: none !important; }
-    button[data-i18n-title="theme_toggle"] { display: none !important; }
+    /* Darkmode-Knopf ist mobil im …-Menue enthalten */
+    .topbar-actions button[data-i18n-title="theme_toggle"] { display: none !important; }
 
     /* --- 2. SUCHE (EXPANDABLE APP BAR) --- */
     .topbar { flex-wrap: nowrap; overflow: hidden; padding: 10px 15px; border-bottom: none; box-shadow: var(--shadow); position:relative; }
     .topbar-left { flex: 1; min-width: 0; transition: 0.3s; }
     
     .filter-area { margin-left: auto; padding-right: 0; justify-content: flex-end; flex: 0 1 auto; position: static; display: flex; align-items: center; transition: 0.3s; background: transparent; }
-    .topbar-actions { flex-shrink: 0; transition: 0.3s; }
+    .topbar-actions { flex-shrink: 0; transition: 0.3s; display: flex; align-items: center; gap: 2px; }
+    /* Mobil: Darkmode, Export & Backup und Profil wandern in das …-Menue rechts.
+       Sichtbar bleiben links davon: Suche, Filter, Benachrichtigungen. */
+    .topbar-actions .desktop-only-action { display: none !important; }
+    .topbar-actions .icon-btn, .topbar-actions .dropdown > button { padding: 6px 8px !important; }
+    /* Auf dem Telefon uebernimmt das …-Kuerzel der Shell; das HTML-Menue waere doppelt */
+    #exportDropdown { display: none !important; }
+    /* Aufklapp-Menues duerfen auf schmalen Displays nicht aus dem Bild laufen */
+
+    /* Aufklapp-Menues der Kopfzeile duerfen nicht abgeschnitten oder ueberlagert werden.
+       Die Kopfzeile hat overflow:hidden (fuer die Suchleiste) – ausserhalb der Suche
+       muss sie durchlaessig sein, sonst verschwindet das Filtermenue dahinter. */
+    .topbar:not(.search-active) { overflow: visible; z-index: 1200; }
+    #mainFilterDropdown.open #filterMenu,
+    .topbar-actions .dropdown-content {
+        position: absolute !important; top: calc(100% + 6px) !important;
+        left: 12px !important; right: 12px !important;
+        width: auto !important; max-width: none !important;
+        max-height: calc(100vh - 160px); overflow-y: auto;
+        z-index: 3000 !important; box-shadow: 0 12px 30px rgba(0,0,0,.28);
+    }
+    /* Bezugspunkt ist die Kopfzeile selbst, damit die Menues direkt darunter sitzen */
+    .topbar-actions .dropdown { position: static; }
     
     .search-box { width: 44px; height: 44px; background: transparent; border: none; padding: 0; margin: 0; cursor: pointer; display: flex; justify-content: center; align-items: center; }
     .search-box input, .search-back-btn, .search-clear-btn { display: none !important; }
@@ -2862,10 +2888,15 @@ body.dep-connect-active .dep-canvas .dep-gnode{cursor:crosshair}
   60%{box-shadow:0 0 0 2px color-mix(in srgb, var(--primary-color) 50%, transparent)}
 }
 
-/* Export-Kürzel oben rechts: nur auf Tablet/Telefon; auf dem Desktop bleibt der Topbar-Knopf */
-.wk-exportchip{ display:grid; }
+/* …-Kürzel oben rechts: nur auf Tablet/Telefon (buendelt Darkmode, Export & Backup, Profil).
+   Auf dem Desktop bleiben die einzelnen Knoepfe in der Kopfzeile. */
+.wk-morechip{ display:grid; order:99; }
 @media (min-width:1089px){
-  .wk-exportchip{ display:none !important; }
+  .wk-morechip{ display:none !important; }
+}
+@media (max-width:1088px){
+  /* Profil-Kuerzel steckt mobil im …-Menue */
+  #wkUserChip{ display:none !important; }
 }
 
 /* Hub — Checkpunkt-Karten: schräges Streifenmuster über dem farbigen Randstreifen

@@ -45,7 +45,7 @@
                 <button class="secondary icon-btn" onclick="openSearchModal()" title="Suche (Strg+K)" style="font-size: 16px; padding: 6px 10px;">
                     <i class="fas fa-search"></i>
                 </button>
-                <button class="secondary icon-btn" onclick="toggleTheme()" data-i18n-title="theme_toggle" title="Light/Dark Mode" style="font-size: 16px; padding: 6px 10px;"><i class="fas fa-moon"></i></button>
+                <button class="secondary icon-btn desktop-only-action" onclick="toggleTheme()" data-i18n-title="theme_toggle" title="Light/Dark Mode" style="font-size: 16px; padding: 6px 10px;"><i class="fas fa-moon"></i></button>
                 
                 <!-- Filter Dropdown -->
                 <div class="dropdown click-only filter-dropdown-container" id="mainFilterDropdown">
@@ -67,10 +67,10 @@
                     <div class="dropdown-content" style="width:360px; max-height:400px; overflow-y:auto; padding:0; right:-50px;" id="notifContainer"></div>
                 </div>
 
-                <div id="active_user_icon" style="display:none;"></div>
+                <div id="active_user_icon" class="desktop-only-action" style="display:none;"></div>
 
-                <div class="dropdown" id="exportDropdown" data-i18n-title="export_title" title="Export & Backup">
-                    <button class="secondary"><i class="fas fa-ellipsis-v"></i></button>
+                <div class="dropdown click-only" id="exportDropdown" data-i18n-title="export_title" title="Export & Backup">
+                    <button class="secondary icon-btn" onclick="toggleExportMenu(event)"><i class="fas fa-ellipsis-v"></i></button>
                     <div class="dropdown-content">
                         <div id="desktopExportContent">
                             <a onclick="exportSharedData(getFilteredTasks(), getFilteredStacks(), 'proman_shared_view.json')"><i class="fas fa-share-alt"></i> <span data-i18n="export_share">Gefilterte Ansicht teilen (JSON)</span></a>
@@ -111,6 +111,20 @@
     <button class="mobile-fab" id="wkFab" aria-label="Neu anlegen"><i class="fas fa-plus"></i></button>
 
     <!-- MOBILE MORE MENU (Bottom Sheet) -->
+    <!-- Kopfzeilen-Menue (Telefon/Tablet): Darkmode, Export & Backup, Profil -->
+    <div class="modal-overlay" id="topMoreMenu">
+        <div class="modal-content bottom-sheet-mobile">
+            <div class="modal-header" style="border-bottom:none; padding-bottom:0; justify-content:flex-end;">
+                <button class="secondary icon-btn modal-close-btn" onclick="closeTopMoreMenu()"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple" style="padding: 4px 20px 30px;">
+                <div class="ms-btn" style="margin-bottom:10px;" onclick="closeTopMoreMenu(); toggleTheme();"><i class="fas fa-moon" style="width:20px; color:var(--text-muted)"></i> <span data-i18n="theme_toggle">Light/Dark Mode</span></div>
+                <div class="ms-btn" style="margin-bottom:10px;" onclick="closeTopMoreMenu(); openMobileExportMenu();"><i class="fas fa-file-export" style="width:20px; color:var(--text-muted)"></i> <span data-i18n="export_title">Export &amp; Backup</span></div>
+                <div class="ms-btn" onclick="closeTopMoreMenu(); openSettings();"><i class="fas fa-cog" style="width:20px; color:var(--text-muted)"></i> <span data-i18n="settings_profile">Profil &amp; Einstellungen</span></div>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="mobileMoreMenu">
         <div class="modal-content bottom-sheet-mobile">
             <div class="modal-header">
@@ -424,7 +438,7 @@
                     </div>
                     <div style="margin-bottom: 10px;">
                         <span class="form-label" data-i18n="t_name">Aufgabenname</span>
-                        <input type="text" id="t_project" required style="font-size: 20px; font-weight: bold; padding: 15px;">
+                        <input type="text" id="t_project" required style="font-size: 20px; font-weight: bold; padding: 15px;" oninput="syncModalTitle('modalTitle', this.value, 'task_new')">
                     </div>
                     
                     <div class="form-grid-2">
@@ -644,7 +658,7 @@
                         <select id="s_preset_select" onchange="applyPresetToForm('stack', this.value)"></select>
                     </div>
                     <div class="form-grid-2">
-                        <div style="grid-column: span 2;"><span class="form-label" data-i18n="s_name">Projekt-Name</span><input type="text" id="s_name" required style="font-weight:bold; font-size:16px;"></div>
+                        <div style="grid-column: span 2;"><span class="form-label" data-i18n="s_name">Projekt-Name</span><input type="text" id="s_name" required style="font-weight:bold; font-size:16px;" oninput="syncModalTitle('stackModalTitle', this.value, 's_new')"></div>
                         <div><span class="form-label" data-i18n="t_assignee">Verantwortlich (Benutzer)</span><select id="s_assignee"></select></div>
                         <div><span class="form-label" data-i18n="t_sh">Stakeholder</span><select id="s_stakeholder"></select></div>
                         
