@@ -314,7 +314,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .cal-day-header { text-align: center; font-weight: bold; padding: 10px; background: var(--surface-color); border-radius: var(--radius); border: 1px solid var(--border-color); }
 .cal-day { background: var(--surface-color); min-height: 70px; padding: 4px; border-radius: var(--radius); border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 2px; scroll-margin-top: 100px; }
 .cal-day.empty { background: transparent; border: none; }
-.cal-day.today { border: 2px solid var(--primary-color); }
+.cal-day.today { border: 2px solid var(--wk-magnet, #FFC93C); }
 
 /* Drag & Drop: Aufgaben/Stacks aus Ganztägig/Backlog in die Planung ziehen */
 .sched-drop-hover { outline: 2px dashed var(--primary-color) !important; outline-offset: -2px; background-color: var(--primary-lightest) !important; }
@@ -334,7 +334,8 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .year-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 20px; }
 .month-card { background: var(--surface-color); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 15px; cursor: pointer; transition: 0.2s; min-height: 140px; display:flex; flex-direction: column; scroll-margin-top: 100px; }
 .month-card:hover { border-color: var(--primary-color); transform: translateY(-2px); box-shadow: var(--shadow); }
-.month-card.current { border-color: var(--primary-color); border-width: 2px; }
+.month-card.current { border-color: var(--wk-magnet, #FFC93C) !important; border-width: 2px; background: #FFF6DA; background: color-mix(in srgb, var(--wk-magnet, #FFC93C) 18%, var(--surface-color)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wk-magnet, #FFC93C) 30%, transparent); }
+.month-card.current .month-card-title { color: var(--text-main); font-weight: 800; border-bottom: 2px solid var(--wk-magnet, #FFC93C); }
 .month-card-title { font-weight: bold; font-size: 15px; margin-bottom: 5px; text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
 
 /* Progress Bars */
@@ -725,6 +726,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     .calendar-grid { display: flex; flex-direction: column; min-width: 0 !important; border: none !important; }
     .cal-day-header { display: none; }
     .cal-day { min-height: auto !important; margin-bottom: 15px; border: 1px solid var(--border-color) !important; border-radius: var(--radius) !important; padding: 10px !important; box-shadow: var(--shadow); }
+    .cal-day.today { border: 2px solid var(--wk-magnet, #FFC93C) !important; background: #FFF6DA; background: color-mix(in srgb, var(--wk-magnet, #FFC93C) 20%, var(--surface-color)) !important; }
     .cal-day .cal-event { margin-bottom: 8px; }
     .year-grid { grid-template-columns: 1fr; }
 

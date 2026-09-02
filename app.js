@@ -6046,7 +6046,8 @@ function renderSchedule(c) {
             
             const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
             let sortedWorkDays = [...workDays].sort((a,b) => { if(a===0) return 1; if(b===0) return -1; return a-b; });
-            sortedWorkDays.forEach(d => html += `<div class="cal-day-header" style="border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none;">${dayNames[d]}</div>`);
+            const _todayDow = new Date().getDay();
+            sortedWorkDays.forEach(d => { const _isTodayCol = (d === _todayDow); html += `<div class="cal-day-header" style="border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none; ${_isTodayCol ? 'color:var(--text-main); font-weight:800; background:#FFF6DA; background:color-mix(in srgb, var(--wk-magnet, #FFC93C) 24%, var(--surface-color)); box-shadow: inset 0 -3px 0 var(--wk-magnet, #FFC93C);' : ''}">${dayNames[d]}</div>`; });
             
             const todayStr = new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -6101,7 +6102,16 @@ function renderSchedule(c) {
                 let kwBadge = ''; const iterD = new Date(dateStr);
                 if(iterD.getDay() === 1 || iterD.getDate() === 1) { kwBadge = `<span style="font-size:9px; color:var(--primary-color); background:var(--primary-lightest); padding:2px 4px; border-radius:4px; margin-right:auto;">KW ${getISOWeek(iterD)}</span>`; }
 
-                return `<div class="cal-day ${dateStr===todayStr?'today':''}" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${dateStr}')" style="min-height:${minHeight}; border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none; padding:4px 2px;"><div style="display:flex; justify-content:flex-end; align-items:center; font-size:12px; font-weight:bold; color:${dateStr===todayStr?'var(--primary-color)':'var(--text-muted)'}; margin-bottom: 4px; padding-right:4px;">${kwBadge}${dayNum}</div>${evHtml}</div>`;
+                const _isToday = (dateStr === todayStr);
+                /* Heutiger Tag: Hervorhebung muss inline gesetzt werden, da die
+                   inline-Rahmen sonst die Regel .cal-day.today ueberschreiben. */
+                const _todayCell = _isToday
+                    ? 'border:2px solid var(--wk-magnet, #FFC93C) !important; background:#FFF6DA; background:color-mix(in srgb, var(--wk-magnet, #FFC93C) 20%, var(--surface-color)) !important;'
+                    : 'border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-left:none; border-top:none;';
+                const _todayNum = _isToday
+                    ? 'background:var(--wk-magnet, #FFC93C); color:#22262B; border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; padding:0 6px; font-weight:800;'
+                    : '';
+                return `<div class="cal-day ${_isToday?'today':''}" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${dateStr}')" style="min-height:${minHeight}; ${_todayCell} border-radius:0; padding:4px 2px;"><div style="display:flex; justify-content:flex-end; align-items:center; font-size:12px; font-weight:bold; color:${_isToday?'var(--text-main)':'var(--text-muted)'}; margin-bottom: 4px; padding-right:4px;">${kwBadge}<span style="${_todayNum}">${dayNum}</span></div>${evHtml}</div>`;
             };
 
             if (isMonth) {
@@ -6204,9 +6214,10 @@ function renderSchedule(c) {
             /* Abwesenheiten (Urlaub, Krank, Feiertag, Kompensation) gesondert darstellen */
             if (ev.type === 'absence') {
                 const a = ev.data;
+                const absDate = a.date ? ttFmtDate(a.date) : '';
                 return `<div class="agenda-card absence" style="--abs:${ttAbsColor(a.type)}" onclick="switchView('time')">
                     <div class="agenda-ic" style="background:${ttAbsColor(a.type)}"><i class="fas ${ttAbsIcon(a.type)}"></i></div>
-                    <div class="agenda-body"><b>${ttAbsLabel(a.type)}</b>${a.note ? `<span class="agenda-sub">${escapeHtmlToday(a.note)}</span>` : ''}</div>
+                    <div class="agenda-body"><b>${ttAbsLabel(a.type)}</b><span class="agenda-sub">${absDate}${a.note ? ' · ' + escapeHtmlToday(a.note) : ''}</span></div>
                     <div class="agenda-hours">${ttNum(a.hours)} h</div>
                 </div>`;
             }
@@ -10718,7 +10729,7 @@ document.addEventListener('DOMContentLoaded', () => {
         /* Projektdefinitionen: relative Tage (zu heute) für Start/Ende je Aufgabe */
         const defs = [
             {
-                name: 'Kampagne Papiertragetaschen Frühjahr', bucket: 'Design', sh: 0,
+                name: 'Kampagne Papiertragetaschen Frühjahr', bucket: 'Design', sh: 0, budget: 18000,
                 tasks: [
                     { t: 'Designkonzept & Motive', s: -58, e: -44, cl: ['Briefing auswerten', 'Moodboard erstellen', 'Motive skizzieren'] },
                     { t: 'Kundenfreigabe Design', s: -44, e: -36, cl: ['Präsentation vorbereiten', 'Freigabe einholen'], dep: 0 },
@@ -10728,7 +10739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ]
             },
             {
-                name: 'Briefbogen-Redesign Geschäftskunden', bucket: 'Design', sh: 1,
+                name: 'Briefbogen-Redesign Geschäftskunden', bucket: 'Design', sh: 1, budget: 9500,
                 tasks: [
                     { t: 'Analyse Bestandsbriefbögen', s: -52, e: -42, cl: ['Vorlagen sammeln', 'Schwachstellen notieren'] },
                     { t: 'Neuentwurf Layout', s: -42, e: -28, cl: ['Typografie festlegen', 'Rasterentwurf', 'Varianten anlegen'], dep: 0 },
@@ -10737,7 +10748,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ]
             },
             {
-                name: 'Messeauftritt Verpackungsmesse', bucket: 'Logistik', sh: 3,
+                name: 'Messeauftritt Verpackungsmesse', bucket: 'Logistik', sh: 3, budget: 24000,
                 tasks: [
                     { t: 'Standkonzept', s: -30, e: -18, cl: ['Fläche planen', 'Materialien wählen'] },
                     { t: 'Werbemittel produzieren', s: -18, e: -2, cl: ['Muster-Tragetaschen drucken', 'Flyer gestalten', 'Roll-ups bestellen'], dep: 0 },
@@ -10745,7 +10756,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ]
             },
             {
-                name: 'Sonderedition Boutique-Tüten', bucket: 'Druck', sh: 2,
+                name: 'Sonderedition Boutique-Tüten', bucket: 'Druck', sh: 2, budget: 6000,
                 tasks: [
                     { t: 'Materialmuster beschaffen', s: -20, e: -10, cl: ['Papiersorten anfragen', 'Haptik-Muster prüfen'] },
                     { t: 'Veredelung abstimmen', s: -10, e: 6, cl: ['Heißfolie testen', 'Prägung abstimmen'], dep: 0 },
@@ -10758,7 +10769,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         defs.forEach(def => {
             const stackId = generateId();
-            appData.projectStacks.push({ id: stackId, name: def.name, status: 'active', checklist: [], startDate: shift(def.tasks[0].s), dueDate: shift(def.tasks[def.tasks.length - 1].e), notes: '', history: '', assigneeId: uid, stakeholderId: shId(def.sh), bucket: def.bucket, predecessors: [] });
+            appData.projectStacks.push({ id: stackId, name: def.name, status: 'active', checklist: [], startDate: shift(def.tasks[0].s), dueDate: shift(def.tasks[def.tasks.length - 1].e), notes: '', history: '', assigneeId: uid, stakeholderId: shId(def.sh), bucket: def.bucket, predecessors: [], targetBudget: def.budget || null });
             const taskIds = [];
             def.tasks.forEach(tk => {
                 const id = generateId();
@@ -10767,11 +10778,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 const inProg = tk.s <= 0 && tk.e >= 0;   /* läuft gerade */
                 const status = done ? 'done' : (inProg ? 'inProgress' : 'todo');
                 const preds = (tk.dep != null && taskIds[tk.dep]) ? [taskIds[tk.dep]] : [];
+                /* Checkpunkte: vereinzelt mit Datum und Stundenangabe, damit Kalender,
+                   Gantt und Auswertungen realistische Werte zeigen. */
+                const clSpan = Math.max(1, tk.e - tk.s);
                 const checklist = tk.cl.map((title, ci) => {
                     const cdone = done || (inProg && ci === 0);
-                    return { id: generateId(), title, done: cdone, predecessors: [], dueDate: '', startDate: '', duration: 0, assigneeId: uid };
+                    const item = { id: generateId(), title, done: cdone, predecessors: [], dueDate: '', startDate: '', duration: 0, assigneeId: uid };
+                    /* ungefähr jeder zweite Checkpunkt bekommt einen Termin */
+                    if (ci % 2 === 0) {
+                        const offset = tk.s + Math.round((clSpan / Math.max(1, tk.cl.length)) * ci);
+                        const cDate = shift(offset);
+                        const withTime = (ci % 4 === 0);          /* mal mit, mal ohne Uhrzeit */
+                        const durMin = [90, 120, 180, 240][ci % 4];
+                        const sched = computeChecklistSchedule(cDate, withTime ? '09:00' : '', durMin);
+                        item.startDate = sched.startDate;
+                        item.dueDate = sched.dueDate;
+                        item.duration = sched.duration;
+                        item.allDay = sched.allDay;
+                    } else if (ci === 1 && tk.cl.length > 2) {
+                        /* nur vereinzelt eine Aufwandsschätzung ohne Termin */
+                        item.duration = 120;
+                    }
+                    return item;
                 });
-                const task = { id, projectName: tk.t, status, bucket: def.bucket, priority: (tk.dep == null ? 'high' : 'medium'), checklist, predecessors: preds, files: [], startDate: sIso, dueDate: eIso, spentTime: '0', estimatedTime: String(6 + tk.cl.length * 2), projectStackId: stackId, stakeholderId: shId(def.sh), assigneeId: uid };
+                /* Checkpunkt-Ketten: der zweite Punkt hängt am ersten */
+                if (checklist.length > 1) checklist[1].predecessors = [checklist[0].id];
+                if (checklist.length > 2 && tk.dep != null) checklist[2].predecessors = [checklist[1].id];
+                const task = { id, projectName: tk.t, status, bucket: def.bucket, priority: (tk.dep == null ? 'high' : 'medium'), checklist, predecessors: preds, files: [], startDate: sIso, dueDate: eIso, spentTime: '0', estimatedTime: String(6 + tk.cl.length * 2), projectStackId: stackId, stakeholderId: shId(def.sh), assigneeId: uid, targetBudget: (tk.dep == null ? 3500 : null) };
                 if (done) task.completedAt = ttParse(eIso).getTime();
                 appData.tasks.push(task);
                 taskIds.push(id);
@@ -10808,6 +10841,36 @@ document.addEventListener('DOMContentLoaded', () => {
         appData.tasks.forEach(tk => {
             const sum = appData.timeLogs.filter(l => l.taskId === tk.id).reduce((a, l) => a + (parseFloat(l.hours) || 0), 0);
             tk.spentTime = String(Math.round(sum * 100) / 100);
+        });
+
+        /* Stundensätze der Beteiligten (Basis für alle Budgetauswertungen) */
+        if (appData.users[0]) appData.users[0].hourlyRate = 95;
+        appData.users.slice(1).forEach((u, i) => { u.hourlyRate = [110, 85, 120][i % 3]; });
+        appData.settings.defaultHourlyRate = 90;
+        appData.settings.currency = appData.settings.currency || 'EUR';
+        appData.settings.monthlyBudget = 12000;
+
+        /* Eine projektübergreifende Abhängigkeit, damit die Abhängigkeits-Ansicht Ketten zeigt */
+        try {
+            const messe = appData.tasks.find(x => x.projectName === 'Werbemittel produzieren');
+            const druck = appData.tasks.find(x => x.projectName === 'Produktion & Druck');
+            if (messe && druck && !messe.predecessors.includes(druck.id)) messe.predecessors.push(druck.id);
+        } catch (e) {}
+
+        /* Einzelaufgabe ohne Stack – mit eigenem Budget */
+        appData.tasks.push({
+            id: generateId(), projectName: 'Jahresplanung Materialeinkauf', status: 'todo',
+            bucket: 'Kundenbetreuung', priority: 'medium', projectStackId: '',
+            stakeholderId: shId(3), assigneeId: uid,
+            startDate: shift(3), dueDate: shift(21), spentTime: '0', estimatedTime: '16',
+            targetBudget: 4200, predecessors: [], files: [],
+            checklist: (function () {
+                const a = { id: generateId(), title: 'Bedarf erheben', done: false, predecessors: [], assigneeId: uid };
+                const sched = computeChecklistSchedule(shift(5), '09:00', 180);
+                a.startDate = sched.startDate; a.dueDate = sched.dueDate; a.duration = sched.duration; a.allDay = sched.allDay;
+                const b = { id: generateId(), title: 'Angebote vergleichen', done: false, predecessors: [a.id], assigneeId: uid, startDate: '', dueDate: '', duration: 240 };
+                return [a, b];
+            })()
         });
     }
 
