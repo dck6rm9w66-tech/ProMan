@@ -113,8 +113,8 @@ const colors16 = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f
 const defaultViews = [
     { id: 'today',        name: 'Heute',            icon: 'fa-sun',              hidden: true  },
     { id: 'kanban',       name: 'Kanban Board',     icon: 'fa-columns',          hidden: false },
-    { id: 'list',         name: 'Liste',             icon: 'fa-list',             hidden: false },
     { id: 'stacks',       name: 'Projekt-Stacks',   icon: 'fa-folder-open',      hidden: false },
+    { id: 'list',         name: 'Liste',             icon: 'fa-list',             hidden: false },
     { id: 'planner',      name: 'Planung',          icon: 'fa-calendar-alt',     hidden: false },
     { id: 'schedule',     name: 'Kalender',          icon: 'fa-calendar-alt',     hidden: true  },
     { id: 'timeline',     name: 'Gantt-Diagramm',   icon: 'fa-stream',           hidden: true  },
@@ -6155,18 +6155,52 @@ function renderSchedule(c) {
         } else if (isYear) {
             html += `<div class="year-grid">`; const y = scheduleCurrentDate.getFullYear();
             for(let m = 0; m < 12; m++) {
-                let monthName = new Date(y, m, 1).toLocaleString('de-DE', {month: 'long'}); let mEvents = events.filter(e => e.date.getFullYear() === y && e.date.getMonth() === m);
-                let uniqueTasks = new Set(mEvents.filter(e => e.type === 'task').map(e => e.data.id)).size; let uniqueStacks = new Set(mEvents.filter(e => e.type === 'stack').map(e => e.data.id)).size; let uniqueMiles = new Set(mEvents.filter(e => e.type === 'milestone').map(e => e.data.title + e.parent.id)).size; let uniqueTcl = new Set(mEvents.filter(e => e.type === 'task-checklist').map(e => e.data.title + e.parent.id)).size;
+                let monthName = new Date(y, m, 1).toLocaleString('de-DE', {month: 'long'});
+                let mEvents = events.filter(e => e.date.getFullYear() === y && e.date.getMonth() === m);
                 const isCurrentMonth = (new Date().getFullYear() === y && new Date().getMonth() === m);
-
                 const monthFirstDayStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
+
+                /* Einträge des Monats als echte Titel auflisten (dedupliziert, nach Datum sortiert) */
+                const seen = new Set();
+                const entries = [];
+                mEvents.slice().sort((a, b) => a.date - b.date).forEach(ev => {
+                    let key = '', title = '', icon = '', col = 'var(--primary-color)', click = '', comp = false;
+                    if (ev.type === 'task') {
+                        key = 'T' + ev.data.id; title = ev.data.projectName; icon = 'fa-tasks';
+                        click = `event.stopPropagation(); openModal('${ev.data.id}')`; comp = isTaskDone(ev.data);
+                    } else if (ev.type === 'stack') {
+                        key = 'S' + ev.data.id; title = ev.data.name; icon = 'fa-folder';
+                        click = `event.stopPropagation(); openStackModal('${ev.data.id}')`; comp = ev.data.status === 'completed';
+                    } else if (ev.type === 'milestone') {
+                        key = 'M' + ev.parent.id + ev.data.id; title = ev.data.title; icon = 'fa-flag';
+                        click = `event.stopPropagation(); openStackModal('${ev.parent.id}')`; comp = !!ev.data.done;
+                    } else if (ev.type === 'task-checklist') {
+                        key = 'C' + ev.parent.id + ev.data.id; title = ev.data.title; icon = 'fa-check-square';
+                        click = `event.stopPropagation(); openTaskToCheckpoint('${ev.parent.id}','${ev.data.id}')`; comp = !!ev.data.done;
+                    } else if (ev.type === 'absence') {
+                        key = 'A' + ev.data.id; title = ttAbsLabel(ev.data.type) + (ev.data.note ? ' – ' + ev.data.note : '');
+                        icon = ttAbsIcon(ev.data.type); col = ttAbsColor(ev.data.type);
+                        click = `event.stopPropagation(); switchView('time')`;
+                    } else return;
+                    if (!key || seen.has(key)) return;
+                    seen.add(key);
+                    entries.push({ title: title || '-', icon, col, click, comp, day: ev.date.getDate() });
+                });
+
+                const MAX = 6;
+                const shown = entries.slice(0, MAX);
+                const restCount = entries.length - shown.length;
+
                 html += `<div class="month-card ${isCurrentMonth?'current':''}" onclick="scheduleCurrentDate.setMonth(${m}); scheduleMode='month'; safeRenderSchedule()" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${monthFirstDayStr}')">
-                    <div class="month-card-title" style="color:${isCurrentMonth?'var(--primary-color)':'inherit'}">${monthName}</div>
-                    <div style="font-size:12px; color:var(--text-muted); display:flex; flex-direction:column; gap:5px; align-items:center; margin-top: 5px;">
-                        ${uniqueTasks > 0 ? `<span class="badge" style="background:var(--primary-light); color:var(--primary-color); width:100%; text-align:center; padding: 6px;"><i class="fas fa-tasks"></i> ${uniqueTasks} ${t('tasks')}</span>` : ''}
-                        ${uniqueStacks > 0 ? `<span class="badge" style="background:var(--primary-light); color:var(--primary-color); width:100%; text-align:center; padding: 6px;"><i class="fas fa-folder"></i> ${uniqueStacks} Stacks</span>` : ''}
-                        ${(uniqueMiles + uniqueTcl) > 0 ? `<span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); width:100%; text-align:center; padding: 6px;"><i class="fas fa-check-square"></i> ${uniqueMiles + uniqueTcl} Checkpunkte</span>` : ''}
-                        ${uniqueTasks === 0 && uniqueStacks === 0 && uniqueMiles === 0 && uniqueTcl === 0 ? `<span style="opacity:0.5; margin-top:10px;">Keine Einträge</span>` : ''}
+                    <div class="month-card-title">${monthName}</div>
+                    <div class="month-card-list">
+                        ${shown.map(en => `<div class="mc-item ${en.comp ? 'is-done' : ''}" title="${escapeHtmlToday(en.title)}" onclick="${en.click}">
+                            <span class="mc-day">${en.day}.</span>
+                            <i class="fas ${en.icon}" style="color:${en.col};"></i>
+                            <span class="mc-title">${escapeHtmlToday(en.title)}</span>
+                        </div>`).join('')}
+                        ${restCount > 0 ? `<div class="mc-more">+${restCount} ${t('year_more')}</div>` : ''}
+                        ${entries.length === 0 ? `<span style="opacity:0.5; font-size:12px; display:block; text-align:center; margin-top:10px;">Keine Einträge</span>` : ''}
                     </div>
                 </div>`;
             }
@@ -9763,8 +9797,8 @@ function ttHeuteBook(iso){
     ]},
     { k: 'arbeit', label: 'Arbeit', icon: 'fa-columns', lenses: [
         { v: 'kanban',   l: 'Board',    i: 'fa-columns' },
-        { v: 'list',     l: 'Liste',    i: 'fa-list' },
         { v: 'stacks',   l: 'Stapel',   i: 'fa-folder-open' },
+        { v: 'list',     l: 'Liste',    i: 'fa-list' },
         { v: 'schedule', l: 'Kalender', i: 'fa-calendar-alt' },
         { v: 'timeline', l: 'Gantt',    i: 'fa-stream' }
     ]},

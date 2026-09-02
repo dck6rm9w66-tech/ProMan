@@ -338,6 +338,18 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .month-card.current .month-card-title { color: var(--text-main); font-weight: 800; border-bottom: 2px solid var(--wk-magnet, #FFC93C); }
 .month-card-title { font-weight: bold; font-size: 15px; margin-bottom: 5px; text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
 
+/* Jahresansicht: Einträge je Monat mit Titel */
+.month-card { min-height: 170px; }
+.month-card-list { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; overflow: hidden; }
+.mc-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; line-height: 1.35; padding: 2px 4px; border-radius: 4px; cursor: pointer; min-width: 0; }
+.mc-item:hover { background: var(--bg-color); }
+.mc-item.is-done { opacity: 0.55; }
+.mc-item.is-done .mc-title { text-decoration: line-through; }
+.mc-day { font-family: var(--ff-data); color: var(--text-muted); font-size: 10.5px; min-width: 20px; text-align: right; flex-shrink: 0; }
+.mc-item i { font-size: 10px; flex-shrink: 0; width: 12px; text-align: center; }
+.mc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.mc-more { font-size: 10.5px; color: var(--text-muted); padding: 2px 4px 0 30px; }
+
 /* Progress Bars */
 .pb-container { width:100%; background:var(--border-color); border-radius:4px; height:6px; overflow:hidden; margin-top:5px; }
 .pb-fill { background:var(--primary-color); height:100%; border-radius:4px; transition: width 0.3s; }
