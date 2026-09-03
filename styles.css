@@ -353,8 +353,26 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 
 /* Progress Bars */
 .pb-container { width:100%; background:var(--border-color); border-radius:4px; height:6px; overflow:hidden; margin-top:5px; }
-.pb-fill { background:var(--primary-color); height:100%; border-radius:4px; transition: width 0.3s; }
-.pb-fill.secondary { background:var(--primary-color); opacity: 0.5; }
+.pb-fill { background:var(--success); height:100%; border-radius:4px; transition: width 0.3s; }
+.pb-fill.secondary { background:var(--success); opacity: 0.65; }
+
+/* Fortschritts-Spalte der Listenansicht: in einer Tabellenzelle hat der Flex-Container
+   keine feste Breite, dadurch lief die prozentuale Breite des Balkens ins Leere. */
+.list-progress-cell { display:flex; align-items:center; gap:8px; width:100%; min-width:110px; }
+.list-progress-cell .pb-container { flex:1 1 auto; min-width:60px; margin-top:0; }
+.list-progress-cell small { flex:0 0 auto; min-width:32px; text-align:right; font-family:var(--ff-data); }
+
+/* Verwaltung: Balken der verbuchten Stunden je Woche (letzte vier Wochen) */
+.wh-chart-wrap { margin: 6px 0 12px; }
+.wh-head { display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text-muted); margin-bottom:4px; }
+.wh-head b { font-family:var(--ff-data); color:var(--text-main); font-size:12px; }
+/* Wochenbalken: Groessen und Farben werden bewusst inline gesetzt (siehe buildWeeklyHoursChartHtml).
+   Hier bewusst KEINE Hoehen/Flex-Angaben, sonst ueberschreiben sie die berechneten Pixelhoehen
+   und alle Balken werden gleich hoch bzw. verschwinden. */
+.wh-chart { padding-top:2px; }
+.wh-val { font-family:var(--ff-data); }
+.wh-fill { transition:height .3s; }
+.wh-col u { font-family:var(--ff-data); }
 .time-pb-container { width:100%; background:var(--border-color); border-radius:4px; height:8px; display:flex; overflow:hidden; margin-top:5px; }
 .time-pb-spent { background:var(--success); height:100%; transition: 0.3s; }
 .time-pb-spent.over { background:var(--danger); }
@@ -1763,7 +1781,7 @@ button.active:not(.wk-lens):not(.secondary):not(.modal-tab-btn):not(.stack-tab-b
 .wk-linkbtn:hover::after{transform:scaleX(1)}
 
 /* Fortschrittsbalken, Zeitschienen: Graphit als Füllung */
-.pb-bar, .pb-container > div:not([class]){background:var(--wk-graphite) !important}
+.pb-bar, .pb-container > div:not([class]):not(.pb-fill){background:var(--wk-graphite) !important}
 [data-theme="dark"] .pb-bar{background:var(--accent) !important}
 
 /* Checkboxen/Radios in Graphit statt Systemblau */

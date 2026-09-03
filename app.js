@@ -566,11 +566,85 @@ function getAvatarHtml(userId, sizeCls = 'avatar-md', titleStr = '') {
 
 function handleRTEBlur(el) { }
 
+/* Erkennt eine gelbe Markierung unabhaengig von der Schreibweise des Browsers. */
+function rteIsHighlightColor(v) {
+    if (!v) return false;
+    const c = String(v).replace(/\s+/g, '').toLowerCase();
+    return c === 'yellow' || c === '#ffff00' || c === '#ff0' || c.startsWith('rgb(255,255,0') || c.startsWith('rgba(255,255,0');
+}
+function rteHasHighlight(el) {
+    if (!el || el.nodeType !== 1) return false;
+    return rteIsHighlightColor(el.style && el.style.backgroundColor) ||
+           rteIsHighlightColor(el.getAttribute && el.getAttribute('bgcolor'));
+}
+/* Liegt das Element vollstaendig innerhalb der Auswahl? */
+function rteIsFullySelected(el, range) {
+    try {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        return range.compareBoundaryPoints(Range.START_TO_START, r) <= 0 &&
+               range.compareBoundaryPoints(Range.END_TO_END, r) >= 0;
+    } catch (e) { return false; }
+}
+
+/*
+ * Markierung an/aus.
+ * queryCommandValue('backColor') liefert nur die Farbe am Anfang der Auswahl – bei einem
+ * komplett markierten Absatz beginnt die Auswahl beim Block-Element ohne Hintergrund.
+ * Deshalb wird der Inhalt der Auswahl im DOM geprueft. Entfernt wird primaer ueber
+ * execCommand (das beherrscht Teil-Auswahlen sauber); zusaetzlich werden nur solche
+ * Elemente bereinigt, die VOLLSTAENDIG in der Auswahl liegen.
+ */
 function toggleRTEHighlight() {
-    let color = document.queryCommandValue('backColor');
-    if (color && (color === 'rgb(255, 255, 0)' || color === 'yellow' || color === '#ffff00')) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+
+    const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentNode;
+    /* Achtung: isContentEditable wird vererbt und waere auch fuer innere <span> true.
+       Deshalb gezielt ueber das Attribut suchen. */
+    const editor = startEl && startEl.closest ? startEl.closest('[contenteditable="true"],[contenteditable=""]') : null;
+
+    let highlighted = false;
+    const toClear = [];
+
+    /* 1) Vorfahren innerhalb des Editors (deckt "ganzer Absatz markiert" ab) */
+    let n = startEl;
+    while (n && n.nodeType === 1 && n !== document.body) {
+        if (rteHasHighlight(n)) { highlighted = true; if (rteIsFullySelected(n, range)) toClear.push(n); }
+        if (editor && n === editor) break;
+        n = n.parentNode;
+    }
+
+    /* 2) Elemente innerhalb der Auswahl */
+    const scope = editor || document.body;
+    if (scope.querySelectorAll) {
+        scope.querySelectorAll('*').forEach(el => {
+            if (!rteHasHighlight(el)) return;
+            let hit = false;
+            try { hit = range.intersectsNode ? range.intersectsNode(el) : false; } catch (e) { hit = false; }
+            if (!hit) return;
+            highlighted = true;
+            if (rteIsFullySelected(el, range)) toClear.push(el);
+        });
+    }
+
+    if (highlighted) {
         document.execCommand('backColor', false, 'transparent');
-    } else { document.execCommand('backColor', false, 'yellow'); }
+        toClear.forEach(el => {
+            if (!el || !el.parentNode) return;
+            if (el.style) el.style.backgroundColor = '';
+            if (el.getAttribute && el.getAttribute('bgcolor')) el.removeAttribute('bgcolor');
+            const styleAttr = el.getAttribute ? (el.getAttribute('style') || '').trim() : 'x';
+            if (el.tagName === 'SPAN' && !el.getAttribute('class') && styleAttr === '') {
+                const parent = el.parentNode;
+                while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                parent.removeChild(el);
+            }
+        });
+    } else {
+        document.execCommand('backColor', false, 'yellow');
+    }
 }
 
 function rtfTableAction(action) {
@@ -1384,9 +1458,15 @@ function getTaskProgress(task) {
     return Math.round((cDone/cTotal)*100);
 }
 
-function generateProgressBarHTML(percent, issecondary = false) { 
-    const cssClass = issecondary ? 'pb-fill secondary' : 'pb-fill'; 
-    return `<div class="pb-container"><div class="${cssClass}" style="width:${percent}%"></div></div>`; 
+function generateProgressBarHTML(percent, issecondary = false) {
+    /* Inline-Stile, damit der Balken unabhaengig von einer evtl. veralteten Stylesheet-Version
+       sichtbar ist. Fortschritt wird gruen dargestellt; bewusst OHNE color-mix,
+       da nicht jede Browser-Version das unterstuetzt und der Balken sonst unsichtbar bleibt. */
+    const pct = Math.max(0, Math.min(100, Math.round(parseFloat(percent) || 0)));
+    const cssClass = issecondary ? 'pb-fill secondary' : 'pb-fill';
+    const fillOpacity = issecondary ? '0.7' : '1';
+    return `<div class="pb-container" style="width:100%; height:6px; background:var(--border-color); border-radius:4px; overflow:hidden; display:block;">`
+         + `<div class="${cssClass}" style="width:${pct}%; height:100%; background:var(--success); opacity:${fillOpacity}; border-radius:4px; display:block;"></div></div>`;
 }
 
 function getStackProgress(stackId) {
@@ -5193,6 +5273,98 @@ function buildBarCurveChartHtml(valueByDate, titleAttr) {
  * Aggregiert appData.timeLogs nach Datum und zeigt zusätzlich das Datum der ersten und letzten Messung an,
  * damit der abgedeckte Zeitraum klar erkennbar ist. Gibt '' zurück, wenn keine Zeiterfassung vorliegt.
  */
+/* Alle Aufgaben-IDs einer Gruppe (Stakeholder/Bucket) – bewusst UNGEFILTERT,
+   damit abgeschlossene und pausierte Eintraege in den Auswertungen enthalten sind. */
+function getGroupTaskIdsAll(groupKey, groupVal) {
+    const ids = new Set();
+    const val = (groupVal === undefined || groupVal === null) ? '' : String(groupVal);
+    const stackIds = new Set();
+    (appData.projectStacks || []).forEach(st => {
+        if (String(st[groupKey] || '') === val) stackIds.add(st.id);
+    });
+    (appData.tasks || []).forEach(tk => {
+        const own = String(tk[groupKey] || '') === val;
+        if (own || (tk.projectStackId && stackIds.has(tk.projectStackId))) ids.add(tk.id);
+    });
+    return { taskIds: ids, stackIds };
+}
+
+/* Zaehlt abgeschlossene und pausierte Eintraege einer Gruppe (Aufgaben + Stacks). */
+function getGroupHiddenCounts(groupKey, groupVal) {
+    const { taskIds, stackIds } = getGroupTaskIdsAll(groupKey, groupVal);
+    let doneCount = 0, pausedCount = 0;
+    (appData.tasks || []).forEach(tk => {
+        if (!taskIds.has(tk.id)) return;
+        if (isTaskDone(tk)) doneCount++;
+        else if (tk.isPaused) pausedCount++;
+    });
+    (appData.projectStacks || []).forEach(st => {
+        if (!stackIds.has(st.id)) return;
+        if (st.status === 'completed') doneCount++;
+        else if (st.status === 'paused') pausedCount++;
+    });
+    return { doneCount, pausedCount };
+}
+
+/* Verbuchte Stunden je Woche (letzte vier Wochen) fuer eine Menge von Aufgaben-IDs. */
+function getWeeklyHours(taskIds) {
+    const now = new Date();
+    const startOfWeek = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); const dow = (x.getDay() + 6) % 7; x.setDate(x.getDate() - dow); return x; };
+    const weeks = [];
+    for (let i = 3; i >= 0; i--) {
+        const from = startOfWeek(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i * 7));
+        const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6, 23, 59, 59);
+        weeks.push({ from, to, hours: 0 });
+    }
+    (appData.timeLogs || []).forEach(l => {
+        if (!l || !l.date || !taskIds.has(l.taskId)) return;
+        const p = String(l.date).split('-');
+        if (p.length !== 3) return;
+        const d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+        weeks.forEach(w => { if (d >= w.from && d <= w.to) w.hours += (parseFloat(l.hours) || 0); });
+    });
+    return weeks;
+}
+
+/*
+ * Balkendiagramm der verbuchten Stunden je Woche.
+ * scaleMax: gemeinsamer Hoechstwert ueber ALLE Kacheln, damit die Balken
+ * zwischen Stakeholdern bzw. Buckets direkt vergleichbar sind.
+ */
+function buildWeeklyHoursChartHtml(taskIds, scaleMax) {
+    const weeks = getWeeklyHours(taskIds);
+    const total = weeks.reduce((a, w) => a + w.hours, 0);
+    const pad = n => String(n).padStart(2, '0');
+
+    if (total <= 0) {
+        return `<div class="wh-chart-wrap" style="margin:6px 0 12px;">
+            <div class="wh-head" style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text-muted); margin-bottom:4px;"><span>${t('weekly_hours')}</span><b style="color:var(--text-main); font-size:12px;">0 h</b></div>
+            <div style="font-size:11px; color:var(--text-muted); font-style:italic; padding:6px 0;">${t('weekly_hours_none')}</div>
+        </div>`;
+    }
+
+    const max = Math.max(0.01, parseFloat(scaleMax) || 0, ...weeks.map(w => w.hours));
+    /* Hoehen in Pixeln: prozentuale Hoehen in Flex-Spalten loesen Browser nicht zuverlaessig auf. */
+    const TRACK = 44;
+    const bars = weeks.map((w, i) => {
+        const px = w.hours > 0 ? Math.max(3, Math.round((w.hours / max) * TRACK)) : 0;
+        const isNow = i === weeks.length - 1;
+        const label = isNow ? t('gantt_today') : `${pad(w.from.getDate())}.${pad(w.from.getMonth() + 1)}.`;
+        return `<div class="wh-col" style="flex:1 1 0 !important; display:flex !important; flex-direction:column !important; align-items:center; gap:3px; min-width:0; height:auto !important;" title="${pad(w.from.getDate())}.${pad(w.from.getMonth()+1)}. – ${pad(w.to.getDate())}.${pad(w.to.getMonth()+1)}.: ${ttNum(w.hours)} h">
+            <span class="wh-val" style="font-size:9.5px; color:var(--text-muted); height:12px; line-height:12px;">${w.hours > 0 ? ttNum(w.hours) : ''}</span>
+            <div class="wh-bar" style="width:100% !important; height:${TRACK}px !important; min-height:${TRACK}px !important; max-height:${TRACK}px !important; flex:0 0 auto !important; background:var(--border-color); border-radius:4px; display:flex !important; align-items:flex-end !important; overflow:hidden;">
+                <span class="wh-fill" style="display:block !important; width:100% !important; height:${px}px !important; background:#cca300 !important; opacity:${isNow ? '1' : '0.6'}; border-radius:4px; align-self:flex-end;"></span>
+            </div>
+            <u style="font-size:9.5px; color:var(--text-muted); text-decoration:none; white-space:nowrap;">${label}</u>
+        </div>`;
+    }).join('');
+
+    return `<div class="wh-chart-wrap" style="margin:6px 0 12px;">
+        <div class="wh-head" style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text-muted); margin-bottom:4px;"><span>${t('weekly_hours')}</span><b style="color:var(--text-main); font-size:12px;">${ttNum(total)} h</b></div>
+        <div class="wh-chart" style="display:flex !important; align-items:flex-end !important; gap:8px; width:100%; height:auto !important;">${bars}</div>
+    </div>`;
+}
+
 function buildActivitySparklineHtml(taskIds) {
     const logs = appData.timeLogs.filter(l => taskIds.has(l.taskId));
     if (logs.length === 0) return '';
@@ -5276,7 +5448,7 @@ function renderStacks(c) {
 >            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5px;"><div style="flex:1;">${badgeHtml}<h3 style="color:var(--primary-color); margin-top:5px; margin-bottom:5px; line-height:1.2;"><i class="fas fa-folder-open"></i> ${lockedIcon}${stack.name} ${ratingHtml}</h3>${avatarHtml}</div><div style="display:flex; gap:5px; margin-left:10px;">${btnHtml}</div></div>
             ${chartHtml}
             <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px; display:flex; justify-content:space-between;"><span><i class="fas fa-play"></i> ${stack.startDate||'-'}</span><span><i class="fas fa-flag-checkered"></i> ${stack.dueDate||'-'}</span></div>
-            <div style="display:flex; gap:10px; margin-bottom:5px;"><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('tasks')}</div>${generateProgressBarHTML(sp.tPct, true)}</div><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('milestones')}</div>${generateProgressBarHTML(sp.mPct, false)}</div></div>
+            <div style="display:flex; gap:10px; margin-bottom:5px;"><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('tasks')}</div>${generateProgressBarHTML(sp.tPct)}</div><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('milestones')}</div>${generateProgressBarHTML(sp.mPct, false)}</div></div>
             ${checklistHtml}
             ${tasksListHtml}
         </div>`;
@@ -5378,7 +5550,7 @@ function renderList(c) {
         
         if(endColSpan > 0) {
             html += `<td data-label="Übersicht" colspan="${endColSpan}" style="padding: 5px 15px;">`;
-            if(cols.progress) { html += `<div style="font-size:10px; color:var(--primary-color); font-weight:bold;">${t('tasks')} (${sp.tPct}%)</div>${generateProgressBarHTML(sp.tPct, true)}<div style="font-size:10px; color:var(--primary-color); font-weight:bold; margin-top:2px;">${t('milestones')} (${sp.mPct}%)</div>${generateProgressBarHTML(sp.mPct, false)}`; } 
+            if(cols.progress) { html += `<div style="font-size:10px; color:var(--primary-color); font-weight:bold;">${t('tasks')} (${sp.tPct}%)</div>${generateProgressBarHTML(sp.tPct)}<div style="font-size:10px; color:var(--primary-color); font-weight:bold; margin-top:2px;">${t('milestones')} (${sp.mPct}%)</div>${generateProgressBarHTML(sp.mPct, false)}`; } 
             else { html += `<span style="font-size:11px; color:var(--text-muted);"><i>-</i></span>`; }
             html += `</td>`;
         }
@@ -5431,7 +5603,7 @@ function generateListRow(task, isIndented) {
         rHtml += `<td data-label="Aufwand"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; margin-bottom:2px;"><span>${spent}h</span><span>${est}h</span></div><div class="time-pb-container" style="margin-top:0;"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></td>`;
     }
 
-    if(cols.progress) rHtml += `<td data-label="Fortschritt"><div style="display:flex; align-items:center; gap:8px;">${generateProgressBarHTML(progress)}<small style="min-width:25px; text-align:right;">${progress}%</small></div></td>`;
+    if(cols.progress) rHtml += `<td data-label="Fortschritt"><div class="list-progress-cell" style="display:flex; align-items:center; gap:8px; width:100%; min-width:110px;"><span style="flex:1 1 auto; min-width:60px; display:block;">${generateProgressBarHTML(progress)}</span><small style="flex:0 0 auto; min-width:32px; text-align:right;">${progress}%</small></div></td>`;
     if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-label="Notizen"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
     if(cols.checklist) { const cl = task.checklist || []; const clDone = cl.filter(c=>c.done).length;
         let cpExtra = '';
@@ -5481,12 +5653,24 @@ function handleGroupContainerDrop(e, groupKey, targetGroupVal) {
     }
 }
 
+let _weeklyScaleMax = 0;   /* gemeinsame Skala der Wochenbalken ueber alle Kacheln */
 function renderGroupedView(c, groupKey, itemsObj, unassignedLabel, showTimeStats=false) {
     let sortKey = groupKey === 'stakeholderId' ? stakeholderSortKey : bucketSortKey; let sortVarName = groupKey === 'stakeholderId' ? 'stakeholderSortKey' : 'bucketSortKey';
     let html = getSortButtonsHTML(sortKey, sortVarName);
     const itemsToGroup = [...getFilteredTasks().map(t_obj => ({...t_obj, _type: 'task'})), ...getFilteredStacks().map(s => ({...s, _type: 'stack'}))];
     const groups = itemsToGroup.reduce((acc, item) => { const kId = item[groupKey] || 'none'; if(!acc[kId]) acc[kId] = []; acc[kId].push(item); return acc; }, {});
     
+    /* Gemeinsamer Hoechstwert fuer die Wochenbalken: so sind die Kacheln untereinander
+       vergleichbar und nicht jede fuer sich auf 100% skaliert. */
+    _weeklyScaleMax = 0;
+    if (showTimeStats) {
+        const groupVals = itemsObj.map(it => it.id).concat(['']);
+        groupVals.forEach(gv => {
+            const ids = getGroupTaskIdsAll(groupKey, gv).taskIds;
+            getWeeklyHours(ids).forEach(w => { if (w.hours > _weeklyScaleMax) _weeklyScaleMax = w.hours; });
+        });
+    }
+
     html += `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">`;
     itemsObj.forEach(item => { if(groups[item.id]) { html += buildGroupCard(item.name, item.color || 'var(--primary-color)', groups[item.id], showTimeStats, groupKey, item.id); delete groups[item.id]; } else { html += buildGroupCard(item.name, item.color || 'var(--primary-color)', [], showTimeStats, groupKey, item.id); } });
     if(groups['none']) { html += buildGroupCard(unassignedLabel, 'var(--text-muted)', groups['none'], showTimeStats, groupKey, ''); }
@@ -5501,13 +5685,28 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
     const standaloneTasks = arr.filter(x => x._type === 'task' && !x.projectStackId);
     const groupTaskIds = new Set();
 
+    /* Auswertungen beziehen bewusst ALLE Eintraege der Gruppe ein - auch abgeschlossene
+       und pausierte -, unabhaengig von den aktiven Ausblende-Filtern. */
+    let hiddenBadges = '';
     if(showTimeStats) {
-        stackIdsInGroup.forEach(sId => { const allStackTasks = appData.tasks.filter(tx => tx.projectStackId === sId); allStackTasks.forEach(tx => { totalEst += parseFloat(tx.estimatedTime||0); totalSpent += parseFloat(tx.spentTime||0); groupTaskIds.add(tx.id); }); });
-        standaloneTasks.forEach(t_obj => { totalEst += parseFloat(t_obj.estimatedTime||0); totalSpent += parseFloat(t_obj.spentTime||0); groupTaskIds.add(t_obj.id); });
+        const all = getGroupTaskIdsAll(groupKey, targetGroupVal);
+        all.taskIds.forEach(id => {
+            const tx = appData.tasks.find(x => x.id === id);
+            if(!tx) return;
+            totalEst += parseFloat(tx.estimatedTime||0); totalSpent += parseFloat(tx.spentTime||0);
+            groupTaskIds.add(tx.id);
+        });
+        const hc = getGroupHiddenCounts(groupKey, targetGroupVal);
+        const badge = (n, label, col) => `<span style="display:inline-flex; align-items:center; gap:5px; background:color-mix(in srgb, ${col} 14%, var(--surface-color)); color:${col}; border:1px solid ${col}; border-radius:999px; padding:2px 9px; font-size:11px; font-weight:600;">${n} ${label}</span>`;
+        const parts = [];
+        if(appData.settings.globalHideCompleted && hc.doneCount > 0) parts.push(badge(hc.doneCount, t('hidden_done'), 'var(--success)'));
+        if(appData.settings.globalHidePaused && hc.pausedCount > 0) parts.push(badge(hc.pausedCount, t('hidden_paused'), 'var(--warning)'));
+        if(parts.length) hiddenBadges = `<div style="display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px 0;">${parts.join('')}</div>`;
     }
-    
+
     const chartHtml = showTimeStats ? buildActivitySparklineHtml(groupTaskIds) : '';
-    let headerExtra = showTimeStats ? `<div style="font-size:12px; margin-bottom:15px; color:var(--text-muted)">${t('time_effort')}: ${totalSpent.toFixed(2)}h ${t('actual')} / ${totalEst.toFixed(2)}h ${t('target')}</div>${chartHtml}` : '';
+    const weeklyHtml = showTimeStats ? buildWeeklyHoursChartHtml(groupTaskIds, _weeklyScaleMax) : '';
+    let headerExtra = showTimeStats ? `<div style="font-size:12px; margin-bottom:10px; color:var(--text-muted)">${t('time_effort')}: ${totalSpent.toFixed(2)}h ${t('actual')} / ${totalEst.toFixed(2)}h ${t('target')}</div>${hiddenBadges}${chartHtml}${weeklyHtml}` : '';
     let h = `<div style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); border-top: 4px solid ${color}; min-height: 150px;" ondragover="event.preventDefault();" ondrop="handleGroupContainerDrop(event, '${groupKey}', '${targetGroupVal}')"><h3 style="margin-bottom:5px; padding-bottom:10px;">${name}</h3>${headerExtra}<div style="display:flex; flex-direction:column; gap:10px;">`;
     
     const renderedStackIds = new Set();
