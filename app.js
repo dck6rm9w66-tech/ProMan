@@ -599,6 +599,7 @@ function toggleRTEHighlight() {
     const sel = window.getSelection();
     if (!sel || !sel.rangeCount) return;
     const range = sel.getRangeAt(0);
+    if (range.collapsed) return;   /* ohne Auswahl nichts faerben */
 
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentNode;
     /* Achtung: isContentEditable wird vererbt und waere auch fuer innere <span> true.
@@ -629,8 +630,28 @@ function toggleRTEHighlight() {
         });
     }
 
+    /* Ohne styleWithCSS faerben Browser bei backColor ganze Block-Elemente ein
+       (bgcolor-Attribut am <p>/<div>) – dadurch wurden mehrere Absaetze markiert
+       statt nur der Auswahl. Mit styleWithCSS entsteht ein <span> um die Auswahl. */
+    let prevStyleWithCSS = null;
+    try { prevStyleWithCSS = document.queryCommandState('styleWithCSS'); } catch (e) {}
+    try { document.execCommand('styleWithCSS', false, true); } catch (e) {}
+
     if (highlighted) {
         document.execCommand('backColor', false, 'transparent');
+        /* Von frueheren Markierungen koennen ganze Bloecke eingefaerbt sein
+           (bgcolor bzw. background am <p>/<div>) – die hier mit aufraeumen. */
+        const blockScope = editor || document.body;
+        if (blockScope.querySelectorAll) {
+            blockScope.querySelectorAll('p,div,li,td,th,h1,h2,h3,h4,h5,h6').forEach(el => {
+                if (!rteHasHighlight(el)) return;
+                let hit = false;
+                try { hit = range.intersectsNode ? range.intersectsNode(el) : false; } catch (e) { hit = false; }
+                if (!hit) return;
+                if (el.style) el.style.backgroundColor = '';
+                if (el.getAttribute && el.getAttribute('bgcolor')) el.removeAttribute('bgcolor');
+            });
+        }
         toClear.forEach(el => {
             if (!el || !el.parentNode) return;
             if (el.style) el.style.backgroundColor = '';
@@ -645,6 +666,8 @@ function toggleRTEHighlight() {
     } else {
         document.execCommand('backColor', false, 'yellow');
     }
+
+    if (prevStyleWithCSS !== null) { try { document.execCommand('styleWithCSS', false, prevStyleWithCSS); } catch (e) {} }
 }
 
 function rtfTableAction(action) {
