@@ -975,8 +975,7 @@ function getNotifications() {
                     _rawToast(`${nObj.title}: ${nObj.desc}`, tType);
                 }
                 if(ch.modal) {
-                    const isReminder = (nObj.eventKey === 'reminder1' || nObj.eventKey === 'reminder2');
-                    showNotifModal(nObj.title, nObj.desc, nObj.type, isReminder ? nObj.notifId : null);
+                    showNotifModal(nObj.title, nObj.desc, nObj.type, nObj.notifId);
                 }
                 if(ch.email && settings.notificationEmail) { triggerEmailNotif(nObj.title, nObj.desc); }
 
