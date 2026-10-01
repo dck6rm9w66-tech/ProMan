@@ -3147,3 +3147,90 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 .onb-fixed-col{ margin-top:8px; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-main); padding:8px 10px; background:var(--bg-color); border:1px dashed var(--border-color); border-radius:8px; }
 .onb-fixed-col i{ color:var(--primary-color); }
 .onb-fixed-col span{ color:var(--text-muted); font-size:12px; }
+
+/* ============================================================
+   ZEITRAUM-FILTER (Zeiterfassung & Budget) + AUSWERTUNG
+   ============================================================ */
+.tt-range {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    background: var(--surface-color); border: 1px solid var(--border-color);
+    border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px;
+}
+.tt-range-label { font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.tt-range-label i { color: var(--primary-color); }
+.tt-range-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; }
+.tt-range-chip.secondary {
+    font-size: 12px !important; padding: 5px 11px !important; border-radius: 16px !important; font-weight: 500 !important;
+    background: var(--bg-color) !important; color: var(--text-main) !important;
+    border: 1px solid var(--border-color) !important; cursor: pointer; white-space: nowrap;
+    min-height: 0 !important; width: auto;
+}
+.tt-range-chip.secondary:hover { border-color: var(--primary-color) !important; }
+.tt-range-chip.secondary[aria-pressed="true"] {
+    background: var(--wk-magnet, var(--primary-color)) !important; border-color: var(--wk-magnet, var(--primary-color)) !important;
+    color: var(--wk-graphite, #fff) !important;
+}
+.tt-range-chip:focus-visible, .tt-rg summary:focus-visible, .tt-rg-link:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.tt-range-dates { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tt-range-dates label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin: 0; }
+.tt-range-dates input[type="date"] { margin: 0; padding: 5px 8px; font-size: 12px; width: auto; min-height: 0; }
+.tt-range-sep { color: var(--text-muted); }
+.tt-range-reset { font-size: 12px !important; padding: 5px 10px !important; min-height: 0 !important; }
+
+/* Auswertung */
+.tt-report-range { font-size: 13px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tt-rg-title { font-size: 13px; margin: 4px 0 10px; color: var(--text-main); }
+.tt-rg-list { display: flex; flex-direction: column; gap: 8px; }
+.tt-rg-title span { font-weight: 400; color: var(--text-muted); }
+.tt-rg-list:not(.expanded) > .tt-rg-extra { display: none; }
+.tt-rg-more.secondary {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    margin-top: 8px; padding: 9px 12px !important; font-size: 13px !important; min-height: 0 !important;
+    border-style: dashed !important;
+}
+.tt-rg-more.secondary:hover { border-color: var(--primary-color) !important; border-style: solid !important; }
+.tt-rg-more span { font-weight: 400; color: var(--text-muted); }
+.tt-rg-more:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.tt-rg { border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-color); }
+.tt-rg summary {
+    list-style: none; cursor: pointer; display: grid; align-items: center; gap: 12px;
+    grid-template-columns: 18px minmax(0, 1.4fr) minmax(60px, 1fr) auto 42px;
+    padding: 10px 12px; border-radius: var(--radius);
+}
+.tt-rg summary::-webkit-details-marker { display: none; }
+.tt-rg summary::after { content: none; }
+.tt-rg-icon { color: var(--primary-color); transition: transform .15s; }
+.tt-rg[open] > summary { border-bottom: 1px solid var(--border-color); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.tt-rg-name { font-size: 13px; font-weight: 600; min-width: 0; display: flex; flex-direction: column; }
+.tt-rg-name, .tt-rg-task > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-rg-name small, .tt-rg-task small, .tt-rg-num small { font-size: 11px; font-weight: 400; color: var(--text-muted); }
+.tt-rg-bar { height: 6px; border-radius: 3px; background: var(--border-color); overflow: hidden; }
+.tt-rg-bar > span { display: block; height: 100%; background: var(--primary-color); border-radius: 3px; }
+.tt-rg-num { display: flex; flex-direction: column; align-items: flex-end; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tt-rg-share { font-size: 12px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.tt-rg-rows { padding: 4px 12px 8px 42px; }
+.tt-rg-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px dashed var(--border-color); }
+.tt-rg-row:last-child { border-bottom: none; }
+.tt-rg-row.done { opacity: .65; }
+.tt-rg-task { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-width: 0; font-size: 13px; }
+.tt-rg-task small { flex-basis: 100%; }
+.tt-rg-link.secondary {
+    background: none !important; border: none !important; padding: 0 !important; min-height: 0 !important; width: auto;
+    color: var(--text-main) !important; font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.tt-rg-link.secondary:hover { color: var(--primary-color) !important; text-decoration: underline; }
+
+@media (max-width: 1088px) {
+    .tt-range { padding: 10px; }
+    .tt-range-chips { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding-bottom: 2px; scrollbar-width: none; }
+    .tt-range-chips::-webkit-scrollbar { display: none; }
+    .tt-range-dates { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tt-range-sep { display: none; }
+    .tt-range-dates label { flex-direction: column; align-items: stretch; gap: 3px; }
+    .tt-range-dates input[type="date"] { width: 100%; min-width: 0; }
+    .tt-range-reset { grid-column: 1 / -1; justify-content: center; }
+    .tt-rg summary { grid-template-columns: 18px minmax(0, 1fr) auto; }
+    .tt-rg-bar, .tt-rg-share { display: none; }
+    .tt-rg-rows { padding-left: 12px; }
+}

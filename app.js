@@ -3889,12 +3889,12 @@ function renderBudgetsOverview(c) {
     stacksWithBudget.forEach(s => items.push({
         type: 'stack', id: s.id, name: s.name || t('unnamed'),
         target: parseFloat(s.targetBudget) || 0, currency: getGlobalCurrency(),
-        consumed: getStackConsumedBudget(s), status: s.status
+        consumed: getStackCostInRange(s), status: s.status
     }));
     standaloneTasksWithBudget.forEach(t_obj => items.push({
         type: 'task', id: t_obj.id, name: t_obj.projectName || t('unnamed'),
         target: parseFloat(t_obj.targetBudget) || 0, currency: getGlobalCurrency(),
-        consumed: getTaskConsumedBudget(t_obj), status: t_obj.status
+        consumed: getTaskCostInRange(t_obj), status: t_obj.status
     }));
     const hasBudgets = items.length > 0;
 
@@ -3902,16 +3902,21 @@ function renderBudgetsOverview(c) {
     const costByCurrency = {};
     let totalCostAll = 0;
     (appData.tasks || []).forEach(t_obj => {
-        const cost = getTaskConsumedBudget(t_obj);
+        const cost = getTaskCostInRange(t_obj);
         if (cost <= 0) return;
         const cur = getTaskCurrency(t_obj);
         costByCurrency[cur] = (costByCurrency[cur] || 0) + cost;
         totalCostAll += cost;
     });
 
-    const totalHours = (appData.timeLogs || []).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+    const rangeOn = ttRangeActive();
+    const totalHours = ttRangeLogs().reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
     const consumptionByMonth = getBudgetConsumptionByMonth();
     const hoursByMonth = getHoursByMonth();
+    /* Monate, die den gewählten Zeitraum berühren (Monatswerte selbst bleiben vollständig) */
+    const rb = ttRangeBounds();
+    const monthInRange = (m) => (!rb.from || m >= rb.from.slice(0, 7)) && (!rb.to || m <= rb.to.slice(0, 7));
+    const monthsLimit = rangeOn ? 12 : 6;
     const hasCostData = Object.keys(consumptionByMonth).length > 0;
 
     /* Summen je Währung für budgetierte Posten */
@@ -4046,14 +4051,14 @@ function renderBudgetsOverview(c) {
             return sb - sa;
         })[0];
         const monthMap = consumptionByMonth[primaryCur] || {};
-        const shown = Object.keys(monthMap).sort().slice(-6);
+        const shown = Object.keys(monthMap).filter(monthInRange).sort().slice(-monthsLimit);
         const rows = shown.map(m => ({ label: m.slice(5) + '.' + m.slice(2, 4), value: monthMap[m], title: m + ': ' + ttNum(monthMap[m]) + ' ' + primaryCur }));
         graphsHtml += `<div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('budgets_trend')} (${primaryCur})</b><u>${t('budgets_last_months')}</u></div>
             <div class="wk-trend">${buildBudgetTrendBars(rows, '#cca300')}</div>
         </div>`;
     } else {
-        const shown = Object.keys(hoursByMonth).sort().slice(-6);
+        const shown = Object.keys(hoursByMonth).filter(monthInRange).sort().slice(-monthsLimit);
         const rows = shown.map(m => ({ label: m.slice(5) + '.' + m.slice(2, 4), value: hoursByMonth[m], title: m + ': ' + ttNum(hoursByMonth[m]) + ' h' }));
         graphsHtml += `<div class="wk-graph-card">
             <div class="wk-graph-h"><b>${t('budgets_hours_trend')}</b><u>${t('budgets_last_months')}</u></div>
@@ -4067,7 +4072,7 @@ function renderBudgetsOverview(c) {
         `<div style="display:flex; justify-content:space-between; font-size:12px; margin-top:4px;"><span style="color:var(--text-muted);">${cur}</span><b>${ttNum(costByCurrency[cur])}</b></div>`
     ).join('');
     graphsHtml += `<div class="wk-graph-card">
-        <div class="wk-graph-h"><b>${t('budgets_costs_so_far')}</b><u>${ttNum(totalHours)} h</u></div>
+        <div class="wk-graph-h"><b>${rangeOn ? t('tr_costs_in_range') : t('budgets_costs_so_far')}</b><u>${ttNum(totalHours)} h</u></div>
         <div style="display:flex; align-items:baseline; gap:8px; margin:6px 0 4px;">
             <span style="font-size:24px; font-weight:700; color:var(--primary-color);">${totalCostAll > 0 ? ttNum(totalCostAll) : ttNum(totalHours)}</span>
             <span style="font-size:12px; color:var(--text-muted);">${totalCostAll > 0 ? t('budgets_total_costs') : t('budgets_total_hours')}</span>
@@ -4126,7 +4131,8 @@ function renderBudgetsOverview(c) {
             return pb - pa;
         });
         html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:6px;">
-            <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-list-ul" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_details')}</h3>
+            <h3 style="font-size:15px; margin-bottom:${rangeOn ? '4px' : '16px'};"><i class="fas fa-list-ul" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_details')}</h3>
+            ${rangeOn ? `<div style="font-size:11.5px; color:var(--text-muted); margin-bottom:14px;"><i class="fas fa-calendar-days"></i> ${t('tr_consumed_in_range')}: ${ttRangeLabel()}</div>` : ''}
             <div style="display:flex; flex-direction:column; gap:14px;">`;
         sortedItems.forEach(it => {
             const pct = it.target > 0 ? Math.round((it.consumed / it.target) * 100) : 0;
@@ -4152,15 +4158,16 @@ function renderBudgetsOverview(c) {
 
     /* Kostentreiber – immer, sofern Kosten oder Stunden vorhanden sind */
     const drivers = (appData.tasks || []).map(t_obj => {
-        const cost = getTaskConsumedBudget(t_obj);
-        const hours = (appData.timeLogs || []).filter(l => l.taskId === t_obj.id).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
-        return { id: t_obj.id, name: t_obj.projectName || t('unnamed'), cost, hours, currency: getTaskCurrency(t_obj), done: isTaskDone(t_obj) };
+        const cost = getTaskCostInRange(t_obj);
+        const hours = ttRangeLogs().filter(l => l.taskId === t_obj.id).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+        const st = t_obj.projectStackId ? (appData.projectStacks || []).find(x => x.id === t_obj.projectStackId) : null;
+        return { id: t_obj.id, name: t_obj.projectName || t('unnamed'), stackName: st ? st.name : '', cost, hours, currency: getTaskCurrency(t_obj), done: isTaskDone(t_obj) };
     }).filter(d => d.cost > 0 || d.hours > 0).sort((a, b) => (b.cost - a.cost) || (b.hours - a.hours)).slice(0, 10);
 
     if (drivers.length > 0) {
         const maxDriver = Math.max(...drivers.map(d => d.cost > 0 ? d.cost : d.hours));
         html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:20px; margin-top:16px;">
-            <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-chart-bar" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_cost_drivers')}</h3>
+            <h3 style="font-size:15px; margin-bottom:16px;"><i class="fas fa-chart-bar" style="color:var(--primary-color); margin-right:8px;"></i>${t('budgets_cost_drivers')}${rangeOn ? ` <span style="font-weight:normal; font-size:12px; color:var(--text-muted);">· ${ttRangeLabel()}</span>` : ''}</h3>
             <div style="display:flex; flex-direction:column; gap:12px;">`;
         drivers.forEach(d => {
             const val = d.cost > 0 ? d.cost : d.hours;
@@ -4168,13 +4175,18 @@ function renderBudgetsOverview(c) {
             const w = maxDriver > 0 ? Math.max(2, Math.round(val / maxDriver * 100)) : 0;
             html += `<div style="cursor:pointer; ${d.done ? 'opacity:0.6;' : ''}" onclick="openModal('${d.id}')">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
-                    <span style="font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas fa-tasks" style="color:var(--primary-color); margin-right:6px;"></i>${escapeHtmlToday(d.name)}</span>
+                    <span style="font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas fa-tasks" style="color:var(--primary-color); margin-right:6px;"></i>${escapeHtmlToday(d.name)}${d.stackName ? `<span style="color:var(--text-muted); font-size:11px;"> · ${escapeHtmlToday(d.stackName)}</span>` : ''}</span>
                     <span style="font-size:11.5px; color:var(--text-muted); white-space:nowrap; flex-shrink:0;"><b style="color:var(--text-main);">${ttNum(val)}</b> ${unit}${d.cost > 0 ? ' · ' + ttNum(d.hours) + ' h' : ''}</span>
                 </div>
                 <div class="pb-container" style="height:6px;"><div class="pb-fill" style="width:${w}%; background:#cca300;"></div></div>
             </div>`;
         });
         html += `</div></div>`;
+    } else if (rangeOn) {
+        html += `<div style="text-align:center; padding:28px 20px; color:var(--text-muted); background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-top:16px;">
+            <p style="font-size:14px;"><i class="fas fa-circle-info"></i> ${t('tr_empty')}</p>
+            <p style="font-size:12px; margin-top:6px;">${t('tr_empty_hint_budget')}</p>
+        </div>`;
     } else if (!hasBudgets) {
         html += `<div style="text-align:center; padding:40px 20px; color:var(--text-muted); background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-top:6px;">
             <i class="fas fa-coins" style="font-size:34px; opacity:0.3; margin-bottom:12px;"></i>
@@ -7843,6 +7855,238 @@ function renderTimeAccount() {
     return html;
 }
 
+/* ============================================================
+   ZEITRAUM-FILTER (gilt für Zeiterfassung UND Budget)
+   ============================================================ */
+const TT_RANGE_PRESETS = ['all', 'this_month', 'last_month', 'last_30', 'this_quarter', 'this_year', 'last_year'];
+let ttRange = (() => {
+    try {
+        const r = JSON.parse(localStorage.getItem('proman_tt_range') || 'null');
+        if (r && typeof r.preset === 'string') return { preset: r.preset, from: r.from || '', to: r.to || '' };
+    } catch (e) {}
+    return { preset: 'all', from: '', to: '' };
+})();
+
+function ttSaveRange() { try { localStorage.setItem('proman_tt_range', JSON.stringify(ttRange)); } catch (e) {} }
+
+/* Liefert { from, to } als ISO-Datum (inklusive) oder null für „offen". Presets werden immer neu berechnet. */
+function ttRangeBounds() {
+    const now = new Date(); const y = now.getFullYear(), m = now.getMonth();
+    const r = (a, b) => ({ from: a ? ttIso(a) : null, to: b ? ttIso(b) : null });
+    switch (ttRange.preset) {
+        case 'this_month':   return r(new Date(y, m, 1), new Date(y, m + 1, 0));
+        case 'last_month':   return r(new Date(y, m - 1, 1), new Date(y, m, 0));
+        case 'last_30':      return r(new Date(y, m, now.getDate() - 29), now);
+        case 'this_quarter': { const q = Math.floor(m / 3) * 3; return r(new Date(y, q, 1), new Date(y, q + 3, 0)); }
+        case 'this_year':    return r(new Date(y, 0, 1), new Date(y, 11, 31));
+        case 'last_year':    return r(new Date(y - 1, 0, 1), new Date(y - 1, 11, 31));
+        case 'custom': {
+            let from = ttRange.from || null, to = ttRange.to || null;
+            if (from && to && from > to) { const x = from; from = to; to = x; }
+            return { from, to };
+        }
+        default: return { from: null, to: null };
+    }
+}
+function ttRangeActive() { const b = ttRangeBounds(); return !!(b.from || b.to); }
+function ttInRange(iso) {
+    const b = ttRangeBounds();
+    if (!b.from && !b.to) return true;
+    if (!iso) return false;
+    const d = String(iso).slice(0, 10);
+    if (b.from && d < b.from) return false;
+    if (b.to && d > b.to) return false;
+    return true;
+}
+function ttRangeLogs() { return (appData.timeLogs || []).filter(l => l && ttInRange(l.date)); }
+function ttRangeLabel() {
+    const b = ttRangeBounds();
+    if (!b.from && !b.to) return t('tr_all_time');
+    if (b.from && b.to) return b.from === b.to ? ttFmtDate(b.from) : `${ttFmtDate(b.from)} – ${ttFmtDate(b.to)}`;
+    return b.from ? `${t('tr_since')} ${ttFmtDate(b.from)}` : `${t('tr_until')} ${ttFmtDate(b.to)}`;
+}
+
+/* Aufgabe bzw. Stack nachschlagen – auch wenn sie im Papierkorb liegen. */
+function ttTaskOrDeleted(taskId) {
+    const task = (appData.tasks || []).find(x => x.id === taskId);
+    if (task) return { task, deleted: false };
+    const del = (appData.deletedItems || []).find(x => x.type === 'task' && x.data && x.data.id === taskId);
+    return del ? { task: del.data, deleted: true } : { task: null, deleted: true };
+}
+function ttStackOrDeleted(stackId) {
+    if (!stackId) return null;
+    const s = (appData.projectStacks || []).find(x => x.id === stackId);
+    if (s) return s;
+    const del = (appData.deletedItems || []).find(x => x.type === 'stack' && x.data && x.data.id === stackId);
+    return del ? del.data : null;
+}
+
+/* Stunden/Kosten einer Aufgabe bzw. eines Stacks im gewählten Zeitraum.
+   Ohne Filter gelten die bisherigen Gesamtwerte (inkl. Ist-Aufwand als Ersatz). */
+function getTaskHoursInRange(task) {
+    if (!task) return 0;
+    if (!ttRangeActive()) return getTaskTrackedHours(task);
+    return ttRangeLogs().filter(l => l.taskId === task.id).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+}
+function getTaskCostInRange(task) {
+    if (!task) return 0;
+    if (!ttRangeActive()) return getTaskConsumedBudget(task);
+    const stack = task.projectStackId ? appData.projectStacks.find(s => s.id === task.projectStackId) : null;
+    return getTaskHoursInRange(task) * getEffectiveHourlyRate(null, task, stack);
+}
+function getStackCostInRange(stack) {
+    if (!stack) return 0;
+    return appData.tasks.filter(x => x.projectStackId === stack.id).reduce((s, x) => s + getTaskCostInRange(x), 0);
+}
+
+function ttRerender() { if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer')); }
+/* Auf schmalen Bildschirmen den aktiven Zeitraum-Chip in die sichtbare Zone der Leiste schieben */
+function ttRevealActiveRangeChip() {
+    const row = document.querySelector('.tt-range-chips');
+    const act = row && row.querySelector('[aria-pressed="true"]');
+    if (!row || !act || row.scrollWidth <= row.clientWidth) return;
+    row.scrollLeft = Math.max(0, act.offsetLeft - row.offsetLeft - (row.clientWidth - act.offsetWidth) / 2);
+}
+function ttSetRangePreset(p) {
+    ttRange.preset = TT_RANGE_PRESETS.includes(p) ? p : 'all';
+    const b = ttRangeBounds();
+    ttRange.from = b.from || ''; ttRange.to = b.to || '';
+    ttRgExpanded = false; ttSaveRange(); ttRerender();
+}
+function ttSetRangeDate(which, val) {
+    /* Beim Tippen liefert der Browser Zwischenstände wie 0002-…; erst ein vollständiges Jahr übernehmen. */
+    if (val && parseInt(val.slice(0, 4), 10) < 1900) return;
+    ttRange[which === 'to' ? 'to' : 'from'] = val || '';
+    ttRange.preset = (ttRange.from || ttRange.to) ? 'custom' : 'all';
+    ttRgExpanded = false; ttSaveRange(); ttRerender();
+}
+
+function buildTimeRangeBarHtml() {
+    const b = ttRangeBounds();
+    const active = !!(b.from || b.to);
+    const chips = TT_RANGE_PRESETS.map(p =>
+        `<button type="button" class="secondary tt-range-chip" aria-pressed="${ttRange.preset === p}" onclick="ttSetRangePreset('${p}')">${t('tr_' + p)}</button>`
+    ).join('');
+    return `<div class="tt-range" role="group" aria-label="${t('tr_title')}">
+        <div class="tt-range-label"><i class="fas fa-calendar-days"></i> ${t('tr_title')}</div>
+        <div class="tt-range-chips">${chips}</div>
+        <div class="tt-range-dates">
+            <label><span>${t('tr_from')}</span><input type="date" value="${b.from || ''}" onchange="ttSetRangeDate('from', this.value)" aria-label="${t('tr_from')}"></label>
+            <span class="tt-range-sep">–</span>
+            <label><span>${t('tr_to')}</span><input type="date" value="${b.to || ''}" onchange="ttSetRangeDate('to', this.value)" aria-label="${t('tr_to')}"></label>
+            ${active ? `<button type="button" class="secondary tt-range-reset" onclick="ttSetRangePreset('all')" title="${t('tr_reset')}"><i class="fas fa-xmark"></i> <span>${t('tr_reset')}</span></button>` : ''}
+        </div>
+    </div>`;
+}
+
+/* Liste „Nach Projekt-Stack und Aufgabe": zunächst nur die ersten Einträge, Rest per Knopf */
+const TT_RG_LIMIT = 3;
+let ttRgExpanded = false;
+function ttRgMoreLabel(hidden) {
+    return ttRgExpanded
+        ? `<i class="fas fa-chevron-up"></i> ${t('tr_show_less')}`
+        : `<i class="fas fa-chevron-down"></i> ${t('tr_show_all').replace('{n}', hidden + TT_RG_LIMIT)} <span>(+${hidden})</span>`;
+}
+function ttToggleRgList() {
+    ttRgExpanded = !ttRgExpanded;
+    const list = document.getElementById('ttRgList');
+    const btn = document.getElementById('ttRgMore');
+    if (list) list.classList.toggle('expanded', ttRgExpanded);
+    if (btn) {
+        btn.setAttribute('aria-expanded', String(ttRgExpanded));
+        btn.innerHTML = ttRgMoreLabel(parseInt(btn.dataset.hidden, 10) || 0);
+        /* Beim Einklappen den Knopf im Blick behalten, statt ans Listenende zu springen */
+        if (!ttRgExpanded && list) list.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+/* Auswertung der Zeiterfassung für den gewählten Zeitraum: Summen + Aufschlüsselung nach Stack und Aufgabe */
+function renderTimeRangeReport() {
+    const logs = ttRangeLogs();
+    const cur = getGlobalCurrency();
+    const groups = {};
+    const taskKeys = new Set(), stackKeys = new Set();
+    let totalH = 0, totalC = 0, anyNoRate = false;
+
+    logs.forEach(l => {
+        const { task, deleted } = ttTaskOrDeleted(l.taskId);
+        const stack = task ? ttStackOrDeleted(task.projectStackId) : null;
+        const h = parseFloat(l.hours) || 0;
+        const rate = task ? getEffectiveHourlyRate(null, task, stack) : 0;
+        const c = h * rate;
+        if (rate <= 0 && h > 0) anyNoRate = true;
+        const gKey = stack ? stack.id : '_none';
+        if (!groups[gKey]) groups[gKey] = { key: gKey, name: stack ? (stack.name || t('unnamed')) : t('standalone_tasks'), isStack: !!stack, hours: 0, cost: 0, tasks: {} };
+        const g = groups[gKey];
+        const tKey = l.taskId || '_unknown';
+        if (!g.tasks[tKey]) g.tasks[tKey] = { id: l.taskId, name: task ? (task.projectName || t('unnamed')) : t('tt_deleted_task'), deleted, done: task ? isTaskDone(task) : false, hours: 0, cost: 0, count: 0, first: l.date, last: l.date };
+        const tk = g.tasks[tKey];
+        tk.hours += h; tk.cost += c; tk.count++;
+        if (l.date < tk.first) tk.first = l.date;
+        if (l.date > tk.last) tk.last = l.date;
+        g.hours += h; g.cost += c;
+        totalH += h; totalC += c;
+        taskKeys.add(tKey); if (stack) stackKeys.add(stack.id);
+    });
+
+    let html = `<div class="tt-panel tt-report">
+        <div class="tt-head">
+            <h3 style="margin:0; display:flex; align-items:center; gap:8px;"><i class="fas fa-chart-pie" style="color:var(--primary-color)"></i> ${t('tr_report_title')}</h3>
+            <span class="tt-report-range">${ttRangeLabel()}</span>
+        </div>`;
+
+    if (logs.length === 0) {
+        html += `<div class="tt-empty" style="flex-direction:column; align-items:flex-start; gap:4px;">
+            <span><i class="fas fa-circle-info"></i> ${t('tr_empty')}</span>
+            <span style="font-size:12px;">${t('tr_empty_hint')}</span>
+        </div></div>`;
+        return html;
+    }
+
+    html += `<div class="tt-kpis">
+        ${ttKpi(t('tr_hours'), ttNum(totalH) + ' h', `${logs.length} ${t('tr_bookings')}`, 'var(--primary-color)')}
+        ${ttKpi(t('tr_costs'), totalC > 0 ? ttNum(totalC) + ' ' + cur : '–', anyNoRate ? t('tr_partly_no_rate') : t('tr_costs_sub'))}
+        ${ttKpi(t('tr_tasks'), String(taskKeys.size), t('tr_tasks_sub'))}
+        ${ttKpi(t('tr_stacks'), String(stackKeys.size), t('tr_stacks_sub'))}
+    </div>`;
+
+    const sorted = Object.values(groups).sort((a, b) => b.hours - a.hours);
+    const hiddenCount = Math.max(0, sorted.length - TT_RG_LIMIT);
+    html += `<h4 class="tt-rg-title">${t('tr_by_stack')} <span>(${sorted.length})</span></h4><div class="tt-rg-list${ttRgExpanded ? ' expanded' : ''}" id="ttRgList">`;
+    sorted.forEach((g, i) => {
+        const share = totalH > 0 ? Math.round(g.hours / totalH * 100) : 0;
+        const tasks = Object.values(g.tasks).sort((a, b) => b.hours - a.hours);
+        html += `<details class="tt-rg${i >= TT_RG_LIMIT ? ' tt-rg-extra' : ''}">
+            <summary>
+                <i class="fas ${g.isStack ? 'fa-folder' : 'fa-tasks'} tt-rg-icon"></i>
+                <span class="tt-rg-name">${ttEsc(g.name)}<small>${tasks.length} ${tasks.length === 1 ? t('task') : t('tr_tasks')}</small></span>
+                <span class="tt-rg-bar" aria-hidden="true"><span style="width:${Math.max(2, share)}%"></span></span>
+                <span class="tt-rg-num"><b>${ttNum(g.hours)} h</b>${g.cost > 0 ? `<small>${ttNum(g.cost)} ${cur}</small>` : ''}</span>
+                <span class="tt-rg-share">${share}%</span>
+            </summary>
+            <div class="tt-rg-rows">`;
+        tasks.forEach(tk => {
+            const openable = tk.id && !tk.deleted;
+            const period = tk.first === tk.last ? ttFmtDate(tk.first) : `${ttFmtDate(tk.first)} – ${ttFmtDate(tk.last)}`;
+            html += `<div class="tt-rg-row${tk.done ? ' done' : ''}">
+                <span class="tt-rg-task">
+                    ${openable ? `<button type="button" class="secondary tt-rg-link" onclick="openModal('${tk.id}')">${ttEsc(tk.name)}</button>` : `<span>${ttEsc(tk.name)}</span>`}
+                    ${tk.deleted ? `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:1px 6px;">${t('tr_deleted')}</span>` : ''}
+                    <small>${tk.count} ${tk.count === 1 ? t('tr_booking') : t('tr_bookings')} · ${period}</small>
+                </span>
+                <span class="tt-rg-num"><b>${ttNum(tk.hours)} h</b>${tk.cost > 0 ? `<small>${ttNum(tk.cost)} ${cur}</small>` : ''}</span>
+            </div>`;
+        });
+        html += `</div></details>`;
+    });
+    html += `</div>`;
+    if (hiddenCount > 0) {
+        html += `<button type="button" class="secondary tt-rg-more" id="ttRgMore" aria-controls="ttRgList" aria-expanded="${ttRgExpanded}" data-hidden="${hiddenCount}" onclick="ttToggleRgList()">${ttRgMoreLabel(hiddenCount)}</button>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
 function switchTimeSubView(view) {
     timeSubView = view;
     if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer'));
@@ -7875,9 +8119,9 @@ function renderTimeTracking(c) {
     const subTabsHtml = buildTimeSubTabsHtml();
 
     if (timeSubView === 'budgets') {
-        c.innerHTML = subTabsHtml + `<div id="tt_budgets_container"></div>`;
+        c.innerHTML = subTabsHtml + buildTimeRangeBarHtml() + `<div id="tt_budgets_container"></div>`;
         renderBudgetsOverview(document.getElementById('tt_budgets_container'));
-        requestAnimationFrame(positionTimeLensMagnet);
+        requestAnimationFrame(() => { positionTimeLensMagnet(); ttRevealActiveRangeChip(); });
         return;
     }
 
@@ -7894,9 +8138,10 @@ function renderTimeTracking(c) {
         return { task: null, deleted: true };
     };
 
-    const sortedLogs = [...appData.timeLogs].sort((a,b) => new Date(b.date) - new Date(a.date));
+    const sortedLogs = ttRangeLogs().sort((a,b) => new Date(b.date) - new Date(a.date));
+    const sortedLogsTotal = sortedLogs.reduce((sum, l) => sum + (parseFloat(l.hours) || 0), 0);
 
-    let html = subTabsHtml + `
+    let html = subTabsHtml + buildTimeRangeBarHtml() + renderTimeRangeReport() + `
     <div id="tt_account_panel">${renderTimeAccount()}</div>
     <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
         <div style="flex:1; min-width:300px; display:flex; flex-direction:column; gap:20px;">
@@ -7934,9 +8179,10 @@ function renderTimeTracking(c) {
             </div>
         </div>
         <div style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); flex:2; min-width:300px; max-height:calc(100vh - 120px); overflow-y:auto;">
-            <h3 style="margin-bottom:15px;">${t('booking_history')}</h3>
+            <h3 style="margin-bottom:4px;">${t('booking_history')} <span style="font-weight:normal; color:var(--text-muted); font-size:13px;">(${sortedLogs.length})</span></h3>
+            <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;"><i class="fas fa-calendar-days"></i> ${ttRangeLabel()} · ${t('tr_total')}: <b style="color:var(--text-main);">${ttNum(sortedLogsTotal)} h</b></div>
             <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>${t('date')}</th><th>${t('task')}</th><th>${t('duration')}</th><th>Notiz</th><th width="80"></th></tr></thead><tbody>`;
-    if(sortedLogs.length === 0) html += `<tr><td colspan="5">Keine Einträge.</td></tr>`;
+    if(sortedLogs.length === 0) html += `<tr><td colspan="5">${ttRangeActive() ? t('tr_empty') : 'Keine Einträge.'}</td></tr>`;
     sortedLogs.forEach((log) => {
         const { task, deleted } = getTaskOrDeleted(log.taskId);
         const isPaused = task && task.isPaused && !isTaskDone(task); 
@@ -7947,7 +8193,7 @@ function renderTimeTracking(c) {
         html += `<tr><td data-label="Datum">${log.date}</td><td data-label="Aufgabe"><b>${pausedIcon}${taskName}${deletedPill}</b></td><td data-label="Dauer"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="Notiz">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
     });
     html += `</tbody></table></div></div></div>`;
-    c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(positionTimeLensMagnet);
+    c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(() => { positionTimeLensMagnet(); ttRevealActiveRangeChip(); });
 }
 
 function addManualTimeLog() {
@@ -8139,7 +8385,7 @@ function exportSingleStackExcel() {
 
 function exportTimeExcel() {
     if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
-    const wsData = appData.timeLogs.map(log => {
+    const wsData = ttRangeLogs().slice().sort((a,b) => String(a.date).localeCompare(String(b.date))).map(log => {
         let task = appData.tasks.find(x => x.id === log.taskId);
         let deleted = false;
         if(!task) {
@@ -8150,9 +8396,10 @@ function exportTimeExcel() {
         return { Datum: log.date, Aufgabe: tName, Stunden: log.hours, Notiz: log.note };
     });
     const worksheet = XLSX.utils.json_to_sheet(wsData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Zeiterfassung");
-    const absData = (appData.absences || []).slice().sort((a,b) => a.date.localeCompare(b.date)).map(a => ({ Datum: a.date, Art: ttAbsLabel(a.type), Stunden: a.hours, Notiz: a.note || '' }));
+    const absData = (appData.absences || []).filter(a => ttInRange(a.date)).slice().sort((a,b) => a.date.localeCompare(b.date)).map(a => ({ Datum: a.date, Art: ttAbsLabel(a.type), Stunden: a.hours, Notiz: a.note || '' }));
     if(absData.length > 0) { const wsAbs = XLSX.utils.json_to_sheet(absData); XLSX.utils.book_append_sheet(workbook, wsAbs, "Abwesenheiten"); }
-    XLSX.writeFile(workbook, "Zeiterfassung.xlsx");
+    const _rb = ttRangeBounds();
+    XLSX.writeFile(workbook, (_rb.from || _rb.to) ? `Zeiterfassung_${_rb.from || 'start'}_${_rb.to || 'heute'}.xlsx` : "Zeiterfassung.xlsx");
 }
 
 function generateRichTextReport() {
@@ -8161,8 +8408,9 @@ function generateRichTextReport() {
     let html = `<div style="font-family: Helvetica, Arial, sans-serif; color: #333;"><h1 style="color: ${appData.customColor}; border-bottom: 2px solid ${appData.customColor}; padding-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">ProMan Export: ${viewName}</h1><p style="font-family: Helvetica, Arial, sans-serif;"><em>Erstellt am: ${new Date().toLocaleDateString('de-DE')}</em></p><br/>`;
     
     if(currentView === 'time') {
+        html += `<p style="font-family: Helvetica, Arial, sans-serif;"><b>${t('tr_title')}:</b> ${ttRangeLabel()}</p>`;
         html += `<table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>Datum</th><th>Aufgabe</th><th>Dauer (h)</th><th>Notiz</th></tr>`;
-        appData.timeLogs.forEach(log => { 
+        ttRangeLogs().forEach(log => { 
             let task = appData.tasks.find(x => x.id === log.taskId);
             let deleted = false;
             if(!task) {
