@@ -355,6 +355,8 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 .pb-container { width:100%; background:var(--border-color); border-radius:4px; height:6px; overflow:hidden; margin-top:5px; }
 .pb-fill { background:var(--success); height:100%; border-radius:4px; transition: width 0.3s; }
 .pb-fill.secondary { background:var(--success); opacity: 0.65; }
+.pb-container > .pb-fill.pb-fill-alt { background:var(--wk-graphite, #22262B) !important; opacity:1 !important; }
+[data-theme="dark"] .pb-container > .pb-fill.pb-fill-alt { background:var(--accent) !important; }
 
 /* Fortschritts-Spalte der Listenansicht: in einer Tabellenzelle hat der Flex-Container
    keine feste Breite, dadurch lief die prozentuale Breite des Balkens ins Leere. */
@@ -3234,3 +3236,15 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
     .tt-rg-bar, .tt-rg-share { display: none; }
     .tt-rg-rows { padding-left: 12px; }
 }
+
+/* Zeitplan › Verlauf: vergangene Abwesenheiten */
+.sched-past { margin-top: 25px; border-top: 2px solid var(--border-color); }
+.sched-past > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    padding: 10px 2px 5px; font-size: 15px; font-weight: 700; color: var(--text-muted);
+}
+.sched-past > summary::-webkit-details-marker { display: none; }
+.sched-past > summary::before { content: '\25B8'; font-size: 12px; transition: transform .15s; }
+.sched-past[open] > summary::before { transform: rotate(90deg); }
+.sched-past > summary:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
+.sched-past-list { padding-top: 10px; opacity: .8; }

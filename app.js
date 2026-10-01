@@ -1485,8 +1485,9 @@ function generateProgressBarHTML(percent, issecondary = false) {
        sichtbar ist. Fortschritt wird gruen dargestellt; bewusst OHNE color-mix,
        da nicht jede Browser-Version das unterstuetzt und der Balken sonst unsichtbar bleibt. */
     const pct = Math.max(0, Math.min(100, Math.round(parseFloat(percent) || 0)));
-    const cssClass = issecondary ? 'pb-fill secondary' : 'pb-fill';
-    const fillOpacity = issecondary ? '0.7' : '1';
+    /* Nicht „secondary" verwenden: Die globale Button-Klasse .secondary setzt per !important einen weissen Hintergrund. */
+    const cssClass = issecondary ? 'pb-fill pb-fill-alt' : 'pb-fill';
+    const fillOpacity = '1';
     return `<div class="pb-container" style="width:100%; height:6px; background:var(--border-color); border-radius:4px; overflow:hidden; display:block;">`
          + `<div class="${cssClass}" style="width:${pct}%; height:100%; background:var(--success); opacity:${fillOpacity}; border-radius:4px; display:block;"></div></div>`;
 }
@@ -6477,6 +6478,7 @@ function renderSchedule(c) {
         endOfWeek.setHours(23,59,59,999);
 
         let groups = {
+            past: [],      /* vergangene Abwesenheiten – keine Aufgaben, daher nicht „überfällig" */
             overdue: [],
             today: [],
             tomorrow: [],
@@ -6485,11 +6487,15 @@ function renderSchedule(c) {
         };
 
         listEvents.forEach(ev => {
-            if(!ev.origDateStr) { groups.later.push(ev); return; }
-            const d = new Date(ev.origDateStr); 
+            /* Abwesenheiten haben kein origDateStr, sondern ein eigenes Datum – vorher landeten sie deshalb alle in „Später". */
+            const isAbsence = ev.type === 'absence';
+            const dateStr = ev.origDateStr || (isAbsence && ev.data ? ev.data.date : null);
+            if(!dateStr) { groups.later.push(ev); return; }
+            const d = isAbsence ? ttParse(dateStr) : new Date(dateStr); 
+            if (isNaN(d)) { groups.later.push(ev); return; }
             d.setHours(0,0,0,0);
             
-            if (d < todayZero) groups.overdue.push(ev);
+            if (d < todayZero) (isAbsence ? groups.past : groups.overdue).push(ev);
             else if (d.getTime() === todayZero.getTime()) groups.today.push(ev);
             else if (d.getTime() === tomorrowZero.getTime()) groups.tomorrow.push(ev);
             else if (d <= endOfWeek) groups.thisWeek.push(ev);
@@ -6632,6 +6638,15 @@ function renderSchedule(c) {
         html += renderSection('Morgen', 'fa-sun', 'var(--warning)', groups.tomorrow);
         html += renderSection('Diese Woche', 'fa-calendar-week', 'var(--text-main)', groups.thisWeek);
         html += renderSection('Später', 'fa-calendar', 'var(--text-muted)', groups.later);
+
+        /* Vergangene Abwesenheiten: eingeklappt am Ende, neueste zuerst */
+        if (groups.past.length > 0) {
+            const pastSorted = groups.past.slice().sort((a, b) => b.date - a.date);
+            html += `<details class="sched-past">
+                <summary><i class="fas fa-clock-rotate-left"></i> ${t('sched_past_absences')} <span class="badge" style="background:var(--bg-color); color:var(--text-main); margin-left:auto;">${pastSorted.length}</span></summary>
+                <div class="sched-past-list">${pastSorted.map(renderEnrichedCard).join('')}</div>
+            </details>`;
+        }
 
         if(listEvents.length === 0) {
             html += `<div style="text-align:center; padding: 60px 20px; color:var(--text-muted); background:var(--surface-color); border-radius:var(--radius); border:1px dashed var(--border-color); margin-top:20px;">
