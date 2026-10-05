@@ -17,7 +17,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261001-25">
+    <link rel="stylesheet" href="styles.css?v=20261002-26">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -41,6 +41,12 @@
 
             <div class="topbar-actions">
                 <div id="global-timer-wrap" class="global-timer-container"></div>
+
+                <!-- Lade-Symbol der Workflow-Hintergrundprüfung (alle 5 Min.) -->
+                <span id="wfBgIndicator" class="wf-bg-indicator" role="status" aria-live="polite" aria-busy="false" hidden>
+                    <span class="wf-bg-spinner" aria-hidden="true"></span>
+                    <span class="wf-bg-sr" data-i18n="wf_bg_checking">Workflows werden im Hintergrund geprüft …</span>
+                </span>
                 
                 <button class="secondary icon-btn" onclick="openSearchModal()" title="Suche (Strg+K)" style="font-size: 16px; padding: 6px 10px;">
                     <i class="fas fa-search"></i>
@@ -1118,15 +1124,15 @@
                             <div style="display:flex; gap:10px; flex-wrap: wrap;">
                                 <select id="wf_edit_trigger" style="flex:1; min-width: 200px;" onchange="renderWfTriggerValueOptions()">
                                     <option value="" data-i18n="wf_trig_select">-- Auslöser wählen --</option>
-                                    <option value="entity_exists" data-i18n="wf_t_entity_exists">Aufgabe oder Stack existiert (Wird bei jeder Änderung geprüft)</option>
+                                    <option value="entity_exists" data-i18n="wf_t_entity_exists">Aufgabe oder Stack erfüllt Bedingungen (bei jeder Änderung und alle 5 Min. geprüft)</option>
                                     <option value="task_created" data-i18n="wf_t_t_created">Aufgabe wird erstellt</option>
-                                    <option value="task_updated" data-i18n="wf_t_t_updated">Aufgabe aktualisiert</option>
+                                    <option value="task_updated" data-i18n="wf_t_t_updated">Aufgabe aktualisiert (einmal pro Speichern)</option>
                                     <option value="task_status_changed" data-i18n="wf_t_t_status">Aufgabe wechselt Status auf...</option>
                                     <option value="task_paused" data-i18n="wf_t_t_paused">Aufgabe wird pausiert</option>
                                     <option value="task_resumed" data-i18n="wf_t_t_resumed">Aufgabe wird fortgesetzt</option>
                                     <option value="task_completed" data-i18n="wf_t_t_comp">Aufgabe wird abgeschlossen</option>
                                     <option value="stack_created" data-i18n="wf_t_s_created">Stack wird erstellt</option>
-                                    <option value="stack_updated" data-i18n="wf_t_s_updated">Stack aktualisiert</option>
+                                    <option value="stack_updated" data-i18n="wf_t_s_updated">Stack aktualisiert (einmal pro Speichern)</option>
                                     <option value="stack_paused" data-i18n="wf_t_s_paused">Stack wird pausiert</option>
                                     <option value="stack_resumed" data-i18n="wf_t_s_resumed">Stack wird fortgesetzt</option>
                                     <option value="stack_completed" data-i18n="wf_t_s_comp">Stack wird abgeschlossen</option>
@@ -1247,8 +1253,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js?v=20261001-25"></script>
-    <script src="app.js?v=20261001-25"></script>
+    <script src="i18n.js?v=20261002-26"></script>
+    <script src="app.js?v=20261002-26"></script>
 
 </body>
 </html>

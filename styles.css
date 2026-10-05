@@ -3248,3 +3248,16 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 .sched-past[open] > summary::before { transform: rotate(90deg); }
 .sched-past > summary:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 6px; }
 .sched-past-list { padding-top: 10px; opacity: .8; }
+
+/* Workflow-Hintergrundprüfung: Lade-Symbol neben der Suche */
+.wf-bg-indicator { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex-shrink: 0; }
+.wf-bg-indicator[hidden] { display: none !important; }
+.wf-bg-spinner {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2.5px solid var(--border-color); border-top-color: var(--wk-magnet, var(--primary-color));
+    animation: wfBgSpin .8s linear infinite;
+}
+@keyframes wfBgSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .wf-bg-spinner { animation-duration: 2.4s; } }
+.wf-bg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 1088px) { .wf-bg-indicator { width: 28px; } .wf-bg-spinner { width: 16px; height: 16px; } }

@@ -2180,7 +2180,7 @@ function renderWorkflows() {
             if(wf.trigger === 'stack_paused') triggerLabel = t('wf_t_s_paused');
             if(wf.trigger === 'stack_resumed') triggerLabel = t('wf_t_s_resumed');
             if(wf.trigger === 'stack_completed') triggerLabel = t('wf_t_s_comp');
-            if(wf.trigger === 'entity_exists') triggerLabel = 'Aufgabe/Stack existiert (Wird bei Änderung geprüft)';
+            if(wf.trigger === 'entity_exists') triggerLabel = t('wf_t_entity_exists');
 
             html += `<div class="wf-card ${statusClass}">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -2705,6 +2705,149 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
     return { viewNeedsUpdate, structureChanged };
 }
 
+/* ============================================================
+   WORKFLOW-HINTERGRUNDPRÜFUNG (alle 5 Minuten)
+   Prüft zustandsbasierte Workflows („Aufgabe oder Stack existiert") gegen
+   alle Aufgaben und Stacks – auch ohne Benutzeraktion. Das ist v. a. für
+   zeitabhängige Bedingungen wichtig (z. B. „überfällig").
+
+   Flankengesteuert: Ein Workflow feuert pro Element nur, wenn die Bedingung
+   NEU zutrifft. Solange sie weiter zutrifft, passiert nichts mehr; erst wenn
+   sie einmal nicht mehr zutrifft, kann sie später erneut auslösen. Ohne das
+   würden Aktionen wie „Notiz anhängen", „Aufgabe erstellen", „E-Mail senden"
+   oder „Fälligkeit = heute + N" alle 5 Minuten wiederholt.
+
+   Ereignisbasierte Auslöser (erstellt, aktualisiert, Status …) werden hier
+   bewusst nicht geprüft – sie beschreiben einen Moment, keinen Zustand.
+   ============================================================ */
+const WF_BG_INTERVAL_MS = 5 * 60 * 1000;
+const WF_BG_RETRY_MS = 30 * 1000;
+const WF_BG_MIN_SPIN_MS = 900;
+let _wfBgTimer = null;
+let _wfBgRunning = false;
+
+function wfBgState() {
+    if (!appData.settings) appData.settings = {};
+    if (!appData.settings.wfBgState || typeof appData.settings.wfBgState !== 'object') appData.settings.wfBgState = {};
+    return appData.settings.wfBgState;
+}
+/* Signatur der Bedingungen: Wird ein Workflow umgestellt, startet seine Merkliste neu. */
+function wfBgSignature(wf) {
+    try { return JSON.stringify([wf.trigger, wf.conditionLogic || 'AND', wf.conditions || []]); } catch (e) { return ''; }
+}
+function wfBgEntry(wf) {
+    const st = wfBgState();
+    const sig = wfBgSignature(wf);
+    if (!st[wf.id] || st[wf.id].sig !== sig) st[wf.id] = { sig, ids: [] };
+    return st[wf.id];
+}
+/* Vom ereignisgesteuerten Pfad aufgerufen, damit die Hintergrundprüfung nicht doppelt auslöst. */
+function wfBgMark(wf, entityId, matched) {
+    if (!wf || wf.trigger !== 'entity_exists' || !entityId || !appData.settings || !appData.settings.wfBgInitialized) return;
+    const e = wfBgEntry(wf);
+    const has = e.ids.includes(entityId);
+    if (matched && !has) e.ids.push(entityId);
+    if (!matched && has) e.ids = e.ids.filter(x => x !== entityId);
+}
+
+function wfBgSetIndicator(on) {
+    const el = document.getElementById('wfBgIndicator');
+    if (!el) return;
+    el.hidden = !on;
+    el.setAttribute('aria-busy', on ? 'true' : 'false');
+}
+function wfBgUserIsBusy() {
+    if (document.querySelector('.modal-overlay.active')) return true;
+    const a = document.activeElement;
+    return !!(a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)));
+}
+function wfBgSchedule(ms) {
+    clearTimeout(_wfBgTimer);
+    _wfBgTimer = setTimeout(runWorkflowBackgroundCheck, ms);
+}
+
+function runWorkflowBackgroundCheck() {
+    if (_wfBgRunning) return;
+    let wfs;
+    try { wfs = wfAll().filter(w => w.active && w.trigger === 'entity_exists'); }
+    catch (e) { console.error('Workflows konnten nicht gelesen werden', e); wfBgSchedule(WF_BG_INTERVAL_MS); return; }
+    if (wfs.length === 0) { wfBgSchedule(WF_BG_INTERVAL_MS); return; }
+    /* Nicht mitten in eine Eingabe oder einen offenen Dialog hineinschreiben – kurz später erneut versuchen. */
+    if (_wfExecutionLock || wfBgUserIsBusy()) { wfBgSchedule(WF_BG_RETRY_MS); return; }
+
+    _wfBgRunning = true;
+    const started = Date.now();
+    wfBgSetIndicator(true);
+
+    /* Kurz warten, damit der Browser das Lade-Symbol zeichnen kann, bevor gerechnet wird. */
+    setTimeout(() => {
+        let executed = 0, viewNeedsUpdate = false, structureChanged = false;
+        const firstRun = !appData.settings.wfBgInitialized;
+        try {
+            const st = wfBgState();
+            const entities = [
+                ...(appData.tasks || []).map(x => ({ e: x, type: 'task' })),
+                ...(appData.projectStacks || []).map(x => ({ e: x, type: 'stack' }))
+            ];
+            const liveIds = new Set(entities.map(x => x.e.id));
+            wfs.forEach(wf => {
+                const entry = wfBgEntry(wf);
+                const prev = new Set(entry.ids.filter(id => liveIds.has(id)));
+                const now = [];
+                entities.forEach(({ e, type }) => {
+                    let matches = false;
+                    try { matches = evaluateConditions(e, wf.conditions, wf.conditionLogic); }
+                    catch (err) { console.error('Workflow-Bedingung fehlerhaft', wf.name, err); return; }
+                    if (!matches) return;
+                    now.push(e.id);
+                    /* Erster Lauf überhaupt: nur merken, nicht auslösen – diese Elemente hat der
+                       ereignisgesteuerte Pfad bereits behandelt. Später neu angelegte oder geänderte
+                       Workflows greifen dagegen auch für bereits passende Elemente. */
+                    if (firstRun || prev.has(e.id)) return;
+                    _wfExecutionLock = true;
+                    try {
+                        const res = executeWorkflowActions(wf.actions || [], e, type, t('wf_bg_trigger_name')) || {};
+                        if (res.viewNeedsUpdate) viewNeedsUpdate = true;
+                        if (res.structureChanged) structureChanged = true;
+                        executed++;
+                    } catch (err) { console.error('Workflow-Aktion fehlerhaft', wf.name, err); }
+                    _wfExecutionLock = false;
+                });
+                entry.ids = now;
+            });
+            /* Merklisten gelöschter Workflows aufräumen */
+            const wfIds = new Set(wfAll().map(w => w.id));
+            Object.keys(st).forEach(k => { if (!wfIds.has(k)) delete st[k]; });
+            appData.settings.wfBgInitialized = true;
+            appData.settings.wfBgLastRun = Date.now();
+        } catch (err) {
+            console.error('Workflow-Hintergrundprüfung fehlgeschlagen', err);
+        } finally {
+            _wfExecutionLock = false;
+        }
+
+        try {
+            if (structureChanged || viewNeedsUpdate) saveToLocal(false);
+            else saveToLocal(true);
+            if (executed > 0) showToast(t('wf_bg_toast').replace('{n}', executed));
+        } catch (err) { console.error(err); }
+
+        const rest = Math.max(0, WF_BG_MIN_SPIN_MS - (Date.now() - started));
+        setTimeout(() => {
+            wfBgSetIndicator(false);
+            const el = document.getElementById('wfBgIndicator');
+            if (el) el.title = `${t('wf_bg_last')} ${new Date().toLocaleTimeString(ttLocale(), { hour: '2-digit', minute: '2-digit' })}`;
+            _wfBgRunning = false;
+            wfBgSchedule(WF_BG_INTERVAL_MS);
+        }, rest);
+    }, 60);
+}
+
+function startWorkflowBackgroundCheck() {
+    /* Erster Lauf kurz nach dem Start, danach alle 5 Minuten */
+    wfBgSchedule(20 * 1000);
+}
+
 function triggerWorkflows(eventName, context) {
     if(_wfExecutionLock) return;
     /* Fehler in einem Workflow dürfen NIE die auslösende Aktion (z. B. eine
@@ -2728,6 +2871,7 @@ function triggerWorkflows(eventName, context) {
         let matches = false;
         try { matches = evaluateConditions(entity, wf.conditions, wf.conditionLogic); }
         catch(err) { console.error('Workflow-Bedingung fehlerhaft', wf && wf.name, err); return; }
+        try { wfBgMark(wf, entity.id, matches); } catch(err) {}
         if(matches) {
             _wfExecutionLock = true;
             try {
@@ -9859,6 +10003,7 @@ updateNotificationsBadge();
 updateShortcutUI(); 
 updateActiveUserIcon(); 
 renderView();
+startWorkflowBackgroundCheck();
 if (typeof updateAISearchButton === 'function') updateAISearchButton();
 if (typeof aiAutoInit === 'function') aiAutoInit();
 
