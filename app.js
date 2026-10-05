@@ -1066,7 +1066,9 @@ function getNotifications() {
     if(appData.customBellNotifs) {
         appData.customBellNotifs.forEach(cn => {
             const nid = `custom_bell_${cn.id}`;
-            addNotif({ type: 'info', icon: 'fa-robot', title: cn.title, desc: cn.desc, id: cn.id, entity: 'custom', notifId: nid, eventKey: 'system' });
+            /* Aeltere Eintraege ohne entityId/entityType (vor diesem Update erzeugt) bleiben wie
+               bisher unverlinkt ('custom'); neue zeigen direkt auf die betroffene Aufgabe/den Stack. */
+            addNotif({ type: 'info', icon: 'fa-robot', title: cn.title, desc: cn.desc, id: cn.entityId || cn.id, entity: cn.entityType || 'custom', notifId: nid, eventKey: 'system' });
         });
     }
 
@@ -2644,9 +2646,14 @@ function evaluateConditions(entity, conditions, logic = 'AND') {
     return results.every(r => r);
 }
 
-function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
+function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName = '') {
     let viewNeedsUpdate = false;
     let structureChanged = false;
+    /* Name der betroffenen Aufgabe/des Stacks: wird in Benachrichtigungen und im Aktivitaets-
+       protokoll gebraucht, damit der User sieht, WEN eine Automatisierung betrifft - bisher stand
+       dort nur die DANN-Aktion selbst ("Status gesetzt" o.ae.) ohne jeden Bezug zum Element. */
+    const wfEntityName = entity.projectName || entity.name || entity.title || t('unnamed');
+    const wfEntityKind = typeStr === 'stack' ? t('wf_entity_stack') : t('task');
 
     actions.forEach(action => {
         if(action.type === 'set_status') {
@@ -2682,12 +2689,12 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
         
         if(action.type === 'notif_bell') {
             if(!appData.customBellNotifs) appData.customBellNotifs = [];
-            appData.customBellNotifs.push({ id: generateId(), title: 'Automatisierung', desc: action.value, date: Date.now() });
+            appData.customBellNotifs.push({ id: generateId(), title: `${wfEntityKind}: ${wfEntityName}`, desc: action.value, date: Date.now(), entityId: entity.id, entityType: typeStr });
             viewNeedsUpdate = true; 
         }
-        if(action.type === 'notif_toast') { _rawToast(`🤖 Automatisierung: ${action.value}`, 'info'); }
-        if(action.type === 'notif_modal') { showNotifModal('Automatisierung', action.value, 'info'); }
-        if(action.type === 'notif_push') { sendPushNotification('ProMan Automatisierung', { body: action.value }); }
+        if(action.type === 'notif_toast') { _rawToast(`🤖 ${wfEntityKind}: ${wfEntityName} — ${action.value}`, 'info'); }
+        if(action.type === 'notif_modal') { showNotifModal(`${wfEntityKind}: ${wfEntityName}`, action.value, 'info'); }
+        if(action.type === 'notif_push') { sendPushNotification(`${wfEntityKind}: ${wfEntityName}`, { body: action.value }); }
 
         if(action.type === 'create_task') {
             const newTask = {
@@ -2738,6 +2745,13 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
             triggerEmailNotif(subject, body, targetEmail);
         }
     });
+
+    /* Hat die Automatisierung die Aufgabe/den Stack tatsaechlich veraendert (nicht nur eine
+       Benachrichtigung ausgeloest ohne Datenaenderung), erscheint das jetzt auch im Hub unter
+       "Letzte Aktivitaeten" - bisher blieben Workflow-Aenderungen dort komplett unsichtbar. */
+    if(viewNeedsUpdate || structureChanged) {
+        try { logActivity('fa-robot', t('act_wf_updated').replace('{w}', wfName || triggerNameStr || t('wf_bg_trigger_name')).replace('{n}', wfEntityName)); } catch(e) {}
+    }
 
     return { viewNeedsUpdate, structureChanged };
 }
@@ -2843,7 +2857,7 @@ function runWorkflowBackgroundCheck() {
                     if (firstRun || prev.has(e.id)) return;
                     _wfExecutionLock = true;
                     try {
-                        const res = executeWorkflowActions(wf.actions || [], e, type, t('wf_bg_trigger_name')) || {};
+                        const res = executeWorkflowActions(wf.actions || [], e, type, t('wf_bg_trigger_name'), wf.name) || {};
                         if (res.viewNeedsUpdate) viewNeedsUpdate = true;
                         if (res.structureChanged) structureChanged = true;
                         executed++;
@@ -2912,7 +2926,7 @@ function triggerWorkflows(eventName, context) {
         if(matches) {
             _wfExecutionLock = true;
             try {
-                const res = executeWorkflowActions(wf.actions, entity, typeStr, eventName) || {};
+                const res = executeWorkflowActions(wf.actions, entity, typeStr, eventName, wf.name) || {};
                 if(res.viewNeedsUpdate) globalViewNeedsUpdate = true;
                 if(res.structureChanged) globalStructureChanged = true;
             } catch(err) { console.error('Workflow-Aktion fehlerhaft', wf && wf.name, err); }
