@@ -2236,6 +2236,16 @@ function renderWfTriggerValueOptions(preselect = '') {
             + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
     }
     else { valSelect.style.display = 'none'; valSelect.innerHTML = ''; }
+    wfRefreshStatusActionRows();
+}
+/* Aktualisiert die Werteauswahl aller "Setze Status auf..."-Aktionszeilen (z. B. nach Auslöser-Wechsel) */
+function wfRefreshStatusActionRows() {
+    const list = document.getElementById('wf_edit_actions_list');
+    if(!list) return;
+    list.querySelectorAll('.wf-rule-row').forEach(row => {
+        const typeSel = row.querySelector('.wf-act-type'); const valSel = row.querySelector('.wf-act-val');
+        if(typeSel && valSel && typeSel.value === 'set_status') renderWfActionValueInput(typeSel, valSel.value);
+    });
 }
 
 function getWfFieldOptionsHtml(selected = '') {
@@ -2390,9 +2400,25 @@ function getWfActionOptionsHtml(selected = '') {
     `;
 }
 
+/* Welche Art Entität löst diesen Workflow aus? Entscheidet, welche Status-Werte im Editor sinnvoll sind. */
+function wfActionTargetKind() {
+    const trig = document.getElementById('wf_edit_trigger') ? document.getElementById('wf_edit_trigger').value : '';
+    if(trig.indexOf('stack_') === 0) return 'stack';
+    if(trig.indexOf('task_') === 0) return 'task';
+    return 'both'; /* 'entity_exists' oder noch kein Auslöser gewählt */
+}
 function renderWfActionValueInput(actionSelectEl, preselect = '') {
     const action = actionSelectEl.value; const container = actionSelectEl.parentElement.querySelector('.wf-act-val-container'); let html = '';
-    if(action === 'set_status') { html = `<select class="wf-act-val">` + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('') + `</select>`; } 
+    if(action === 'set_status') {
+        const kind = wfActionTargetKind();
+        const taskOpts = appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
+        const stackOpts = `<option value="active" ${preselect==='active'?'selected':''}>${t('stack_status_active')}</option>`
+            + `<option value="paused" ${preselect==='paused'?'selected':''}>${t('status_paused')}</option>`
+            + `<option value="completed" ${preselect==='completed'?'selected':''}>${t('stack_status_completed')}</option>`;
+        if(kind === 'stack') html = `<select class="wf-act-val">${stackOpts}</select>`;
+        else if(kind === 'task') html = `<select class="wf-act-val">${taskOpts}</select>`;
+        else html = `<select class="wf-act-val"><optgroup label="${t('wf_val_group_task')}">${taskOpts}</optgroup><optgroup label="${t('wf_val_group_stack')}">${stackOpts}</optgroup></select>`;
+    } 
     else if(action === 'set_priority') { html = `<select class="wf-act-val"><option value="low" ${preselect==='low'?'selected':''}>${t('prio_low')}</option><option value="medium" ${preselect==='medium'?'selected':''}>${t('prio_med')}</option><option value="high" ${preselect==='high'?'selected':''}>${t('prio_high')}</option></select>`; } 
     else if(action === 'set_assignee') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`; } 
     else if(action === 'set_bucket') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`; } 
@@ -2624,9 +2650,20 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr) {
 
     actions.forEach(action => {
         if(action.type === 'set_status') {
-            if(entity.status !== action.value) {
+            /* Kanban-Status (Aufgaben: todo/inProgress/.../done, inkl. selbst angelegter Spalten) und
+               Stack-Status (active/paused/completed) ueberschneiden sich wertemaessig nicht. Bei einem
+               Workflow fuer "Aufgabe ODER Stack existiert" kann ein und dieselbe Aktion auf beide Typen
+               treffen; ein Wert aus dem jeweils falschen Bereich wuerde den Status sonst auf einen Wert
+               setzen, den die Oberflaeche fuer diesen Typ nicht kennt -> der Status wirkt dann "entfernt"
+               (keine der Pausiert/Abgeschlossen/Aktiv-Anzeigen trifft mehr zu). Daher: nur anwenden, wenn
+               der Wert zum tatsaechlichen Entitaetstyp passt; sonst ueberspringen statt zu beschaedigen. */
+            const STACK_STATUS_VALUES = ['active', 'paused', 'completed'];
+            const isStackStatusValue = STACK_STATUS_VALUES.includes(action.value);
+            const matchesEntityType = typeStr === 'stack' ? isStackStatusValue : !isStackStatusValue;
+            if(matchesEntityType && entity.status !== action.value) {
                 entity.status = action.value;
-                if(action.value === 'done') { entity.isPaused = false; if(!entity.completedAt) entity.completedAt = Date.now(); }
+                const doneValue = typeStr === 'stack' ? 'completed' : 'done';
+                if(action.value === doneValue) { if(typeStr === 'task') entity.isPaused = false; if(!entity.completedAt) entity.completedAt = Date.now(); }
                 else { delete entity.completedAt; }
                 viewNeedsUpdate = true;
             }
