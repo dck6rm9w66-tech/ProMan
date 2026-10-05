@@ -89,6 +89,10 @@ body { background-color: var(--bg-color); color: var(--text-main); display: flex
     justify-content: space-between; 
     align-items: center; 
     padding: 10px 20px; 
+    /* iPhone (als Home-Bildschirm-App, "black-translucent"): Inhalt startet bewusst unter der
+       Uhrzeit-/Empfangsleiste, die Topbar polstert den Abstand selbst via safe-area-inset-top nach.
+       env() ist 0px im normalen Browser-Tab, aendert dort also nichts. */
+    padding-top: calc(10px + var(--wk-safe-t));
     z-index: 100;
     box-shadow: var(--glass-edge);
 }
@@ -660,7 +664,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     .topbar-actions button[data-i18n-title="theme_toggle"] { display: none !important; }
 
     /* --- 2. SUCHE (EXPANDABLE APP BAR) --- */
-    .topbar { flex-wrap: nowrap; overflow: hidden; padding: 10px 15px; border-bottom: none; box-shadow: var(--shadow); position:relative; }
+    .topbar { flex-wrap: nowrap; overflow: hidden; padding: 10px 15px; padding-top: calc(10px + var(--wk-safe-t)); border-bottom: none; box-shadow: var(--shadow); position:relative; }
     .topbar-left { flex: 1; min-width: 0; transition: 0.3s; }
     
     .filter-area { margin-left: auto; padding-right: 0; justify-content: flex-end; flex: 0 1 auto; position: static; display: flex; align-items: center; transition: 0.3s; background: transparent; }
@@ -729,6 +733,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     button, .icon-btn, input:not([type="color"]):not([type="checkbox"]), select { min-height: 44px; }
     .task-card .icon-btn, .kanban-column .icon-btn, .data-table .icon-btn, .draggable-item .icon-btn { min-width: 44px; min-height: 44px; }
     .rte-toolbar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
+    .rte-toolbar button { min-width: 38px; min-height: 38px; padding: 6px; flex: 0 0 auto; }
 
     /* --- SETTINGS TABLES OVERRIDES --- */
     #settingsModal .data-table td::before { display: none !important; }
@@ -760,6 +765,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
     #settings_def_cl_table td:nth-child(2) { margin-left: auto; display: flex !important; flex-direction: row !important; gap: 5px; }
 
     .form-grid-2, .form-grid-3, .settings-grid { grid-template-columns: 1fr; gap: 15px; }
+    .modal-tab-content input[type="date"], .modal-tab-content input[type="time"], .modal-tab-content input[type="number"] { min-width: 0; }
 
     /* --- 4. LISTEN- & TABELLEN-ANSICHTEN (CARD-LAYOUT) --- */
     table.data-table[style] { min-width: 0 !important; width: 100% !important; }
@@ -1294,6 +1300,7 @@ input[type="range"]::-moz-range-thumb {
   --wk-rail:88px;
   --wk-tap:48px;
   --wk-safe-b:env(safe-area-inset-bottom,0px);
+  --wk-safe-t:env(safe-area-inset-top,0px);
   --ff-ui:'Archivo','Segoe UI',system-ui,-apple-system,sans-serif;
   --ff-data:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
 }
@@ -3128,8 +3135,11 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 .onb-hint{ margin-bottom:16px !important; }
 .onb-field{ text-align:left; }
 .onb-field input, .onb-field textarea{ width:100%; }
-.onb-row2{ display:flex; gap:12px; }
-.onb-row2 label{ flex:1; display:flex; flex-direction:column; font-size:12px; color:var(--text-muted); gap:4px; }
+.onb-row2{ display:flex; flex-wrap:wrap; gap:12px; }
+/* min-width statt flex:1 allein: so weicht ein zu breites natives Zeit-Feld (z. B. Safari mit AM/PM-Segmenten)
+   in die naechste Zeile aus, anstatt die zweite Textbox zu ueberlappen. */
+.onb-row2 label{ flex:1 1 140px; min-width:140px; display:flex; flex-direction:column; font-size:12px; color:var(--text-muted); gap:4px; }
+.onb-row2 input{ min-width:0; }
 .onb-week{ display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
 .onb-day{ width:44px; height:40px; border-radius:10px !important; border:1px solid var(--border-color) !important; background:var(--bg-color) !important; color:var(--text-main) !important; font-weight:700; cursor:pointer; box-shadow:none !important; transition:all .2s ease; }
 .onb-day.on{ background:var(--primary-color) !important; color:#22262B !important; border-color:var(--primary-color) !important; }
@@ -3229,7 +3239,7 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
     .tt-range-chips::-webkit-scrollbar { display: none; }
     .tt-range-dates { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .tt-range-sep { display: none; }
-    .tt-range-dates label { flex-direction: column; align-items: stretch; gap: 3px; }
+    .tt-range-dates label { flex-direction: column; align-items: stretch; gap: 3px; min-width: 0; }
     .tt-range-dates input[type="date"] { width: 100%; min-width: 0; }
     .tt-range-reset { grid-column: 1 / -1; justify-content: center; }
     .tt-rg summary { grid-template-columns: 18px minmax(0, 1fr) auto; }

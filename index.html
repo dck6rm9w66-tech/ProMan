@@ -2,7 +2,13 @@
 <html lang="de" data-theme="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- iPhone "Zum Home-Bildschirm": ohne diese beiden Tags legt iOS die Uhrzeit-/Empfangsleiste
+         je nach iOS-Version uneinheitlich über den Inhalt. Mit "black-translucent" zeichnet die App
+         bewusst bis unter die Statusleiste (viewport-fit=cover oben), und .topbar gleicht das unten
+         per env(safe-area-inset-top) selbst wieder aus. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>ProMan - Projektmanagement</title>
     
     <!-- Externe Bibliotheken -->
@@ -17,7 +23,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261002-27">
+    <link rel="stylesheet" href="styles.css?v=20261003-28">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -1253,8 +1259,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js?v=20261002-27"></script>
-    <script src="app.js?v=20261002-27"></script>
+    <script src="i18n.js?v=20261003-28"></script>
+    <script src="app.js?v=20261003-28"></script>
 
 </body>
 </html>

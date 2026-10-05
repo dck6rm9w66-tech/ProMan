@@ -8369,7 +8369,7 @@ function renderTimeTracking(c) {
             <div id="tt_manual_box" style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color);">
                 <h3 style="margin-bottom:15px;">${t('time_manual')}</h3>
                 <label>${t('task')}</label><select id="tt_task">${taskOpts}</select>
-                <div style="display:flex; gap:10px;"><div style="flex:1"><label>${t('date')}</label><input type="date" id="tt_date" value="${today}"></div><div style="flex:1"><label>${t('hours')}</label><input type="number" id="tt_hours" step="0.25" min="0.25" value="0.25"></div></div>
+                <div class="onb-row2"><label>${t('date')}<input type="date" id="tt_date" value="${today}"></label><label>${t('hours')}<input type="number" id="tt_hours" step="0.25" min="0.25" value="0.25"></label></div>
                 <label>${t('note_opt')}</label><input type="text" id="tt_note" placeholder="${t('what_done')}">
                 <button style="margin-top:15px; width:100%; justify-content:center;" onclick="addManualTimeLog()"><i class="fas fa-save"></i> ${t('log_time')}</button>
             </div>
