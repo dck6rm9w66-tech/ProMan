@@ -37,6 +37,12 @@ function testPushNotification() {
 }
 
 // --- MOBILE SWIPE-TO-DELETE GESTURES ---
+/* Touch: Ziehen erst nach kurzem Gedrückthalten. Bewegt sich der Finger vorher um mehr als
+   LP_TOLERANCE px, ist es ein Scroll-Wisch und es wird nichts verschoben. Maus bleibt unverändert. */
+const LP_DELAY_MS = 350;
+const LP_TOLERANCE = 10;
+function lpHaptic() { try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} }
+
 let _clTouchStartX = 0;
 let _clTouchCurrentX = 0;
 let _activeSwipeItem = null;
@@ -6898,6 +6904,35 @@ function scrollToTodayTimeline() {
 
 function startTimelineDrag(e, type, id, action, idx) {
     e.stopPropagation();
+    /* Touch: Balken erst nach Gedrückthalten verschieben, sonst würde jeder horizontale
+       Scroll-Wisch, der auf einem Balken beginnt, Termine verschieben. */
+    if (e.type === 'touchstart' && !e._lpConfirmed && e.touches && e.touches[0]) {
+        const sx = e.touches[0].clientX, sy = e.touches[0].clientY, target = e.target;
+        const bar = target.closest ? target.closest('.gantt-bar') : null;
+        let timer = null;
+        const cleanup = () => {
+            clearTimeout(timer);
+            document.removeEventListener('touchmove', onMv);
+            document.removeEventListener('touchend', cleanup);
+            document.removeEventListener('touchcancel', cleanup);
+            if (bar) bar.removeEventListener('contextmenu', noCtx);
+        };
+        const onMv = (ev) => {
+            const t = ev.touches && ev.touches[0]; if (!t) return;
+            if (Math.abs(t.clientX - sx) > LP_TOLERANCE || Math.abs(t.clientY - sy) > LP_TOLERANCE) cleanup();
+        };
+        const noCtx = (ev) => ev.preventDefault();
+        document.addEventListener('touchmove', onMv, { passive: true });
+        document.addEventListener('touchend', cleanup);
+        document.addEventListener('touchcancel', cleanup);
+        if (bar) bar.addEventListener('contextmenu', noCtx);
+        timer = setTimeout(() => {
+            cleanup();
+            lpHaptic();
+            startTimelineDrag({ type: 'touchstart', _lpConfirmed: true, touches: [{ clientX: sx, clientY: sy }], target, stopPropagation() {} }, type, id, action, idx);
+        }, LP_DELAY_MS);
+        return;
+    }
     let clientX = e.clientX; if (e.touches && e.touches.length > 0) { clientX = e.touches[0].clientX; }
     
     let entity;
@@ -10951,7 +10986,17 @@ function ttHeuteBook(iso){
         const id = card.dataset.id || card.dataset.taskId;
         if (!id) return;
         const p = pt(ev);
-        drag = { taskId: id, srcCard: card, startX: p.x, startY: p.y, active: false, ghost: null, ph: null, mergeWith: null };
+        const isTouch = ev.type === 'touchstart';
+        drag = { taskId: id, srcCard: card, startX: p.x, startY: p.y, active: false, ghost: null, ph: null, mergeWith: null, touch: isTouch, armed: !isTouch, lpTimer: null };
+        if (isTouch) {
+            /* Erst nach Gedrückthalten „scharf" schalten – vorher gewinnt das Scrollen */
+            drag.lpTimer = setTimeout(() => {
+                if (!drag || drag.srcCard !== card) return;
+                drag.armed = true;
+                card.classList.add('wk-drag-armed');
+                lpHaptic();
+            }, LP_DELAY_MS);
+        }
     }
 
     function activate() {
@@ -10977,8 +11022,16 @@ function ttHeuteBook(iso){
         if (!drag) return;
         const p = pt(ev);
         if (!drag.active) {
-            if (Math.abs(p.x - drag.startX) < THRESHOLD && Math.abs(p.y - drag.startY) < THRESHOLD) return;
+            if (drag.touch && !drag.armed) {
+                /* Finger bewegt sich vor Ablauf der Haltezeit -> Scroll-Geste, Ziehen verwerfen */
+                if (Math.abs(p.x - drag.startX) > LP_TOLERANCE || Math.abs(p.y - drag.startY) > LP_TOLERANCE) {
+                    clearTimeout(drag.lpTimer); drag = null;
+                }
+                return;
+            }
+            if (!drag.touch && Math.abs(p.x - drag.startX) < THRESHOLD && Math.abs(p.y - drag.startY) < THRESHOLD) return;
             drag.active = true;
+            drag.srcCard.classList.remove('wk-drag-armed');
             activate();
         }
         if (ev.cancelable) ev.preventDefault();
@@ -11035,6 +11088,8 @@ function ttHeuteBook(iso){
     function onUp(ev) {
         if (!drag) return;
         const d = drag; drag = null;
+        clearTimeout(d.lpTimer);
+        if (d.srcCard) d.srcCard.classList.remove('wk-drag-armed');
         document.body.style.userSelect = '';
         document.body.classList.remove('wk-dragging');
         if (!d.active) return;
@@ -11063,6 +11118,8 @@ function ttHeuteBook(iso){
 
     function cancel() {
         if (!drag) return;
+        clearTimeout(drag.lpTimer);
+        if (drag.srcCard) drag.srcCard.classList.remove('wk-drag-armed');
         if (drag.ghost) drag.ghost.remove();
         if (drag.srcCard) drag.srcCard.style.display = '';
         if (drag.ph && drag.ph.parentNode) drag.ph.parentNode.removeChild(drag.ph);
@@ -11077,6 +11134,7 @@ function ttHeuteBook(iso){
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     document.addEventListener('dragstart', (e) => { if (drag && drag.active) e.preventDefault(); }, true);
+    document.addEventListener('contextmenu', (e) => { if (drag && drag.touch) e.preventDefault(); }, true);
 })();
 
 /* ---- Build-Kennung: erlaubt zu prüfen, ob wirklich der neue Stand geladen ist ---- */

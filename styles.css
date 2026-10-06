@@ -732,7 +732,7 @@ input[type="checkbox"] { width: auto; margin-top: 0; cursor: pointer; box-shadow
 
     button, .icon-btn, input:not([type="color"]):not([type="checkbox"]), select { min-height: 44px; }
     .task-card .icon-btn, .kanban-column .icon-btn, .data-table .icon-btn, .draggable-item .icon-btn { min-width: 44px; min-height: 44px; }
-    .rte-toolbar { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 5px; -webkit-overflow-scrolling: touch; }
+    .rte-toolbar { flex-wrap: wrap; }
     .rte-toolbar button { min-width: 38px; min-height: 38px; padding: 6px; flex: 0 0 auto; }
 
     /* --- SETTINGS TABLES OVERRIDES --- */
@@ -3271,3 +3271,10 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 @media (prefers-reduced-motion: reduce) { .wf-bg-spinner { animation-duration: 2.4s; } }
 .wf-bg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 1088px) { .wf-bg-indicator { width: 28px; } .wf-bg-spinner { width: 16px; height: 16px; } }
+
+/* Touch-Ziehen: Karten/Balken „heben sich an", sobald das Gedrückthalten erkannt ist.
+   Auf Touch-Geräten zusätzlich das iOS-Lupe-/Kopier-Menü beim Gedrückthalten unterdrücken. */
+.task-card.wk-drag-armed { transform: scale(1.03); box-shadow: 0 10px 28px rgba(0,0,0,.22) !important; transition: transform .12s ease, box-shadow .12s ease; position: relative; z-index: 5; }
+@media (hover: none) and (pointer: coarse) {
+    .kanban-cards .task-card, .gantt-bar { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+}

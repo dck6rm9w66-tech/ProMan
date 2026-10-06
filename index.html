@@ -23,7 +23,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261003-29">
+    <link rel="stylesheet" href="styles.css?v=20261006-32">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -445,7 +445,7 @@
                 <!-- TAB 1: Allgemein -->
                 <div id="tab-general" class="modal-tab-content active">
                     <div class="preset-picker" id="t_preset_row" style="margin-bottom:12px; display:none;">
-                        <span class="form-label"><i class="fas fa-wand-magic-sparkles"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
+                        <span class="form-label"><i class="fas fa-copy"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
                         <select id="t_preset_select" onchange="applyPresetToForm('task', this.value)"></select>
                     </div>
                     <div style="margin-bottom: 10px;">
@@ -666,7 +666,7 @@
                 <!-- STAB 1: Allgemein -->
                 <div id="stab-general" class="modal-tab-content active">
                     <div class="preset-picker" id="s_preset_row" style="margin-bottom:12px; display:none;">
-                        <span class="form-label"><i class="fas fa-wand-magic-sparkles"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
+                        <span class="form-label"><i class="fas fa-copy"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
                         <select id="s_preset_select" onchange="applyPresetToForm('stack', this.value)"></select>
                     </div>
                     <div class="form-grid-2">
@@ -830,17 +830,26 @@
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-users', this)" data-i18n="set_team">Team & Profil</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-data', this)" data-i18n="set_data">Stammdaten</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
-                <button class="modal-tab-btn" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-wand-magic-sparkles"></i> Vorlagen</button>
+                <button class="modal-tab-btn" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-copy"></i> Vorlagen</button>
             </div>
             <div class="modal-body-simple" style="padding-top:0;">
                 
                 <!-- TAB: Allgemein -->
                 <div id="set-general" class="modal-tab-content active" style="padding: 20px 0;">
-                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
-                        <h4 data-i18n="set_intro"><i class="fas fa-compass"></i> Einführung</h4>
-                        <button class="secondary" style="margin-top:10px;" onclick="closeSettings(); if(window.startOnboarding) startOnboarding();"><i class="fas fa-play"></i> <span data-i18n="set_start_tour">Product-Tour &amp; Einrichtung starten</span></button>
+                    <div class="settings-grid">
+                        <div>
+                            <h4 data-i18n="set_intro"><i class="fas fa-compass"></i> Einführung</h4>
+                            <button class="secondary" style="margin-top:10px;" onclick="closeSettings(); if(window.startOnboarding) startOnboarding();"><i class="fas fa-play"></i> <span data-i18n="set_start_tour">Product-Tour &amp; Einrichtung starten</span></button>
+                        </div>
+                        <div>
+                            <h4><i class="fas fa-image"></i> <span data-i18n="set_logo">Firmenlogo</span></h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_logo_desc">Wird beim Export von PDF-, Word- und Excel-Dateien oben links eingefügt.</p>
+                            <input type="file" id="logo_upload_general" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)">
+                            <button class="secondary" onclick="document.getElementById('logo_upload_general').click()"><i class="fas fa-upload"></i> <span data-i18n="set_logo_choose">Logo auswählen</span></button>
+                            <div id="logo_preview_container" style="margin-top:10px;"></div>
+                        </div>
                     </div>
-                    
+
                     <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
                         <h4><i class="fas fa-globe"></i> <span data-i18n="set_lang">Sprache / Language</span></h4>
                         <select id="set_language" style="max-width:300px; margin-top:10px;">
@@ -850,28 +859,21 @@
                         </select>
                     </div>
 
-                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
-                        <h4><i class="fas fa-image"></i> <span data-i18n="set_logo">Firmenlogo</span></h4>
-                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_logo_desc">Wird beim Export von PDF-, Word- und Excel-Dateien oben links eingefügt.</p>
-                        <input type="file" id="logo_upload_general" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)">
-                        <button class="secondary" onclick="document.getElementById('logo_upload_general').click()"><i class="fas fa-upload"></i> <span data-i18n="set_logo_choose">Logo auswählen</span></button>
-                        <div id="logo_preview_container" style="margin-top:10px;"></div>
-                    </div>
-
-                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
-                        <h4><i class="fas fa-coins"></i> <span data-i18n="set_currency">Währung</span></h4>
-                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_currency_desc">Gilt global für alle Budgets und Auswertungen.</p>
-                        <select id="set_currency" style="max-width:300px; margin-top:0;" onchange="updateGlobalCurrency(this.value)">
-                            <option value="CHF">CHF</option>
-                            <option value="EUR">EUR</option>
-                            <option value="USD">USD</option>
-                        </select>
-                    </div>
-
-                    <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border-color);">
-                        <h4 data-i18n="set_folder"><i class="fas fa-folder"></i> Stamm-Ordner für Dateien</h4>
-                        <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="folder_desc">Lege hier deinen lokalen Ordner fest, in den du deine Projekt-Dateien speicherst (z.B. C:\Projekte\Dateien\). ProMan speichert dann nur noch die Pfade dorthin, um Backups klein zu halten.</p>
-                        <input type="text" id="set_attachment_folder" placeholder="C:\Mein_ProMan_Ordner\">
+                    <div class="settings-grid">
+                        <div>
+                            <h4><i class="fas fa-coins"></i> <span data-i18n="set_currency">Währung</span></h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_currency_desc">Gilt global für alle Budgets und Auswertungen.</p>
+                            <select id="set_currency" style="max-width:300px; margin-top:0;" onchange="updateGlobalCurrency(this.value)">
+                                <option value="CHF">CHF</option>
+                                <option value="EUR">EUR</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                        <div>
+                            <h4 data-i18n="set_folder"><i class="fas fa-folder"></i> Stamm-Ordner für Dateien</h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="folder_desc">Lege hier deinen lokalen Ordner fest, in den du deine Projekt-Dateien speicherst (z.B. C:\Projekte\Dateien\). ProMan speichert dann nur noch die Pfade dorthin, um Backups klein zu halten.</p>
+                            <input type="text" id="set_attachment_folder" placeholder="C:\Mein_ProMan_Ordner\">
+                        </div>
                     </div>
 
                     <div class="settings-grid">
@@ -1080,6 +1082,10 @@
                                 <table class="data-table" id="settings_status_table" style="margin-top:10px; min-width: 300px;"></table>
                             </div>
                             <div style="display:flex; gap:5px;"><input type="text" id="new_status_name" placeholder="..."><button onclick="addStatus()" data-i18n="new">Neu</button></div>
+
+                            <h4 style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);" data-i18n="set_buckets">Buckets (Kategorien)</h4>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; margin-top:10px;" id="settings_bucket_list"></div>
+                            <div style="display:flex; gap:5px; max-width:400px;"><input type="text" id="new_bucket_name" placeholder="..."><button onclick="addBucket()" data-i18n="add">Hinzufügen</button></div>
                         </div>
                         <div>
                             <h4 data-i18n="set_sh">Stakeholder (Kunden/Abteilungen)</h4>
@@ -1090,13 +1096,6 @@
                                 <input type="text" id="new_sh_name" placeholder="..."><label style="font-size:12px;" data-i18n="pick_color">Farbe wählen:</label>
                                 <div class="color-palette" id="sh_color_palette"></div><input type="hidden" id="new_sh_color" value="#ffb3ba"><button onclick="addStakeholder()" style="margin-top:10px;" data-i18n="create">Anlegen</button>
                             </div>
-                        </div>
-                    </div>
-                    <div class="settings-grid">
-                        <div>
-                            <h4 data-i18n="set_buckets">Buckets (Kategorien)</h4>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; margin-top:10px;" id="settings_bucket_list"></div>
-                            <div style="display:flex; gap:5px; max-width:400px;"><input type="text" id="new_bucket_name" placeholder="..."><button onclick="addBucket()" data-i18n="add">Hinzufügen</button></div>
                         </div>
                     </div>
                 </div>
@@ -1259,8 +1258,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js?v=20261003-29"></script>
-    <script src="app.js?v=20261003-29"></script>
+    <script src="i18n.js?v=20261006-32"></script>
+    <script src="app.js?v=20261006-32"></script>
 
 </body>
 </html>
