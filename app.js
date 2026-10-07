@@ -795,7 +795,74 @@ function changePrimaryColor(color) {
 function resetPrimaryColor() { const _scp = document.getElementById('settingsColorPicker'); if(_scp) _scp.value = '#cca300'; changePrimaryColor('#cca300'); saveToLocal(); }
 function adjustColor(color, amount) { return '#' + color.replace(/^#/, '').replace(/../g, color => ('0'+Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).substr(-2)); }
 function generateId() { return '_' + Math.random().toString(36).substr(2, 9); }
-function saveToLocal(skipRender = false) { localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
+/* ============================================================
+   ÄNDERUNGSHISTORIE (Status, Priorität, Start-/Fälligkeitsdatum)
+   Statt jede einzelne Änderungsstelle (Dialog, Kanban-Ziehen, Gantt,
+   Workflows, Pausieren, Hintergrundprüfung …) anzupassen, wird bei jedem
+   Speichern der aktuelle Stand mit dem zuletzt bekannten verglichen.
+   Abweichungen landen als Zeile in der Historie des Elements:
+   Aufgaben -> Feld „notes" (im Dialog: Historie), Stacks -> Feld „history".
+   ============================================================ */
+let _histSnap = null;
+
+function histField(kind) { return kind === 't' ? 'notes' : 'history'; }
+function histSnapOf(e) {
+    return { status: e.status || '', priority: e.priority || '', startDate: e.startDate || '', dueDate: e.dueDate || '', isPaused: !!e.isPaused };
+}
+function histBuildSnapshot() {
+    const m = {};
+    (appData.tasks || []).forEach(x => { if (x && x.id) m['t:' + x.id] = histSnapOf(x); });
+    (appData.projectStacks || []).forEach(x => { if (x && x.id) m['s:' + x.id] = histSnapOf(x); });
+    return m;
+}
+function histStatusLabel(kind, v) {
+    if (!v) return '–';
+    if (kind === 's') return ({ active: t('stack_status_active'), paused: t('status_paused'), completed: t('stack_status_completed') })[v] || v;
+    if (v === 'done') return t('col_completed');
+    const s = (appData.statuses || []).find(x => x.id === v);
+    return s ? s.title : v;
+}
+function histPrioLabel(v) { return ({ high: t('prio_high'), medium: t('prio_med'), low: t('prio_low') })[v] || v || '–'; }
+function histDateLabel(v) {
+    if (!v) return '–';
+    const [d, tm] = String(v).split('T');
+    const p = d.split('-');
+    const ds = p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : d;
+    return tm ? `${ds} ${tm.slice(0, 5)}` : ds;
+}
+function histAppendLine(e, kind, line) {
+    const f = histField(kind);
+    const msg = getHistoryTimestamp() + line;
+    e[f] = e[f] ? e[f] + '\n' + msg : msg;
+}
+/* Für jede Neuzuweisung/jeden Import: aktuellen Stand übernehmen, ohne Einträge zu erzeugen */
+function histResetSnapshot() { _histSnap = null; }
+
+function recordEntityChanges() {
+    try {
+        if (!_histSnap) { _histSnap = histBuildSnapshot(); return; }
+        const next = {};
+        const handle = (kind, e) => {
+            if (!e || !e.id) return;
+            const key = kind + ':' + e.id;
+            const cur = histSnapOf(e);
+            next[key] = cur;
+            const old = _histSnap[key];
+            if (!old) return; /* neu angelegt – keine Änderung im eigentlichen Sinn */
+            const fmt = (k, a, b) => t(k).replace('{a}', a).replace('{b}', b);
+            if (old.status !== cur.status) histAppendLine(e, kind, fmt('hist_status', histStatusLabel(kind, old.status), histStatusLabel(kind, cur.status)));
+            if (kind === 't' && old.isPaused !== cur.isPaused) histAppendLine(e, kind, cur.isPaused ? t('hist_paused') : t('hist_resumed'));
+            if (old.priority !== cur.priority) histAppendLine(e, kind, fmt('hist_prio', histPrioLabel(old.priority), histPrioLabel(cur.priority)));
+            if (old.startDate !== cur.startDate) histAppendLine(e, kind, fmt('hist_start', histDateLabel(old.startDate), histDateLabel(cur.startDate)));
+            if (old.dueDate !== cur.dueDate) histAppendLine(e, kind, fmt('hist_due', histDateLabel(old.dueDate), histDateLabel(cur.dueDate)));
+        };
+        (appData.tasks || []).forEach(e => handle('t', e));
+        (appData.projectStacks || []).forEach(e => handle('s', e));
+        _histSnap = next;
+    } catch (err) { console.error('Änderungshistorie fehlgeschlagen', err); }
+}
+
+function saveToLocal(skipRender = false) { recordEntityChanges(); localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
 function toggleSidebar() { document.getElementById('app-sidebar').classList.toggle('collapsed'); }
 
 function _rawToast(msg, type='success') {
@@ -2691,7 +2758,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
         if(action.type === 'add_est') { let curEst = parseFloat(entity.estimatedTime) || 0; entity.estimatedTime = (curEst + parseFloat(action.value || 0)).toFixed(2); viewNeedsUpdate = true; }
         if(action.type === 'set_est') { entity.estimatedTime = parseFloat(action.value || 0).toFixed(2); viewNeedsUpdate = true; }
         
-        if(action.type === 'add_note') { let msg = getHistoryTimestamp() + action.value; entity.history = entity.history ? entity.history + '\n' + msg : msg; viewNeedsUpdate = true; }
+        if(action.type === 'add_note') { histAppendLine(entity, typeStr === 'stack' ? 's' : 't', action.value); viewNeedsUpdate = true; }
         
         if(action.type === 'notif_bell') {
             if(!appData.customBellNotifs) appData.customBellNotifs = [];
@@ -4902,6 +4969,7 @@ function saveCurrentNoteState() {
                  activeItem.notes = activeRte.innerHTML;
              }
              // Speichern ohne Neuladen (verhindert, dass der Cursor beim Tippen springt)
+             recordEntityChanges();
              localStorage.setItem('proman_v2_data', JSON.stringify(appData));
         }
     }
@@ -8573,14 +8641,14 @@ function importJSON(event) {
                 if(imported.stacks) { imported.stacks.forEach(is => { const idx = appData.projectStacks.findIndex(s => s.id === is.id); if(idx > -1) appData.projectStacks[idx] = is; else appData.projectStacks.push(is); mergedStacks++; }); }
                 let mergedTasks = 0;
                 if(imported.tasks) { imported.tasks.forEach(it => { const idx = appData.tasks.findIndex(t_obj => t_obj.id === it.id); if(idx > -1) appData.tasks[idx] = it; else appData.tasks.push(it); mergedTasks++; }); }
-                saveToLocal(true); showToast(`Geteilte Daten importiert: ${mergedTasks} Aufgaben, ${mergedStacks} Stacks aktualisiert.`); setTimeout(() => window.location.reload(), 1000);
+                histResetSnapshot(); saveToLocal(true); showToast(`Geteilte Daten importiert: ${mergedTasks} Aufgaben, ${mergedStacks} Stacks aktualisiert.`); setTimeout(() => window.location.reload(), 1000);
             } else if(imported.tasks) { 
                 stripObsoleteThemeData(imported);
                 appData = imported; 
                 if(!appData.settings.views) { appData.settings.views = [...defaultViews]; }
                 if(!appData.settings.noteOrder) appData.settings.noteOrder = [];
                 if(!appData.timeLogs) appData.timeLogs=[]; 
-                saveToLocal(true); showToast('Voll-Backup erfolgreich importiert!'); setTimeout(() => window.location.reload(), 1000);
+                histResetSnapshot(); saveToLocal(true); showToast('Voll-Backup erfolgreich importiert!'); setTimeout(() => window.location.reload(), 1000);
             } 
         } catch(err) { showToast('Fehler beim Lesen der JSON.', 'error'); } 
     }; 
@@ -10080,6 +10148,7 @@ function applyStoredThemeOnInit() {
 }
 
 // INIT
+histResetSnapshot(); recordEntityChanges();
 performAutoDelete();
 changePrimaryColor(appData.customColor);
 applyStoredThemeOnInit();
