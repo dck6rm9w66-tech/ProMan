@@ -32,7 +32,7 @@ function sendPushNotification(title, options) {
 function testPushNotification() {
     requestPushPermission(() => {
         sendPushNotification('ProMan Test', { body: 'Die Push-Benachrichtigungen funktionieren einwandfrei!' });
-        showToast('Test-Benachrichtigung gesendet.', 'success');
+        showToast(_t('test_notif_sent'), 'success');
     });
 }
 
@@ -106,7 +106,7 @@ function handleModalClCheckbox(cb) {
         const item = cb.closest('.checklist-item');
         const id = item.getAttribute('data-id');
         if(id && isEntityLocked(id)) {
-            showToast("Punkt ist durch Abhängigkeiten gesperrt!", "warning");
+            showToast(_t('lock_point'), "warning");
             cb.checked = false;
         }
     }
@@ -342,7 +342,7 @@ function isEntityLocked(id) {
 let currentDepTargetId = null;
 function openDependencyModal(targetId, targetName) {
     currentDepTargetId = targetId;
-    document.getElementById('depModalTitleText').innerText = `Abhängigkeiten für: ${targetName}`;
+    document.getElementById('depModalTitleText').innerText = `${_t('deps_for')} ${targetName}`;
     document.getElementById('depSearchInput').value = '';
     document.getElementById('dependencyModal').classList.add('active');
     renderDependencyList();
@@ -355,7 +355,7 @@ function openDependencyModalForCl(btn) {
         id = generateId();
         item.setAttribute('data-id', id);
     }
-    const title = item.querySelector('.cl-title').value || 'Unbenannt';
+    const title = item.querySelector('.cl-title').value || _t('unnamed');
     openDependencyModal(id, title);
 }
 
@@ -374,7 +374,7 @@ function renderDependencyList() {
     
     const renderRow = (item, type, level, flatName = '') => {
         if(item.id === currentDepTargetId) return '';
-        const name = flatName || (item.name || item.projectName || item.title || 'Unbenannt');
+        const name = flatName || (item.name || item.projectName || item.title || _t('unnamed'));
         if(q && !name.toLowerCase().includes(q)) return ''; 
         
         let icon = type === 'stack' ? 'fa-folder' : (type === 'task' ? 'fa-tasks' : (type==='milestone' ? 'fa-flag' : 'fa-check-square'));
@@ -431,7 +431,7 @@ function renderDependencyList() {
         });
 
         const standaloneTasks = fTasks.filter(t => !t.projectStackId);
-        if(standaloneTasks.length > 0) html += `<div style="padding: 10px; font-weight:bold; font-size: 11px; color:var(--text-muted); background:var(--bg-color);">EINZELAUFGABEN</div>`;
+        if(standaloneTasks.length > 0) html += `<div style="padding: 10px; font-weight:bold; font-size: 11px; color:var(--text-muted); background:var(--bg-color);">${_t('single_tasks_caps')}</div>`;
         standaloneTasks.forEach(t => {
             html += renderRow(t, 'task', 0);
             if(t.checklist) {
@@ -442,7 +442,7 @@ function renderDependencyList() {
         });
     }
 
-    if(!html && q) html = '<p style="font-size:12px; color:var(--text-muted); padding:10px;">Keine passenden Elemente gefunden.</p>';
+    if(!html && q) html = '<p style="font-size:12px; color:var(--text-muted); padding:10px;">' + _t('dep_no_match') + '</p>';
     container.innerHTML = html;
 }
 
@@ -481,18 +481,18 @@ function updateDepDisplay() {
     const tId = document.getElementById('taskId') ? document.getElementById('taskId').value : null;
     const sId = document.getElementById('s_id') ? document.getElementById('s_id').value : null;
     
-    const renderPill = (id, parentId) => `<span class="dep-badge" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;"><i class="fas fa-link"></i> <span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="Entfernen"><i class="fas fa-times"></i></span></span>`;
-    const renderClPill = (id, parentId) => `<span class="dep-badge dep-badge-cl" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;" title="Hängt ab von ${getEntityName(id)}"><i class="fas fa-arrow-left" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="Entfernen"><i class="fas fa-times"></i></span></span>`;
+    const renderPill = (id, parentId) => `<span class="dep-badge" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;"><i class="fas fa-link"></i> <span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="${_t('remove')}"><i class="fas fa-times"></i></span></span>`;
+    const renderClPill = (id, parentId) => `<span class="dep-badge dep-badge-cl" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%;" title="${_t('dep_depends_on')} ${getEntityName(id)}"><i class="fas fa-arrow-left" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span> <span class="del-btn" style="flex-shrink:0;" onclick="toggleDependency('${parentId}', '${id}', false); event.stopPropagation();" title="${_t('remove')}"><i class="fas fa-times"></i></span></span>`;
     /* Nachfolger-Pille (Anzeige am Endpunkt): „Voraussetzung für …", nicht hier löschbar */
-    const renderClSuccPill = (id) => `<span class="dep-badge dep-badge-cl dep-badge-succ" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%; opacity:.85;" title="Voraussetzung für ${getEntityName(id)}"><i class="fas fa-arrow-right" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span></span>`;
+    const renderClSuccPill = (id) => `<span class="dep-badge dep-badge-cl dep-badge-succ" style="white-space:nowrap; display:inline-flex; align-items:center; max-width:100%; opacity:.85;" title="${_t('dep_prereq_for')} ${getEntityName(id)}"><i class="fas fa-arrow-right" style="font-size:9px; margin-right:4px; opacity:.7;"></i><span style="overflow:hidden; text-overflow:ellipsis;">${getEntityName(id)}</span></span>`;
 
     if(tId && document.getElementById('t_deps_display')) {
         const preds = tempPredecessors[tId] || [];
-        document.getElementById('t_deps_display').innerHTML = preds.length > 0 ? preds.map(id => renderPill(id, tId)).join('') : 'Keine Abhängigkeiten definiert.';
+        document.getElementById('t_deps_display').innerHTML = preds.length > 0 ? preds.map(id => renderPill(id, tId)).join('') : _t('ui_no_deps');
     }
     if(sId && document.getElementById('s_deps_display')) {
         const preds = tempPredecessors[sId] || [];
-        document.getElementById('s_deps_display').innerHTML = preds.length > 0 ? preds.map(id => renderPill(id, sId)).join('') : 'Keine Abhängigkeiten definiert.';
+        document.getElementById('s_deps_display').innerHTML = preds.length > 0 ? preds.map(id => renderPill(id, sId)).join('') : _t('ui_no_deps');
     }
 
     document.querySelectorAll('.checklist-item').forEach(item => {
@@ -546,8 +546,8 @@ let modalRatingChanged = false;
 
 function getHistoryTimestamp() {
     const now = new Date();
-    const dateStr = now.toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
-    const timeStr = now.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+    const dateStr = now.toLocaleDateString(ttLocale(), {day: '2-digit', month: '2-digit', year: 'numeric'});
+    const timeStr = now.toLocaleTimeString(ttLocale(), {hour: '2-digit', minute: '2-digit'});
     return `[Note | ${dateStr}, ${timeStr}] `;
 }
 function handleHistoryFocus(el) { if(el.value.trim() === '') { el.value = getHistoryTimestamp(); } }
@@ -559,9 +559,9 @@ function handleHistoryKeydown(e, el) {
 }
 
 function formatTimeDiff(minutes) {
-    if(minutes < 60) return `${minutes} Min.`;
-    if(minutes < 1440) { const h = Math.floor(minutes/60); const m = minutes % 60; return `${h} Std. ${m > 0 ? m+' Min.' : ''}`; }
-    return `${Math.floor(minutes/1440)} Tag(e)`;
+    if(minutes < 60) return `${minutes} ${_t('u_min')}`;
+    if(minutes < 1440) { const h = Math.floor(minutes/60); const m = minutes % 60; return `${h} ${_t('u_hrs')} ${m > 0 ? m+' '+_t('u_min') : ''}`; }
+    return `${Math.floor(minutes/1440)} ${_t('u_days')}`;
 }
 function getAvatarHtml(userId, sizeCls = 'avatar-md', titleStr = '') {
     if(!userId) return ''; const u = appData.users.find(x => x.id === userId); if(!u) return '';
@@ -679,14 +679,14 @@ function toggleRTEHighlight() {
 function rtfTableAction(action) {
     const sel = window.getSelection(); if (!sel.rangeCount) return;
     if (action === 'create') {
-        const rows = prompt("Anzahl der Zeilen:", "3"); if (!rows || isNaN(rows)) return;
-        const cols = prompt("Anzahl der Spalten:", "3"); if (!cols || isNaN(cols)) return;
+        const rows = prompt(_t('rte_rows_prompt'), "3"); if (!rows || isNaN(rows)) return;
+        const cols = prompt(_t('rte_cols_prompt'), "3"); if (!cols || isNaN(cols)) return;
         let tableHtml = '<table style="width:100%; border-collapse:collapse; margin-bottom:10px;">';
         for (let r = 0; r < parseInt(rows); r++) {
             tableHtml += '<tr>';
             for (let c = 0; c < parseInt(cols); c++) {
-                if (r === 0) tableHtml += '<th style="border:1px solid var(--border-color); padding:5px; background:rgba(0,0,0,0.05);">Kopfzeile</th>';
-                else tableHtml += '<td style="border:1px solid var(--border-color); padding:5px;">Zelle</td>';
+                if (r === 0) tableHtml += '<th style="border:1px solid var(--border-color); padding:5px; background:rgba(0,0,0,0.05);">' + _t('rte_header_cell') + '</th>';
+                else tableHtml += '<td style="border:1px solid var(--border-color); padding:5px;">' + _t('rte_cell') + '</td>';
             }
             tableHtml += '</tr>';
         }
@@ -764,7 +764,7 @@ function openMobileExportMenu() {
               || document.querySelector('.topbar .dropdown[title="Export & Backup"] .dropdown-content')
               || document.querySelector('#exportDropdown .dropdown-content');
     const container = document.getElementById('mobileExportContainer');
-    if (!src || !container) { showToast('Export-Menü nicht verfügbar.', 'error'); return; }
+    if (!src || !container) { showToast(_t('export_menu_na'), 'error'); return; }
     container.innerHTML = src.innerHTML;
     document.getElementById('mobileExportMenu').classList.add('active');
 }
@@ -932,7 +932,7 @@ function isWorkDay(dateString) {
 
 function checkWorkdayWarning(dateString, entityName) {
     if(!isWorkDay(dateString)) {
-        showToast(`Warnung: "${entityName}" ist an einem arbeitsfreien Tag geplant!`, 'warning');
+        showToast(_tf('warn_nonworkday', { n: entityName }), 'warning');
     }
 }
 
@@ -1073,18 +1073,18 @@ function getNotifications() {
             if(!isCompleted) {
                 let dStr = item.dueDate; if(dStr.length === 10) dStr += 'T23:59:59'; 
                 const d = new Date(dStr); const diffMs = d - now; const diffMins = Math.floor(diffMs / 60000);
-                const itemName = item.projectName || item.name || item.title || 'Unbenannt';
+                const itemName = item.projectName || item.name || item.title || _t('unnamed');
                 const displayTitle = parentName ? `${parentName} > ${itemName}` : itemName;
                 const targetId = parentId || item.id; 
 
                 if(_overdueOn && diffMins < 0) {
                     const nid = `overdue_${item.id}`;
-                    addNotif({ type: 'danger', icon: 'fa-exclamation-triangle', title: `Überfällig: ${displayTitle}`, desc: `War fällig am ${d.toLocaleDateString('de-DE')}`, id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: 'overdue' });
+                    addNotif({ type: 'danger', icon: 'fa-exclamation-triangle', title: `${_t('n_overdue')} ${displayTitle}`, desc: `${_t('n_was_due')} ${d.toLocaleDateString(ttLocale())}`, id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: 'overdue' });
                 } else {
                     const issameDay = d.toDateString() === now.toDateString();
                     if(_todayOn && issameDay && diffMins >= 0) {
                         const nid = `today_${item.id}`;
-                        addNotif({ type: 'warning', icon: 'fa-clock', title: `Heute fällig: ${displayTitle}`, desc: `Wird heute fällig!`, id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: 'dueToday' });
+                        addNotif({ type: 'warning', icon: 'fa-clock', title: `${_t('n_due_today')} ${displayTitle}`, desc: _t('n_due_today_desc'), id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: 'dueToday' });
                     } 
                     
                     settings.reminders.forEach((r, idx) => {
@@ -1094,7 +1094,7 @@ function getNotifications() {
                         if(diffMins >= 0 && diffMins <= rMins) {
                             const nid = `rem_${item.id}_${idx}`; const existing = notifs.find(n => n.id === targetId && n.type === 'info' && n.notifId === nid);
                             if(!existing && !(issameDay && _todayOn)) {
-                                addNotif({ type: 'info', icon: 'fa-bell', title: `Erinnerung: ${displayTitle}`, desc: `Fällig in ${formatTimeDiff(diffMins)}`, id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: idx === 0 ? 'reminder1' : 'reminder2' });
+                                addNotif({ type: 'info', icon: 'fa-bell', title: `${_t('n_reminder')} ${displayTitle}`, desc: `${_t('n_due_in')} ${formatTimeDiff(diffMins)}`, id: targetId, entity: (typeName === 'stack' || typeName === 'milestone' ? 'stack' : 'task'), notifId: nid, eventKey: idx === 0 ? 'reminder1' : 'reminder2' });
                             }
                         }
                     });
@@ -1105,7 +1105,7 @@ function getNotifications() {
         if(item.checklist && Array.isArray(item.checklist)) {
             item.checklist.forEach(cl => {
                 let clTypeName = typeName === 'task' ? 'task-checklist' : 'milestone';
-                let clParentName = item.projectName || item.name || 'Unbenannt';
+                let clParentName = item.projectName || item.name || _t('unnamed');
                 let mockItem = {
                     id: cl.id,
                     dueDate: cl.dueDate,
@@ -1128,11 +1128,11 @@ function getNotifications() {
             if(ad.unit !== 'never') {
                 let multiplier = 1; if(ad.unit === 'hours') multiplier = 3600000; if(ad.unit === 'days') multiplier = 86400000;
                 const expiresAt = item.deletedAt + (ad.value * multiplier); const msLeft = expiresAt - now.getTime();
-                if(msLeft > 86400000) timeLeftStr = `Noch ${Math.ceil(msLeft/86400000)} Tag(e)`;
-                else if(msLeft > 0) timeLeftStr = `Noch ${Math.ceil(msLeft/3600000)} Std.`; else timeLeftStr = "Wird gelöscht...";
-            } else { timeLeftStr = "Dauerhaft im Papierkorb"; }
+                if(msLeft > 86400000) timeLeftStr = `${_t('n_left')} ${Math.ceil(msLeft/86400000)} ${_t('u_days')}`.trim();
+                else if(msLeft > 0) timeLeftStr = `${_t('n_left')} ${Math.ceil(msLeft/3600000)} ${_t('u_hrs')}`.trim(); else timeLeftStr = _t('n_deleting');
+            } else { timeLeftStr = _t('n_trash_forever'); }
             const nid = `trash_${item.data.id}`;
-            addNotif({ type: 'trash', icon: 'fa-trash-restore', title: `Papierkorb: ${item.type === 'stack' ? item.data.name : item.data.projectName}`, desc: `Löschen in: ${timeLeftStr}`, id: item.data.id, entity: item.type, notifId: nid, eventKey: 'trash' });
+            addNotif({ type: 'trash', icon: 'fa-trash-restore', title: `${_t('n_trash')} ${item.type === 'stack' ? item.data.name : item.data.projectName}`, desc: `${_t('n_delete_in')} ${timeLeftStr}`, id: item.data.id, entity: item.type, notifId: nid, eventKey: 'trash' });
         });
     }
 
@@ -1165,15 +1165,15 @@ function renderNotificationDropdown() {
         let html = '';
         notifs.forEach(n => {
             let color = n.type === 'danger' ? 'var(--danger)' : (n.type === 'warning' ? 'var(--warning)' : 'var(--primary-color)');
-            let dismissBtn = `<button class="secondary icon-btn" style="color:var(--text-muted); padding:2px 6px; font-size:12px; margin-left:auto;" onclick="dismissNotification(event, '${n.notifId}')" title="Ausblenden"><i class="fas fa-times"></i></button>`;
+            let dismissBtn = `<button class="secondary icon-btn" style="color:var(--text-muted); padding:2px 6px; font-size:12px; margin-left:auto;" onclick="dismissNotification(event, '${n.notifId}')" title="${_t('n_hide')}"><i class="fas fa-times"></i></button>`;
 
             if(n.type === 'trash') {
                 html += `<div class="notif-item" style="cursor:default; align-items:center;">
                     <div class="notif-icon" style="color:var(--text-muted)"><i class="fas ${n.icon}"></i></div>
                     <div class="notif-content" style="flex:1;"><h4>${n.title}</h4><p>${n.desc}</p></div>
                     <div style="display:flex; gap:5px; margin-left:10px; align-items:center;">
-                        <button class="secondary icon-btn" onclick="restoreDeletedItem(event, '${n.id}')" title="Wiederherstellen"><i class="fas fa-undo"></i></button>
-                        <button class="secondary icon-btn" style="color:var(--danger);" onclick="hardDeleteDeletedItem(event, '${n.id}')" title="Endgültig löschen"><i class="fas fa-trash"></i></button>
+                        <button class="secondary icon-btn" onclick="restoreDeletedItem(event, '${n.id}')" title="${_t('n_restore')}"><i class="fas fa-undo"></i></button>
+                        <button class="secondary icon-btn" style="color:var(--danger);" onclick="hardDeleteDeletedItem(event, '${n.id}')" title="${_t('n_delete_forever')}"><i class="fas fa-trash"></i></button>
                         ${dismissBtn}
                     </div>
                 </div>`;
@@ -1192,7 +1192,7 @@ function renderNotificationDropdown() {
         });
         container.innerHTML = html;
     } else {
-        container.innerHTML = `<div style="padding:20px; text-align:center; font-size:13px; color:var(--text-muted);"><i class="fas fa-check-circle" style="font-size:24px; color:var(--success); margin-bottom:10px; display:block;"></i> Alles im grünen Bereich!<br>Keine anstehenden Deadlines oder Papierkorb-Elemente.</div>`;
+        container.innerHTML = `<div style="padding:20px; text-align:center; font-size:13px; color:var(--text-muted);"><i class="fas fa-check-circle" style="font-size:24px; color:var(--success); margin-bottom:10px; display:block;"></i> ${_t('n_all_clear_html')}</div>`;
     }
 }
 
@@ -1207,14 +1207,14 @@ function restoreDeletedItem(e, id) {
                 if(appData.deletedItems[i].type === 'task' && appData.deletedItems[i].data.projectStackId === id) { appData.tasks.push(appData.deletedItems.splice(i, 1)[0].data); }
             }
         }
-        saveToLocal(true); renderNotificationDropdown(); showToast('Element wiederhergestellt.'); renderView();
+        saveToLocal(true); renderNotificationDropdown(); showToast(_t('n_restored')); renderView();
     }
 }
 
 function hardDeleteDeletedItem(e, id) {
     if(e) e.stopPropagation();
     appData.deletedItems = appData.deletedItems.filter(i => { if(i.data.id === id) return false; if(i.type === 'task' && i.data.projectStackId === id) return false; return true; });
-    saveToLocal(true); renderNotificationDropdown(); showToast('Element endgültig gelöscht.');
+    saveToLocal(true); renderNotificationDropdown(); showToast(_t('n_deleted_forever'));
 }
 
 function updateActiveUserIcon() {
@@ -1233,14 +1233,14 @@ function openSearchModal() {
 function closeSearchModal() {
     document.getElementById('searchModal').classList.remove('active');
     document.getElementById('globalSearchInput').value = '';
-    document.getElementById('globalSearchResults').innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;"><i class="fas fa-search" style="font-size:32px; opacity:0.3; margin-bottom:15px; display:block;"></i> Tippe, um die Suche zu starten...<br><span style="font-size:11px; opacity:0.7;">(Aufgaben, Checklisten, Notizen, Historie)</span></div>';
+    document.getElementById('globalSearchResults').innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;"><i class="fas fa-search" style="font-size:32px; opacity:0.3; margin-bottom:15px; display:block;"></i> ' + _t('search_hint_html') + '</div>';
     if (typeof resetAISearchState === 'function') resetAISearchState();
 }
 
 function performGlobalSearch(q) {
     const container = document.getElementById('globalSearchResults');
     if (!q || q.trim().length < 2) {
-        container.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;"><i class="fas fa-search" style="font-size:32px; opacity:0.3; margin-bottom:15px; display:block;"></i> Tippe, um die Suche zu starten...<br><span style="font-size:11px; opacity:0.7;">(Aufgaben, Checklisten, Notizen, Historie)</span></div>';
+        container.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;"><i class="fas fa-search" style="font-size:32px; opacity:0.3; margin-bottom:15px; display:block;"></i> ' + _t('search_hint_html') + '</div>';
         return;
     }
     
@@ -1265,18 +1265,18 @@ function performGlobalSearch(q) {
 
     appData.tasks.forEach(t => {
         if ((t.projectName || '').toLowerCase().includes(q)) {
-            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: 'Aufgabenname', excerpt: highlight(t.projectName, q), icon: 'fa-tasks' });
+            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: _t('sr_task_name'), excerpt: highlight(t.projectName, q), icon: 'fa-tasks' });
         }
         if ((t.description || '').toLowerCase().includes(q)) {
-            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: 'Notiz', excerpt: highlight(t.description, q), icon: 'fa-sticky-note' });
+            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: _t('sr_note'), excerpt: highlight(t.description, q), icon: 'fa-sticky-note' });
         }
         if ((t.notes || '').toLowerCase().includes(q)) {
-            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: 'Historie', excerpt: highlight(t.notes, q), icon: 'fa-history' });
+            results.push({ type: 'task', id: t.id, title: t.projectName, matchType: _t('sr_history'), excerpt: highlight(t.notes, q), icon: 'fa-history' });
         }
         if (t.checklist) {
             t.checklist.forEach(c => {
                 if ((c.title || '').toLowerCase().includes(q)) {
-                    results.push({ type: 'task', id: t.id, title: t.projectName, matchType: 'Checkliste', excerpt: highlight(c.title, q), icon: 'fa-check-square' });
+                    results.push({ type: 'task', id: t.id, title: t.projectName, matchType: _t('sr_checklist'), excerpt: highlight(c.title, q), icon: 'fa-check-square' });
                 }
             });
         }
@@ -1284,25 +1284,25 @@ function performGlobalSearch(q) {
 
     appData.projectStacks.forEach(s => {
         if ((s.name || '').toLowerCase().includes(q)) {
-            results.push({ type: 'stack', id: s.id, title: s.name, matchType: 'Stack-Name', excerpt: highlight(s.name, q), icon: 'fa-folder' });
+            results.push({ type: 'stack', id: s.id, title: s.name, matchType: _t('sr_stack_name'), excerpt: highlight(s.name, q), icon: 'fa-folder' });
         }
         if ((s.notes || '').toLowerCase().includes(q)) {
-            results.push({ type: 'stack', id: s.id, title: s.name, matchType: 'Notiz', excerpt: highlight(s.notes, q), icon: 'fa-sticky-note' });
+            results.push({ type: 'stack', id: s.id, title: s.name, matchType: _t('sr_note'), excerpt: highlight(s.notes, q), icon: 'fa-sticky-note' });
         }
         if ((s.history || '').toLowerCase().includes(q)) {
-            results.push({ type: 'stack', id: s.id, title: s.name, matchType: 'Historie', excerpt: highlight(s.history, q), icon: 'fa-history' });
+            results.push({ type: 'stack', id: s.id, title: s.name, matchType: _t('sr_history'), excerpt: highlight(s.history, q), icon: 'fa-history' });
         }
         if (s.checklist) {
             s.checklist.forEach(c => {
                 if ((c.title || '').toLowerCase().includes(q)) {
-                    results.push({ type: 'stack', id: s.id, title: s.name, matchType: 'Milestone', excerpt: highlight(c.title, q), icon: 'fa-flag' });
+                    results.push({ type: 'stack', id: s.id, title: s.name, matchType: _t('sr_milestone'), excerpt: highlight(c.title, q), icon: 'fa-flag' });
                 }
             });
         }
     });
 
     if (results.length === 0) {
-        container.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">Keine Ergebnisse gefunden.</div>';
+        container.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">' + _t('sr_no_results') + '</div>';
         return;
     }
 
@@ -1360,7 +1360,7 @@ function toggleMS(id, e) {
 }
 
 function buildMSHTML(filterKey, items, valField, nameField) {
-    let h = `<div class="ms-actions"><span onclick="mssetAll('${filterKey}', true, event)">Alle</span><span onclick="mssetAll('${filterKey}', false, event)">Keine</span></div>`;
+    let h = `<div class="ms-actions"><span onclick="mssetAll('${filterKey}', true, event)">${_t('ms_all')}</span><span onclick="mssetAll('${filterKey}', false, event)">${_t('ms_none')}</span></div>`;
     items.forEach(i => {
         let val = valField ? i[valField] : i; let name = nameField ? i[nameField] : i;
         if (filterKey === 'status' && val === 'done') name = t('col_completed');
@@ -1428,14 +1428,14 @@ function removeFilter(filterKey, val) { activeFilters[filterKey] = activeFilters
 
 function renderFilterChips() {
     const container = document.getElementById('activeFilterChips'); let html = '';
-    activeFilters.users.forEach(v => { const o = appData.users.find(x=>x.id===v); if(o) html+=`<div class="chip">Nutzer: ${o.name} <i class="fas fa-times" onclick="removeFilter('users', '${v}')"></i></div>`; });
-    activeFilters.stack.forEach(v => { const o = appData.projectStacks.find(x=>x.id===v); if(o) html+=`<div class="chip">Stack: ${o.name} <i class="fas fa-times" onclick="removeFilter('stack', '${v}')"></i></div>`; });
-    activeFilters.sh.forEach(v => { const o = appData.stakeholders.find(x=>x.id===v); if(o) html+=`<div class="chip">Stakeholder: ${o.name} <i class="fas fa-times" onclick="removeFilter('sh', '${v}')"></i></div>`; });
-    activeFilters.bucket.forEach(v => { html+=`<div class="chip">Bucket: ${v} <i class="fas fa-times" onclick="removeFilter('bucket', '${v}')"></i></div>`; });
+    activeFilters.users.forEach(v => { const o = appData.users.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_user')} ${o.name} <i class="fas fa-times" onclick="removeFilter('users', '${v}')"></i></div>`; });
+    activeFilters.stack.forEach(v => { const o = appData.projectStacks.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_stack')} ${o.name} <i class="fas fa-times" onclick="removeFilter('stack', '${v}')"></i></div>`; });
+    activeFilters.sh.forEach(v => { const o = appData.stakeholders.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_sh')} ${o.name} <i class="fas fa-times" onclick="removeFilter('sh', '${v}')"></i></div>`; });
+    activeFilters.bucket.forEach(v => { html+=`<div class="chip">${_t('chip_bucket')} ${v} <i class="fas fa-times" onclick="removeFilter('bucket', '${v}')"></i></div>`; });
     
     activeFilters.status.forEach(v => { 
-        if (v === 'paused_state') { html+=`<div class="chip">Status: ${t('status_paused')} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; } 
-        else { const o = appData.statuses.find(x=>x.id===v); if(o) html+=`<div class="chip">Status: ${v === 'done' ? t('col_completed') : o.title} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; }
+        if (v === 'paused_state') { html+=`<div class="chip">${_t('chip_status')} ${t('status_paused')} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; } 
+        else { const o = appData.statuses.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_status')} ${v === 'done' ? t('col_completed') : o.title} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; }
     });
     container.innerHTML = html;
     updateFilterBadge();
@@ -1527,7 +1527,7 @@ function getSortButtonsHTML(currentKey, jsVarName) {
 function isTaskDone(task) { return task.status === 'done'; }
 
 function setTaskState(id, action) {
-    if(action !== 'reopen' && isEntityLocked(id)) { showToast("Aufgabe ist durch Abhängigkeiten gesperrt!", "warning"); return; }
+    if(action !== 'reopen' && isEntityLocked(id)) { showToast(_t('lock_task'), "warning"); return; }
     const task = appData.tasks.find(t => t.id === id); if(!task) return;
     let oldStatus = task.status;
 
@@ -1714,8 +1714,8 @@ function getStaticStars(val) {
 function buildRatingDisplay(rating, count = 0, skipWrapper = false) {
     if(!rating || Object.keys(rating).length === 0) return '';
     const labels = { comm: t('rate_comm'), time: t('rate_time'), qual: t('rate_qual'), team: t('rate_team'), crea: t('rate_crea'), satis: t('rate_satis') };
-    let countText = count > 0 ? ` (${count} Bewertung${count>1?'en':''})` : '';
-    let h = skipWrapper ? `<div class="rating-grid">` : `<div class="rating-display"><div style="font-weight:bold; margin-bottom:10px;"><i class="fas fa-star" style="color:var(--warning)"></i> Bewertung (Ø ${getAvgRating(rating)})${countText}</div><div class="rating-grid">`;
+    let countText = count > 0 ? ` (${count} ${count>1?_t('rating_many'):_t('rating_one')})` : '';
+    let h = skipWrapper ? `<div class="rating-grid">` : `<div class="rating-display"><div style="font-weight:bold; margin-bottom:10px;"><i class="fas fa-star" style="color:var(--warning)"></i> ${_t('rating_head')} (Ø ${getAvgRating(rating)})${countText}</div><div class="rating-grid">`;
     for(let k in labels) { 
         if(rating[k] !== undefined && rating[k] !== null && rating[k] >= 0) {
             h += `<div>${labels[k]}</div><div>${getStaticStars(rating[k])}</div>`; 
@@ -1747,28 +1747,28 @@ function renderInteractiveRating(containerId, entityRating) {
             let historyHtml = '';
             if (entity.ratingHistory && entity.ratingHistory.length > 0) {
                 historyHtml += `<div style="margin-top: 20px; text-align: left; border-top:1px solid var(--border-color); padding-top:15px;">
-                    <div style="font-weight:bold; font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Bewertungsverlauf:</div>`;
+                    <div style="font-weight:bold; font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">${_t('rating_history')}</div>`;
                 
                 entity.ratingHistory.sort((a,b) => b.date - a.date).forEach(rh => {
-                    const dateStr = new Date(rh.date).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+                    const dateStr = new Date(rh.date).toLocaleString(ttLocale(), {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
                     const avgSingle = getAvgRating(rh.values);
                     historyHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:4px; margin-bottom:5px; border:1px solid var(--border-color); font-size:12px;">
                         <div>
                             <span style="font-weight:bold; color:var(--text-main); margin-right:10px; min-width:45px; display:inline-block;">Ø ${avgSingle} <i class="fas fa-star" style="color:var(--warning); font-size:12px;"></i></span>
                             <span style="color:var(--text-muted);"><i class="far fa-clock"></i> ${dateStr}</span>
                         </div>
-                        <button class="secondary icon-btn" style="color:var(--danger); padding:4px 6px; font-size:11px;" onclick="deleteRating('${entity.id}', '${rh.id}', '${containerId}')" title="Diese Bewertung löschen"><i class="fas fa-trash"></i></button>
+                        <button class="secondary icon-btn" style="color:var(--danger); padding:4px 6px; font-size:11px;" onclick="deleteRating('${entity.id}', '${rh.id}', '${containerId}')" title="${_t('rating_delete_one')}"><i class="fas fa-trash"></i></button>
                     </div>`;
                 });
                 historyHtml += `</div>`;
             }
 
             existingHtml = `<div style="margin-bottom:20px; padding-bottom:15px; border-bottom:1px dashed var(--border-color); text-align:center;">
-                <div style="font-weight:bold; margin-bottom:10px; color:var(--text-muted); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">Bisherige Durchschnittsbewertung:</div>
+                <div style="font-weight:bold; margin-bottom:10px; color:var(--text-muted); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">${_t('rating_avg_so_far')}</div>
                 <div style="font-size: 42px; font-weight: bold; color: var(--warning); display:flex; align-items:center; justify-content:center; gap:10px; line-height:1;">
                     ${avg} <i class="fas fa-star" style="font-size:36px;"></i>
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top:8px; margin-bottom: 20px;">Basierend auf ${entity.ratingCount} Bewertung${entity.ratingCount>1?'en':''}</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top:8px; margin-bottom: 20px;">${_t('rating_based_on')} ${entity.ratingCount} ${entity.ratingCount>1?_t('rating_many'):_t('rating_one')}</div>
                 <div style="text-align:left; background:var(--surface-color); padding:15px; border-radius:var(--radius); border:1px solid var(--border-color);">${buildRatingDisplay(entity.rating, 0, true)}</div>
                 ${historyHtml}
             </div>`;
@@ -1776,7 +1776,7 @@ function renderInteractiveRating(containerId, entityRating) {
         existingContainer.innerHTML = existingHtml;
     }
 
-    let newHtml = `<div><div style="font-weight:bold; margin-bottom:10px;">Neue Bewertung abgeben:</div><div style="display:grid; grid-template-columns: 1fr auto; gap: 8px; align-items:center;">`;
+    let newHtml = `<div><div style="font-weight:bold; margin-bottom:10px;">${_t('rating_new')}</div><div style="display:grid; grid-template-columns: 1fr auto; gap: 8px; align-items:center;">`;
     const labels = { comm: t('rate_comm'), time: t('rate_time'), qual: t('rate_qual'), team: t('rate_team'), crea: t('rate_crea'), satis: t('rate_satis') };
     
     for(let k in labels) {
@@ -1790,7 +1790,7 @@ function renderInteractiveRating(containerId, entityRating) {
 }
 
 function generateInteractiveStarRow(cat, val, containerId) {
-    let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setModalRating('${containerId}', '${cat}', 0)" title="0 Sterne"></i>`;
+    let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setModalRating('${containerId}', '${cat}', 0)" title="${_t('stars_0')}"></i>`;
     for(let i=1; i<=5; i++) {
         let cls = 'far fa-star';
         if(val !== null && val >= i) cls = 'fas fa-star';
@@ -1826,13 +1826,13 @@ function recalculateEntityRating(entity) {
 }
 
 function deleteRating(entityId, ratingId, containerId) {
-    if(!confirm("Möchtest du diese Bewertung wirklich löschen?")) return;
+    if(!confirm(_t('rating_confirm_delete'))) return;
     let entity = appData.tasks.find(t => t.id === entityId) || appData.projectStacks.find(s => s.id === entityId);
     if(!entity || !entity.ratingHistory) return;
 
     entity.ratingHistory = entity.ratingHistory.filter(rh => rh.id !== ratingId);
     recalculateEntityRating(entity); saveToLocal();
-    renderInteractiveRating(containerId, entity.rating); renderView(); showToast("Bewertung gelöscht.");
+    renderInteractiveRating(containerId, entity.rating); renderView(); showToast(_t('rating_deleted'));
 }
 
 function addRatingToEntity(entity, newRatingsObj) {
@@ -2061,7 +2061,7 @@ function updateUserAvatar(id, val) { const u = appData.users.find(s => s.id === 
 function changeCurrentUser(id) { appData.settings.currentUserId = id; saveToLocal(); showToast(t('toast_saved')); }
 
 function renderSettings() {
-    let vHtml = `<tr><th width="40">Anzeigen</th><th>Name in Sidebar</th><th width="100">Anordnung</th></tr>`;
+    let vHtml = `<tr><th width="40">${_t('set_views_show')}</th><th>${_t('set_views_name')}</th><th width="100">${_t('set_views_order')}</th></tr>`;
     const settingsViews = appData.settings.views.filter(v => v.id !== 'schedule' && v.id !== 'timeline');
     settingsViews.forEach((v, i) => {
         const isChecked = !v.hidden ? 'checked' : '';
@@ -2070,8 +2070,8 @@ function renderSettings() {
         
         vHtml += `<tr>
             <td style="text-align:center;"><input type="checkbox" ${isChecked} onchange="toggleViewVisibility('${v.id}', !this.checked)" style="margin:0; cursor:pointer;"></td>
-            <td style="${v.hidden ? 'opacity:0.5;' : ''}" data-label="Sidebar-Name"><i class="fas ${v.icon}" style="margin-right:8px; color:var(--text-muted)"></i> <span class="editable-cell" ondblclick="editSetting(this, 'view', '${v.id}')" title="Doppelklick zum Umbenennen">${viewName}</span></td>
-            <td data-label="Reihenfolge">
+            <td style="${v.hidden ? 'opacity:0.5;' : ''}" data-label="${_t('dl_sidebarname')}"><i class="fas ${v.icon}" style="margin-right:8px; color:var(--text-muted)"></i> <span class="editable-cell" ondblclick="editSetting(this, 'view', '${v.id}')" title="${_t('dblclick_rename')}">${viewName}</span></td>
+            <td data-label="${_t('dl_reihenfolge')}">
                 <button class="secondary icon-btn" onclick="moveViewConfig(${i}, -1)"><i class="fas fa-arrow-up"></i></button>
                 <button class="secondary icon-btn" onclick="moveViewConfig(${i}, 1)"><i class="fas fa-arrow-down"></i></button>
             </td>
@@ -2084,42 +2084,40 @@ function renderSettings() {
     appData.statuses.forEach((s, i) => { 
         const isDoneCol = s.id === 'done';
         const titleStr = isDoneCol ? t('col_completed') + ' (System)' : s.title;
-        const editStr = isDoneCol ? `<span style="opacity:0.6">${titleStr}</span>` : `<span class="editable-cell" ondblclick="editSetting(this, 'status', '${s.id}')" title="Doppelklick zum Bearbeiten">${s.title}</span>`;
+        const editStr = isDoneCol ? `<span style="opacity:0.6">${titleStr}</span>` : `<span class="editable-cell" ondblclick="editSetting(this, 'status', '${s.id}')" title="${_t('dblclick_edit')}">${s.title}</span>`;
         const delBtn = isDoneCol ? '' : `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteStatus('${s.id}')"><i class="fas fa-trash"></i></button>`;
-        const colorCell = `<input type="color" value="${getStatusColor(s)}" onchange="updateStatusColor('${s.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;" title="Farbe der Spalte">`;
+        const colorCell = `<input type="color" value="${getStatusColor(s)}" onchange="updateStatusColor('${s.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;" title="${_t('col_color_title')}">`;
         
         stHtml += `<tr class="draggable-item" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${i}'); event.dataTransfer.setData('type', 'settings-status');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleSettingsStatusDrop(event, this, ${i})">
-            <td data-label="Drag" style="vertical-align: middle; padding-left:10px;"><i class="fas fa-grip-vertical" style="color:var(--text-muted); cursor:grab;"></i></td>
-            <td data-label="Titel" style="vertical-align: middle;">${editStr}</td>
-            <td data-label="Farbe" style="vertical-align: middle;">${colorCell}</td>
-            <td data-label="Aktion" style="flex-direction:row; vertical-align: middle;">${delBtn}</td>
+            <td data-label="${_t('dl_drag')}" style="vertical-align: middle; padding-left:10px;"><i class="fas fa-grip-vertical" style="color:var(--text-muted); cursor:grab;"></i></td>
+            <td data-label="${_t('dl_titel')}" style="vertical-align: middle;">${editStr}</td>
+            <td data-label="${_t('dl_farbe')}" style="vertical-align: middle;">${colorCell}</td>
+            <td data-label="${_t('dl_aktion')}" style="flex-direction:row; vertical-align: middle;">${delBtn}</td>
         </tr>`; 
     });
     document.getElementById('settings_status_table').innerHTML = stHtml;
     
     let shHtml = `<tr><th>${t('name')}</th><th width="60">${t('color')}</th><th width="60">${t('action')}</th></tr>`;
     appData.stakeholders.forEach(sh => {
-        shHtml += `<tr><td data-label="Name"><span class="editable-cell" ondblclick="editSetting(this, 'sh', '${sh.id}')">${sh.name}</span></td><td data-label="Farbe"><input type="color" value="${sh.color}" onchange="updateShColor('${sh.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;"></td><td data-label="Aktion" style="flex-direction:row;"><button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteStakeholder('${sh.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+        shHtml += `<tr><td data-label="${_t('dl_name')}"><span class="editable-cell" ondblclick="editSetting(this, 'sh', '${sh.id}')">${sh.name}</span></td><td data-label="${_t('dl_farbe')}"><input type="color" value="${sh.color}" onchange="updateShColor('${sh.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;"></td><td data-label="${_t('dl_aktion')}" style="flex-direction:row;"><button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteStakeholder('${sh.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
     });
     document.getElementById('settings_sh_table').innerHTML = shHtml;
 
-    let paletteHtml = ''; colors16.forEach(c => { paletteHtml += `<div class="color-swatch" style="background:${c}" onclick="selectShColor(this, '${c}')"></div>`; });
-    document.getElementById('sh_color_palette').innerHTML = paletteHtml;
     
-    let bHtml = ''; appData.buckets.forEach((b, _bi) => { const _bc = getBucketColor(b); bHtml += `<span class="badge" style="display:inline-flex; align-items:center; gap:8px; background:var(--border-color); color:var(--text-main); font-size:13px; font-weight:normal; padding:6px 10px;"><input type="color" value="${_bc}" title="Farbe für ${b}" onchange="setBucketColor('${b.replace(/'/g,"\\'")}', this.value)" style="width:22px; height:22px; padding:0; border:1px solid var(--border-color); border-radius:5px; cursor:pointer; background:transparent;"><span class="editable-cell" ondblclick="editSetting(this, 'bucket', '${b}')">${b}</span> <i class="fas fa-times" style="margin-left:4px; cursor:pointer; color:var(--danger);" onclick="deleteBucket('${b}')"></i></span>`; });
+    let bHtml = ''; appData.buckets.forEach((b, _bi) => { const _bc = getBucketColor(b); bHtml += `<span class="badge" style="display:inline-flex; align-items:center; gap:8px; background:var(--border-color); color:var(--text-main); font-size:13px; font-weight:normal; padding:6px 10px;"><input type="color" value="${_bc}" title="${_t('color_for')} ${b}" onchange="setBucketColor('${b.replace(/'/g,"\\'")}', this.value)" style="width:22px; height:22px; padding:0; border:1px solid var(--border-color); border-radius:5px; cursor:pointer; background:transparent;"><span class="editable-cell" ondblclick="editSetting(this, 'bucket', '${b}')">${b}</span> <i class="fas fa-times" style="margin-left:4px; cursor:pointer; color:var(--danger);" onclick="deleteBucket('${b}')"></i></span>`; });
     document.getElementById('settings_bucket_list').innerHTML = bHtml;
 
     const clContainer = document.getElementById('settings_def_cl_table');
     if(clContainer) {
-        let clHtml = `<tr><th width="30"></th><th>Name</th><th width="60">Aktion</th></tr>`;
+        let clHtml = `<tr><th width="30"></th><th>${t('name')}</th><th width="60">${t('action')}</th></tr>`;
         appData.defaultChecklist.forEach((item, i) => {
-            const editStr = `<span class="editable-cell" ondblclick="editSetting(this, 'defcl', '${i}')" title="Doppelklick zum Bearbeiten">${item}</span>`;
+            const editStr = `<span class="editable-cell" ondblclick="editSetting(this, 'defcl', '${i}')" title="${_t('dblclick_edit')}">${item}</span>`;
             const delBtn = `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteDefCl(${i})"><i class="fas fa-trash"></i></button>`;
             
             clHtml += `<tr class="draggable-item" draggable="true" ondragstart="event.dataTransfer.setData('text/plain', '${i}'); event.dataTransfer.setData('type', 'settings-defcl');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleSettingsDefClDrop(event, this, ${i})">
-                <td data-label="Drag" style="vertical-align: middle; padding-left:10px;"><i class="fas fa-grip-vertical" style="color:var(--text-muted); cursor:grab;"></i></td>
-                <td data-label="Name" style="vertical-align: middle;">${editStr}</td>
-                <td data-label="Aktion" style="flex-direction:row; vertical-align: middle;">${delBtn}</td>
+                <td data-label="${_t('dl_drag')}" style="vertical-align: middle; padding-left:10px;"><i class="fas fa-grip-vertical" style="color:var(--text-muted); cursor:grab;"></i></td>
+                <td data-label="${_t('dl_name')}" style="vertical-align: middle;">${editStr}</td>
+                <td data-label="${_t('dl_aktion')}" style="flex-direction:row; vertical-align: middle;">${delBtn}</td>
             </tr>`;
         });
         clContainer.innerHTML = clHtml;
@@ -2128,10 +2126,10 @@ function renderSettings() {
     let usrHtml = `<tr><th width="40">${t('image')}</th><th>${t('name')}</th><th>${t('avatar_url')}</th><th width="110">${t('hourly_rate_short')}</th><th width="60">${t('action')}</th></tr>`;
     appData.users.forEach(u => {
         const rate = (u.hourlyRate !== undefined && u.hourlyRate !== null && u.hourlyRate !== '') ? u.hourlyRate : '';
-        usrHtml += `<tr><td data-label="Bild">${getAvatarHtml(u.id)}</td><td data-label="Name"><span class="editable-cell" ondblclick="editSetting(this, 'user', '${u.id}')">${u.name}</span></td>
-            <td data-label="URL"><input type="text" value="${u.avatar}" onchange="updateUserAvatar('${u.id}', this.value)" style="margin:0; padding:4px; font-size:11px; width:100%;"></td>
+        usrHtml += `<tr><td data-label="${_t('dl_bild')}">${getAvatarHtml(u.id)}</td><td data-label="${_t('dl_name')}"><span class="editable-cell" ondblclick="editSetting(this, 'user', '${u.id}')">${u.name}</span></td>
+            <td data-label="${_t('dl_url')}"><input type="text" value="${u.avatar}" onchange="updateUserAvatar('${u.id}', this.value)" style="margin:0; padding:4px; font-size:11px; width:100%;"></td>
             <td data-label="${t('hourly_rate_short')}"><input type="number" min="0" step="0.5" value="${rate}" placeholder="0.00" onchange="updateUserHourlyRate('${u.id}', this.value)" style="margin:0; padding:4px; font-size:11px; width:100%; text-align:right;"></td>
-            <td data-label="Aktion" style="flex-direction:row;">${u.id !== appData.settings.currentUserId ? `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`;
+            <td data-label="${_t('dl_aktion')}" style="flex-direction:row;">${u.id !== appData.settings.currentUserId ? `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteUser('${u.id}')"><i class="fas fa-trash"></i></button>` : ''}</td></tr>`;
     });
     document.getElementById('settings_users_table').innerHTML = usrHtml;
 
@@ -2157,9 +2155,14 @@ function updateStatusColor(id, color) {
 
 function addStatus() { const n = document.getElementById('new_status_name').value.trim(); if(n) { appData.statuses.push({ id: generateId(), title: n }); document.getElementById('new_status_name').value = ''; renderSettings(); } }
 function moveStatus(i, dir) { if(i+dir>=0 && i+dir<appData.statuses.length) { const t_obj = appData.statuses[i]; appData.statuses[i] = appData.statuses[i+dir]; appData.statuses[i+dir] = t_obj; renderSettings(); } }
-function deleteStatus(id) { if(id === 'done') return showToast('Diese Systemspalte kann nicht gelöscht werden.', 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
+function deleteStatus(id) { if(id === 'done') return showToast(_t('err_system_col'), 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
 function selectShColor(el, color) { document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected')); el.classList.add('selected'); document.getElementById('new_sh_color').value = color; }
-function addStakeholder() { const n = document.getElementById('new_sh_name').value.trim(); const c = document.getElementById('new_sh_color').value; if(n) { appData.stakeholders.push({ id: generateId(), name: n, color: c }); document.getElementById('new_sh_name').value = ''; renderSettings(); } }
+function addStakeholder() { const n = document.getElementById('new_sh_name').value.trim();
+    /* Farbe wird wie bei Status/Buckets nicht vorab abgefragt: die nächste noch freie Palettenfarbe,
+       änderbar über das Farbfeld in der Tabelle. */
+    const used = (appData.stakeholders || []).map(x => String(x.color || '').toLowerCase());
+    const c = colors16.find(col => !used.includes(col.toLowerCase())) || colors16[(appData.stakeholders || []).length % colors16.length];
+    if(n) { appData.stakeholders.push({ id: generateId(), name: n, color: c }); document.getElementById('new_sh_name').value = ''; renderSettings(); } }
 function deleteStakeholder(id) { appData.stakeholders = appData.stakeholders.filter(s => s.id !== id); renderSettings(); }
 /* Bucket-Farben: benutzerdefiniert in appData.settings.bucketColors, sonst stabile Palette */
 const BUCKET_PALETTE = ['#cca300', '#0F5FDC', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#B96A2B', '#C2185B', '#5E7CE2'];
@@ -2188,7 +2191,7 @@ function addUser() { const n = document.getElementById('new_user_name').value.tr
 function updateUserHourlyRate(id, val) { const u = appData.users.find(x => x.id === id); if(u) { u.hourlyRate = (val !== '' && !isNaN(parseFloat(val))) ? parseFloat(val) : null; saveToLocal(true); } }
 function updateDefaultHourlyRate(val) { appData.settings.defaultHourlyRate = (val !== '' && !isNaN(parseFloat(val))) ? parseFloat(val) : null; saveToLocal(true); }
 function deleteUser(id) { 
-    if(id === appData.settings.currentUserId) return showToast('Eigenes Profil kann nicht gelöscht werden', 'error');
+    if(id === appData.settings.currentUserId) return showToast(_t('err_own_profile'), 'error');
     appData.users = appData.users.filter(u => u.id !== id); 
     appData.tasks.forEach(t_obj => { if(t_obj.assigneeId === id) t_obj.assigneeId = ''; if(t_obj.checklist) t_obj.checklist.forEach(c => { if(c.assigneeId === id) c.assigneeId = ''; }); });
     appData.projectStacks.forEach(ps => { if(ps.assigneeId === id) ps.assigneeId = ''; if(ps.checklist) ps.checklist.forEach(c => { if(c.assigneeId === id) c.assigneeId = ''; }); });
@@ -2239,7 +2242,7 @@ function renderWorkflows() {
     }
     const _wfs = wfAll();
     let html = '';
-    if(_wfs.length === 0) { html = `<p style="font-size:12px; color:var(--text-muted);">Keine Workflows vorhanden. Erstelle deinen ersten, um Abläufe zu automatisieren!</p>`; } 
+    if(_wfs.length === 0) { html = `<p style="font-size:12px; color:var(--text-muted);">${_t('wf_none_yet')}</p>`; } 
     else {
         _wfs.forEach(wf => {
           try {
@@ -2262,8 +2265,8 @@ function renderWorkflows() {
                     <h4 style="margin:0; font-size:14px;">${wf.name}</h4>
                     <div style="display:flex; gap:5px;">
                         <button class="secondary icon-btn" onclick="toggleWorkflow('${wf.id}')" title="${wf.active ? 'Deaktivieren' : 'Aktivieren'}"><i class="fas ${wf.active ? 'fa-toggle-on' : 'fa-toggle-off'}"></i></button>
-                        <button class="secondary icon-btn" onclick="openWfEditor('${wf.id}')" title="Bearbeiten"><i class="fas fa-pen"></i></button>
-                        <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf.id}')" title="Löschen"><i class="fas fa-trash"></i></button>
+                        <button class="secondary icon-btn" onclick="openWfEditor('${wf.id}')" title="${_t('ui_edit')}"><i class="fas fa-pen"></i></button>
+                        <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf.id}')" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>
                 <div class="wf-row"><span class="wf-badge">${t('wf_if')}</span> <span style="font-size:13px;">${triggerLabel}</span></div>
@@ -2272,7 +2275,7 @@ function renderWorkflows() {
             </div>`;
           } catch(err) {
             console.error('Workflow konnte nicht dargestellt werden', wf, err);
-            html += `<div class="wf-card inactive"><h4 style="margin:0; font-size:14px;">${escapeHtmlToday(wf && wf.name ? wf.name : 'Workflow')}</h4><p style="font-size:12px; color:var(--danger); margin:4px 0 0;">Dieser Workflow ist beschädigt und kann nicht angezeigt werden.</p><div style="display:flex; gap:5px; margin-top:6px;"><button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf && wf.id ? wf.id : ''}')" title="Löschen"><i class="fas fa-trash"></i></button></div></div>`;
+            html += `<div class="wf-card inactive"><h4 style="margin:0; font-size:14px;">${escapeHtmlToday(wf && wf.name ? wf.name : 'Workflow')}</h4><p style="font-size:12px; color:var(--danger); margin:4px 0 0;">${_t('wf_broken')}</p><div style="display:flex; gap:5px; margin-top:6px;"><button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteWorkflow('${wf && wf.id ? wf.id : ''}')" title="${_t('delete')}"><i class="fas fa-trash"></i></button></div></div>`;
           }
         });
     }
@@ -2284,7 +2287,7 @@ function openWfEditor(id = null) {
     document.getElementById('wf_list').style.display = 'none'; document.getElementById('wf_editor').style.display = 'block';
     if(id) {
         const _found = wfAll().find(x => x.id === id);
-        if(!_found) { showToast('Workflow nicht gefunden.', 'error'); closeWfEditor(); return; }
+        if(!_found) { showToast(_t('wf_not_found'), 'error'); closeWfEditor(); return; }
         const wf = wfNormalize(_found);
         document.getElementById('wf_edit_id').value = wf.id; document.getElementById('wf_edit_name').value = wf.name; document.getElementById('wf_edit_trigger').value = wf.trigger;
         renderWfTriggerValueOptions(wf.triggerValue); document.getElementById('wf_edit_cond_logic').value = wf.conditionLogic || 'AND';
@@ -2325,43 +2328,43 @@ function wfRefreshStatusActionRows() {
 
 function getWfFieldOptionsHtml(selected = '') {
     const fields = [
-        { v: 'projectName',    l: t('wf_f_name'),        grp: 'Text' },
-        { v: 'description',    l: t('wf_f_notes'),        grp: 'Text' },
-        { v: 'priority',       l: t('wf_f_prio'),         grp: 'Auswahl' },
-        { v: 'status',         l: 'Status',               grp: 'Auswahl' },
-        { v: 'bucket',         l: t('wf_f_bucket'),       grp: 'Auswahl' },
-        { v: 'assigneeId',     l: t('wf_f_assignee'),     grp: 'Auswahl' },
-        { v: 'stakeholderId',  l: t('wf_f_sh'),           grp: 'Auswahl' },
-        { v: 'projectStackId', l: t('wf_f_stack'),        grp: 'Auswahl' },
-        { v: 'recurrence',     l: t('wf_f_rec'),          grp: 'Auswahl' },
-        { v: 'isPaused',       l: t('wf_f_paused'),        grp: 'Status' },
-        { v: 'hasChecklist',   l: t('wf_f_has_cl'),        grp: 'Status' },
-        { v: 'hasAttachment',  l: t('wf_f_has_att'),       grp: 'Status' },
-        { v: 'isOverdue',      l: t('wf_f_overdue'),       grp: 'Status' },
-        { v: 'dueDate',        l: t('wf_f_due'),          grp: 'Datum' },
-        { v: 'startDate',      l: t('wf_f_start'),        grp: 'Datum' },
-        { v: 'estimatedTime',  l: t('wf_f_est'),          grp: 'Zahl' },
-        { v: 'spentTime',      l: t('wf_f_spent'),        grp: 'Zahl' },
-        { v: 'spentTime_thisWeek', l: t('wf_f_spent_week'), grp: 'Zahl' }, // NEU FÜR DIE KALENDERWOCHE
-        { v: 'duration_days',  l: t('wf_f_duration'),     grp: 'Zahl' },
-        { v: 'effort_remaining', l: t('wf_f_effort_rem'), grp: 'Zahl' },
-        { v: 'checklistDone',  l: t('wf_f_cl_done_pct'),   grp: 'Zahl' },
-        { v: 'checklistOpenCount', l: t('wf_f_cl_open_n'), grp: 'Zahl' },
-        { v: 'checklistDoneCount', l: t('wf_f_cl_done_n'), grp: 'Zahl' },
-        { v: 'taskCount',      l: t('wf_f_task_count'),    grp: 'Zahl' },
-        { v: 'budgetRemainingPct', l: t('wf_f_bud_rem_pct'), grp: 'Zahl' },
-        { v: 'budgetConsumedPct', l: t('wf_f_bud_used_pct'), grp: 'Zahl' },
-        { v: 'budgetRemainingAmount', l: t('wf_f_bud_rem_amt'), grp: 'Zahl' },
-        { v: 'budgetConsumedAmount', l: t('wf_f_bud_used_amt'), grp: 'Zahl' },
-        { v: 'checklistOpenText', l: t('wf_f_cl_open_txt'), grp: 'Text' },
-        { v: 'checklistDoneText', l: t('wf_f_cl_done_txt'), grp: 'Text' },
+        { v: 'projectName',    l: t('wf_f_name'),        grp: 'wf_grp_text' },
+        { v: 'description',    l: t('wf_f_notes'),        grp: 'wf_grp_text' },
+        { v: 'priority',       l: t('wf_f_prio'),         grp: 'wf_grp_choice' },
+        { v: 'status',         l: 'Status',               grp: 'wf_grp_choice' },
+        { v: 'bucket',         l: t('wf_f_bucket'),       grp: 'wf_grp_choice' },
+        { v: 'assigneeId',     l: t('wf_f_assignee'),     grp: 'wf_grp_choice' },
+        { v: 'stakeholderId',  l: t('wf_f_sh'),           grp: 'wf_grp_choice' },
+        { v: 'projectStackId', l: t('wf_f_stack'),        grp: 'wf_grp_choice' },
+        { v: 'recurrence',     l: t('wf_f_rec'),          grp: 'wf_grp_choice' },
+        { v: 'isPaused',       l: t('wf_f_paused'),        grp: 'wf_grp_status' },
+        { v: 'hasChecklist',   l: t('wf_f_has_cl'),        grp: 'wf_grp_status' },
+        { v: 'hasAttachment',  l: t('wf_f_has_att'),       grp: 'wf_grp_status' },
+        { v: 'isOverdue',      l: t('wf_f_overdue'),       grp: 'wf_grp_status' },
+        { v: 'dueDate',        l: t('wf_f_due'),          grp: 'wf_grp_date' },
+        { v: 'startDate',      l: t('wf_f_start'),        grp: 'wf_grp_date' },
+        { v: 'estimatedTime',  l: t('wf_f_est'),          grp: 'wf_grp_number' },
+        { v: 'spentTime',      l: t('wf_f_spent'),        grp: 'wf_grp_number' },
+        { v: 'spentTime_thisWeek', l: t('wf_f_spent_week'), grp: 'wf_grp_number' }, // NEU FÜR DIE KALENDERWOCHE
+        { v: 'duration_days',  l: t('wf_f_duration'),     grp: 'wf_grp_number' },
+        { v: 'effort_remaining', l: t('wf_f_effort_rem'), grp: 'wf_grp_number' },
+        { v: 'checklistDone',  l: t('wf_f_cl_done_pct'),   grp: 'wf_grp_number' },
+        { v: 'checklistOpenCount', l: t('wf_f_cl_open_n'), grp: 'wf_grp_number' },
+        { v: 'checklistDoneCount', l: t('wf_f_cl_done_n'), grp: 'wf_grp_number' },
+        { v: 'taskCount',      l: t('wf_f_task_count'),    grp: 'wf_grp_number' },
+        { v: 'budgetRemainingPct', l: t('wf_f_bud_rem_pct'), grp: 'wf_grp_number' },
+        { v: 'budgetConsumedPct', l: t('wf_f_bud_used_pct'), grp: 'wf_grp_number' },
+        { v: 'budgetRemainingAmount', l: t('wf_f_bud_rem_amt'), grp: 'wf_grp_number' },
+        { v: 'budgetConsumedAmount', l: t('wf_f_bud_used_amt'), grp: 'wf_grp_number' },
+        { v: 'checklistOpenText', l: t('wf_f_cl_open_txt'), grp: 'wf_grp_text' },
+        { v: 'checklistDoneText', l: t('wf_f_cl_done_txt'), grp: 'wf_grp_text' },
     ];
-    const groups = ['Text', 'Auswahl', 'Status', 'Datum', 'Zahl'];
+    const groups = ['wf_grp_text', 'wf_grp_choice', 'wf_grp_status', 'wf_grp_date', 'wf_grp_number'];
     let html = '';
     groups.forEach(grp => {
         const gFields = fields.filter(f => f.grp === grp);
         if(gFields.length) {
-            html += `<optgroup label="— ${grp} —">`;
+            html += `<optgroup label="— ${_t(grp)} —">`;
             gFields.forEach(f => { html += `<option value="${f.v}" ${selected===f.v?'selected':''}>${f.l}</option>`; });
             html += `</optgroup>`;
         }
@@ -2415,17 +2418,17 @@ function renderWfConditionValueInput(rowEl) {
     if(field === 'priority') {
         html = `<select class="wf-cond-val"><option value="low" ${preselect==='low'?'selected':''}>${t('prio_low')}</option><option value="medium" ${preselect==='medium'?'selected':''}>${t('prio_med')}</option><option value="high" ${preselect==='high'?'selected':''}>${t('prio_high')}</option></select>`;
     } else if(field === 'status') {
-        html = `<select class="wf-cond-val"><option value="">-- Auswählen --</option>` + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id==='done'?t('col_completed'):s.title}</option>`).join('') + `</select>`;
+        html = `<select class="wf-cond-val"><option value="">${_t('choose_ph')}</option>` + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id==='done'?t('col_completed'):s.title}</option>`).join('') + `</select>`;
     } else if(field === 'bucket') {
-        html = `<select class="wf-cond-val"><option value="">-- Leer --</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`;
+        html = `<select class="wf-cond-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`;
     } else if(field === 'stakeholderId') {
-        html = `<select class="wf-cond-val"><option value="">-- Leer --</option>` + appData.stakeholders.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`;
+        html = `<select class="wf-cond-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.stakeholders.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`;
     } else if(field === 'assigneeId') {
-        html = `<select class="wf-cond-val"><option value="">-- Leer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`;
+        html = `<select class="wf-cond-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`;
     } else if(field === 'projectStackId') {
-        html = `<select class="wf-cond-val"><option value="">-- Leer --</option>` + appData.projectStacks.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`;
+        html = `<select class="wf-cond-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.projectStacks.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`;
     } else if(field === 'recurrence') {
-        html = `<select class="wf-cond-val"><option value="none" ${preselect==='none'?'selected':''}>-</option><option value="daily" ${preselect==='daily'?'selected':''}>Täglich</option><option value="weekly" ${preselect==='weekly'?'selected':''}>Wöchentlich</option><option value="monthly" ${preselect==='monthly'?'selected':''}>Monatlich</option><option value="yearly" ${preselect==='yearly'?'selected':''}>Jährlich</option></select>`;
+        html = `<select class="wf-cond-val"><option value="none" ${preselect==='none'?'selected':''}>-</option><option value="daily" ${preselect==='daily'?'selected':''}>${_t('daily')}</option><option value="weekly" ${preselect==='weekly'?'selected':''}>${_t('weekly')}</option><option value="monthly" ${preselect==='monthly'?'selected':''}>${_t('monthly')}</option><option value="yearly" ${preselect==='yearly'?'selected':''}>${_t('yearly')}</option></select>`;
     } else {
         html = `<input type="text" class="wf-cond-val" value="${preselect}" placeholder="...">`;
     }
@@ -2447,7 +2450,7 @@ function addWfConditionRow(field='projectName', operator='equals', value='') {
     const list = document.getElementById('wf_edit_conditions_list');
     const div = document.createElement('div'); div.className = 'wf-rule-row'; div.dataset.val = value;
     const fieldType = getWfFieldType(field);
-    div.innerHTML = `<div style="flex:1;"><select class="wf-cond-field" onchange="triggerWfCondUpdate(this)">${getWfFieldOptionsHtml(field)}</select></div><div style="flex:1;"><select class="wf-cond-op" onchange="triggerWfCondUpdate(this)">${getWfOpOptionsHtml(operator, fieldType)}</select></div><div class="wf-cond-val-container"></div><button class="secondary icon-btn" style="color:var(--danger); flex-shrink:0;" onclick="this.parentElement.remove()" title="Löschen"><i class="fas fa-trash"></i></button>`;
+    div.innerHTML = `<div style="flex:1;"><select class="wf-cond-field" onchange="triggerWfCondUpdate(this)">${getWfFieldOptionsHtml(field)}</select></div><div style="flex:1;"><select class="wf-cond-op" onchange="triggerWfCondUpdate(this)">${getWfOpOptionsHtml(operator, fieldType)}</select></div><div class="wf-cond-val-container"></div><button class="secondary icon-btn" style="color:var(--danger); flex-shrink:0;" onclick="this.parentElement.remove()" title="${_t('delete')}"><i class="fas fa-trash"></i></button>`;
     list.appendChild(div); renderWfConditionValueInput(div);
 }
 
@@ -2495,18 +2498,18 @@ function renderWfActionValueInput(actionSelectEl, preselect = '') {
         else html = `<select class="wf-act-val"><optgroup label="${t('wf_val_group_task')}">${taskOpts}</optgroup><optgroup label="${t('wf_val_group_stack')}">${stackOpts}</optgroup></select>`;
     } 
     else if(action === 'set_priority') { html = `<select class="wf-act-val"><option value="low" ${preselect==='low'?'selected':''}>${t('prio_low')}</option><option value="medium" ${preselect==='medium'?'selected':''}>${t('prio_med')}</option><option value="high" ${preselect==='high'?'selected':''}>${t('prio_high')}</option></select>`; } 
-    else if(action === 'set_assignee') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`; } 
-    else if(action === 'set_bucket') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`; } 
-    else if(action === 'set_stakeholder') { html = `<select class="wf-act-val"><option value="">-- Leer --</option>` + appData.stakeholders.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`; } 
+    else if(action === 'set_assignee') { html = `<select class="wf-act-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===preselect?'selected':''}>${u.name}</option>`).join('') + `</select>`; } 
+    else if(action === 'set_bucket') { html = `<select class="wf-act-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.buckets.map(b => `<option value="${b}" ${b===preselect?'selected':''}>${b}</option>`).join('') + `</select>`; } 
+    else if(action === 'set_stakeholder') { html = `<select class="wf-act-val"><option value="">${_t('wf_empty_opt')}</option>` + appData.stakeholders.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.name}</option>`).join('') + `</select>`; } 
     else if(action === 'set_due_rel') { html = `<div style="display:flex; align-items:center; gap:5px; width:100%;"><input type="number" class="wf-act-val" value="${preselect}" placeholder="X" style="width:60px; min-width:60px; flex:none;"> <span style="font-size:12px; white-space:nowrap;">${t('wf_days_from_now')}</span></div>`; } 
     else if(action === 'set_start_tdy' || action === 'clear_due') { html = `<input type="hidden" class="wf-act-val" value="0"><span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; height:100%;">${t('wf_no_val_needed')}</span>`; } 
     else if(action === 'add_est' || action === 'set_est') { html = `<div style="display:flex; align-items:center; gap:5px; width:100%;"><input type="number" class="wf-act-val" value="${preselect}" placeholder="X" step="0.25" style="width:70px; min-width:70px; flex:none;"> <span style="font-size:12px; white-space:nowrap;">${t('wf_hours')}</span></div>`; } 
-    else if(['create_task', 'create_stack', 'create_cl', 'create_ms', 'notif_bell', 'notif_toast', 'notif_modal', 'notif_push'].includes(action)) { html = `<input type="text" class="wf-act-val" placeholder="Text / Name..." value="${preselect}">`; }
+    else if(['create_task', 'create_stack', 'create_cl', 'create_ms', 'notif_bell', 'notif_toast', 'notif_modal', 'notif_push'].includes(action)) { html = `<input type="text" class="wf-act-val" placeholder="${_t('wf_text_ph')}" value="${preselect}">`; }
     else if(action === 'send_email') { 
         let pEmail = '', pMsg = '';
         if(preselect && preselect.includes('|||')) { [pEmail, pMsg] = preselect.split('|||'); } else { pMsg = preselect; }
         html = `<div style="display:flex; gap:5px; width:100%;">
-            <input type="email" placeholder="E-Mail (leer=global)" value="${pEmail}" style="width:140px; min-width:140px; flex:none;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.value + '|||' + this.nextElementSibling.value">
+            <input type="email" placeholder="${_t('wf_email_ph')}" value="${pEmail}" style="width:140px; min-width:140px; flex:none;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.value + '|||' + this.nextElementSibling.value">
             <input type="text" placeholder="${t('wf_msg_ph')}" value="${pMsg}" style="flex:1;" onchange="this.parentElement.querySelector('.wf-act-val').value = this.previousElementSibling.value + '|||' + this.value">
             <input type="hidden" class="wf-act-val" value="${preselect}">
         </div>`;
@@ -2517,7 +2520,7 @@ function renderWfActionValueInput(actionSelectEl, preselect = '') {
 
 function addWfActionRow(type='set_status', value='') {
     const list = document.getElementById('wf_edit_actions_list'); const div = document.createElement('div'); div.className = 'wf-rule-row';
-    div.innerHTML = `<select class="wf-act-type" onchange="renderWfActionValueInput(this)" style="flex:1;">${getWfActionOptionsHtml(type)}</select><div class="wf-act-val-container"></div><button class="secondary icon-btn" style="color:var(--danger); flex-shrink:0;" onclick="this.parentElement.remove()" title="Löschen"><i class="fas fa-trash"></i></button>`;
+    div.innerHTML = `<select class="wf-act-type" onchange="renderWfActionValueInput(this)" style="flex:1;">${getWfActionOptionsHtml(type)}</select><div class="wf-act-val-container"></div><button class="secondary icon-btn" style="color:var(--danger); flex-shrink:0;" onclick="this.parentElement.remove()" title="${_t('delete')}"><i class="fas fa-trash"></i></button>`;
     list.appendChild(div); renderWfActionValueInput(div.querySelector('.wf-act-type'), value);
 }
 
@@ -2546,8 +2549,8 @@ function getWorkflowStateFromEditor() {
 
 function saveWorkflow() {
     const wfData = getWorkflowStateFromEditor();
-    if(!wfData.name || !wfData.trigger) return showToast('Bitte Name und Auslöser wählen.', 'error');
-    if(wfData.actions.length === 0) return showToast('Mindestens eine Aktion wird benötigt.', 'error');
+    if(!wfData.name || !wfData.trigger) return showToast(_t('wf_need_name_trigger'), 'error');
+    if(wfData.actions.length === 0) return showToast(_t('wf_need_action'), 'error');
     
     if(!appData.settings.workflows) appData.settings.workflows = [];
     const idx = appData.settings.workflows.findIndex(x => x.id === wfData.id);
@@ -2557,10 +2560,10 @@ function saveWorkflow() {
     } else { 
         appData.settings.workflows.push(wfData); 
     }
-    saveToLocal(); closeWfEditor(); renderWorkflows(); showToast('Workflow gespeichert.');
+    saveToLocal(); closeWfEditor(); renderWorkflows(); showToast(_t('wf_saved'));
 }
 
-function deleteWorkflow(id) { if(confirm('Workflow wirklich löschen?')) { appData.settings.workflows = appData.settings.workflows.filter(w => w.id !== id); saveToLocal(); renderWorkflows(); showToast('Workflow gelöscht.'); } }
+function deleteWorkflow(id) { if(confirm(_t('wf_confirm_delete'))) { appData.settings.workflows = appData.settings.workflows.filter(w => w.id !== id); saveToLocal(); renderWorkflows(); showToast(_t('wf_deleted')); } }
 function toggleWorkflow(id) { const wf = appData.settings.workflows.find(w => w.id === id); if(wf) { wf.active = !wf.active; saveToLocal(); renderWorkflows(); } }
 
 // TEST WORKFLOW (Simuliert Bedingungsprüfung ohne Aktionen auszuführen)
@@ -2575,29 +2578,29 @@ function testCurrentWorkflow() {
     };
     let wfData;
     try { wfData = wfNormalize(getWorkflowStateFromEditor()); }
-    catch (err) { show('<b>Test fehlgeschlagen.</b><br>Die Regeln konnten nicht gelesen werden.', 'bad'); return; }
+    catch (err) { show(_t('wf_test_fail_read'), 'bad'); return; }
 
-    if (!wfData.trigger) { show('<b>Kein Auslöser gewählt.</b><br>Bitte zuerst unter „WENN" einen Auslöser wählen.', 'bad'); return; }
+    if (!wfData.trigger) { show(_t('wf_test_no_trigger'), 'bad'); return; }
 
     let hitTasks = [], hitStacks = [];
     try {
         if (wfData.trigger.indexOf('task_') === 0 || wfData.trigger === 'entity_exists') {
-            (appData.tasks || []).forEach(x => { if (evaluateConditions(x, wfData.conditions, wfData.conditionLogic)) hitTasks.push(x.projectName || 'Aufgabe'); });
+            (appData.tasks || []).forEach(x => { if (evaluateConditions(x, wfData.conditions, wfData.conditionLogic)) hitTasks.push(x.projectName || _t('task')); });
         }
         if (wfData.trigger.indexOf('stack_') === 0 || wfData.trigger === 'entity_exists') {
             (appData.projectStacks || []).forEach(x => { if (evaluateConditions(x, wfData.conditions, wfData.conditionLogic)) hitStacks.push(x.name || 'Stack'); });
         }
     } catch (err) {
-        show('<b>Test fehlgeschlagen.</b><br>Eine Bedingung ist ungültig: ' + escapeHtmlToday(String(err.message || err)), 'bad');
+        show(_t('wf_test_bad_cond') + ' ' + escapeHtmlToday(String(err.message || err)), 'bad');
         return;
     }
 
     const total = hitTasks.length + hitStacks.length;
     const condTxt = wfData.conditions.length === 0
-        ? 'Ohne Bedingungen trifft der Workflow auf <b>alle</b> passenden Elemente zu.'
+        ? _t('wf_test_no_cond')
         : `${wfData.conditions.length} ${t('wf_conditions_n')}, ${t('wf_linked_with')} <b>${wfData.conditionLogic === 'OR' ? t('wf_or') : t('wf_and')}</b>.`;
     const actTxt = wfData.actions.length === 0
-        ? '<span style="color:var(--danger);">Achtung: Es ist noch keine Aktion definiert – der Workflow würde nichts bewirken.</span>'
+        ? `<span style="color:var(--danger);">${_t('wf_test_no_action')}</span>`
         : `${wfData.actions.length} ${t('wf_actions_n')} ${t('wf_would_run')}`;
 
     let list = '';
@@ -2608,9 +2611,9 @@ function testCurrentWorkflow() {
 
     /* Es wird IMMER ein Ergebnis angezeigt – auch wenn nichts zutrifft. */
     if (total > 0) {
-        show(`<b>Test durchgeführt – ${total} Treffer.</b><br>${hitTasks.length} Aufgabe(n), ${hitStacks.length} Stack(s).<br>${condTxt}<br>${actTxt}${list}`, 'good');
+        show(`${_tf('wf_test_hits', { n: total, t: hitTasks.length, s: hitStacks.length })}<br>${condTxt}<br>${actTxt}${list}`, 'good');
     } else {
-        show(`<b>Test durchgeführt – keine Treffer.</b><br>Aktuell trifft kein bestehendes Element auf die Bedingungen zu.<br>${condTxt}<br>${actTxt}`, 'warn');
+        show(`${_t('wf_test_nohits')}<br>${condTxt}<br>${actTxt}`, 'warn');
     }
 }
 
@@ -2771,7 +2774,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
 
         if(action.type === 'create_task') {
             const newTask = {
-                id: generateId(), projectStackId: '', projectName: action.value || 'Neue Aufgabe',
+                id: generateId(), projectStackId: '', projectName: action.value || _t('new_task'),
                 stakeholderId: '', bucket: '', status: appData.statuses.length ? appData.statuses[0].id : 'todo',
                 priority: 'medium', recurrence: 'none', customRecurrence: null, startDate: '', dueDate: '',
                 estimatedTime: '', spentTime: '', description: '', notes: '', checklist: [], files: [], assigneeId: '', predecessors: []
@@ -2783,7 +2786,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
         }
         if(action.type === 'create_stack') {
             const newStack = {
-                id: generateId(), name: action.value || 'Neues Stack', status: 'active',
+                id: generateId(), name: action.value || _t('new_stack'), status: 'active',
                 startDate: '', dueDate: '', notes: '', history: '', assigneeId: '',
                 stakeholderId: '', bucket: '', checklist: [], predecessors: []
             };
@@ -2792,28 +2795,28 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
         }
         if(action.type === 'create_cl' && typeStr === 'task') {
             if(!entity.checklist) entity.checklist = [];
-            entity.checklist.push({ id: generateId(), done: false, title: action.value || 'Neuer Punkt', dueDate: '', assigneeId: '', predecessors: [] });
+            entity.checklist.push({ id: generateId(), done: false, title: action.value || _t('new_point'), dueDate: '', assigneeId: '', predecessors: [] });
             structureChanged = true;
         }
         if(action.type === 'create_ms' && typeStr === 'stack') {
             if(!entity.checklist) entity.checklist = [];
-            entity.checklist.push({ id: generateId(), done: false, title: action.value || 'Neuer Milestone', dueDate: '', assigneeId: '', predecessors: [] });
+            entity.checklist.push({ id: generateId(), done: false, title: action.value || _t('new_milestone'), dueDate: '', assigneeId: '', predecessors: [] });
             structureChanged = true;
         }
         if(action.type === 'send_email') {
             let targetEmail = '', customMsg = '';
             if(action.value && action.value.includes('|||')) { [targetEmail, customMsg] = action.value.split('|||'); } else { customMsg = action.value || ''; }
             
-            const eName = entity.projectName || entity.name || entity.title || 'Unbenannt';
+            const eName = entity.projectName || entity.name || entity.title || _t('unnamed');
             const ePrio = entity.priority || '-';
             const eDue = entity.dueDate || '-';
             const eStatusObj = appData.statuses.find(s => s.id === entity.status);
-            const eStatus = eStatusObj ? (eStatusObj.id === 'done' ? 'Abgeschlossen' : eStatusObj.title) : (entity.status || '-');
+            const eStatus = eStatusObj ? (eStatusObj.id === 'done' ? _t('col_completed') : eStatusObj.title) : (entity.status || '-');
             const eUserObj = appData.users.find(u => u.id === entity.assigneeId);
-            const eUser = eUserObj ? eUserObj.name : 'Nicht zugewiesen';
+            const eUser = eUserObj ? eUserObj.name : _t('not_assigned');
             
-            const subject = `Workflow-Aktion: ${eName}`;
-            const body = `Hallo,\n\nein ProMan-Workflow wurde ausgelöst!\n\nAuslöser: ${triggerNameStr}\n\nEigene Nachricht:\n${customMsg}\n\n---\nElement-Details:\nTyp: ${typeStr}\nName: ${eName}\nStatus: ${eStatus}\nPriorität: ${ePrio}\nFälligkeit: ${eDue}\nZuständig: ${eUser}\n---\n\nViele Grüsse,\nProMan Automatisierung`;
+            const subject = _tf('mail_wf_subject', { n: eName });
+            const body = _tf('mail_wf_body', { trigger: triggerNameStr, msg: customMsg, type: typeStr, name: eName, status: eStatus, prio: ePrio, due: eDue, user: eUser });
             
             triggerEmailNotif(subject, body, targetEmail);
         }
@@ -3030,7 +3033,7 @@ function drawCompletionStars() {
     cats.forEach(c => {
         const container = document.getElementById(`stars_${c}`);
         if(container) {
-            let val = currentRatings[c]; let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setStar('${c}', 0)" title="0 Sterne"></i>`;
+            let val = currentRatings[c]; let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setStar('${c}', 0)" title="${_t('stars_0')}"></i>`;
             for(let i=1; i<=5; i++) {
                 let cls = 'far fa-star';
                 if(val !== null && val >= i) cls = 'fas fa-star';
@@ -3051,7 +3054,7 @@ function saveRating() {
 // --- 7. MERGE MODAL LOGIC ---
 function openMergeModal(id1, id2) {
     document.getElementById('mergeModal').classList.add('active'); document.getElementById('merge_t1').value = id1; document.getElementById('merge_t2').value = id2;
-    document.getElementById('merge_existing_stack').innerHTML = `<option value="">-- Auswählen --</option>` + appData.projectStacks.map(ps => `<option value="${ps.id}">${ps.name}</option>`).join('');
+    document.getElementById('merge_existing_stack').innerHTML = `<option value="">${_t('choose_ph')}</option>` + appData.projectStacks.map(ps => `<option value="${ps.id}">${ps.name}</option>`).join('');
     document.getElementById('merge_new_stack').value = '';
 }
 function closeMergeModal() { document.getElementById('mergeModal').classList.remove('active'); }
@@ -3062,10 +3065,10 @@ function executeMerge() {
     if(newName) {
         targetStackId = generateId(); appData.projectStacks.push({ id: targetStackId, name: newName, status: 'active', checklist: [], startDate: '', dueDate: '', notes: '', history: '', assigneeId: '', stakeholderId: '', bucket: '', predecessors: [] });
         if(activeFilters.stack.length > 0) activeFilters.stack.push(targetStackId); 
-    } else if (exId) { targetStackId = exId; } else { showToast("Bitte Stack wählen oder neu erstellen.", "error"); return; }
+    } else if (exId) { targetStackId = exId; } else { showToast(_t('merge_choose_stack'), "error"); return; }
     const t1 = appData.tasks.find(t_obj => t_obj.id === id1); if(t1) t1.projectStackId = targetStackId;
     const t2 = appData.tasks.find(t_obj => t_obj.id === id2); if(t2) t2.projectStackId = targetStackId;
-    saveToLocal(); closeMergeModal(); showToast("Aufgaben erfolgreich gruppiert.");
+    saveToLocal(); closeMergeModal(); showToast(_t('merge_done'));
 }
 
 // --- DRAG & DROP HELPERS ---
@@ -3161,7 +3164,7 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
     <div class="cl-swipe-container" tabindex="-1">
         <div class="cl-main-row">
             <i class="fas fa-grip-vertical cl-drag"></i>
-            <input type="checkbox" class="cl-done" ${done ? 'checked' : ''} onchange="handleModalClCheckbox(this)" title="Erledigt">
+            <input type="checkbox" class="cl-done" ${done ? 'checked' : ''} onchange="handleModalClCheckbox(this)" title="${_t('cl_done_title')}">
             <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; justify-content: center;">
                 <div style="display: flex; align-items: center; width: 100%;">
                     <input type="text" class="cl-title" value="${title}" placeholder="...">
@@ -3172,16 +3175,16 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
         <div class="cl-controls">
             <input type="hidden" class="cl-assignee" value="${assigneeId}">
             <div class="cl-assignee-pick">
-                <button type="button" class="cl-assignee-btn" title="Zuständig" onclick="event.stopPropagation(); this.parentNode.classList.toggle('open')">${curAvatar}</button>
+                <button type="button" class="cl-assignee-btn" title="${_t('cl_assignee_title')}" onclick="event.stopPropagation(); this.parentNode.classList.toggle('open')">${curAvatar}</button>
                 <div class="cl-assignee-menu">${userMenuItems}</div>
             </div>
             <span class="cl-datespan cl-startspan">
-                <input type="date" class="cl-start-date" value="${sd}" title="Startdatum" onchange="clStartChanged(this)">
-                <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="Startzeit (optional)" onchange="clStartChanged(this)">
+                <input type="date" class="cl-start-date" value="${sd}" title="${_t('cl_start_date')}" onchange="clStartChanged(this)">
+                <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="${_t('cl_start_time')}" onchange="clStartChanged(this)">
             </span>
-            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="Dauer in Stunden" onchange="clSumDuration()"><span class="cl-durunit">Std</span></span>
-            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
-            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="Löschen"><i class="fas fa-trash"></i></button>
+            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="clSumDuration()"><span class="cl-durunit">${_t('u_h')}</span></span>
+            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
+            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
         </div>
     </div>
     <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>`;
@@ -3297,8 +3300,8 @@ function openStackModal(id = null) {
     } else {
         document.getElementById('stackModalTitle').innerText = t('s_new'); document.getElementById('btnDeleteStack').style.display = 'none'; document.getElementById('dropdownShareStack').style.display = 'none';
         { const _bat = document.getElementById('btnAddExistingTaskToStack'); if(_bat) _bat.style.display = 'none'; }
-        renderInteractiveRating('s_interactive_rating', null); tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Noch keine Aufgaben.</span>';
-        document.getElementById('s_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
+        renderInteractiveRating('s_interactive_rating', null); tasksContainer.innerHTML = `<span style="font-size:12px; color:var(--text-muted)">${_t('no_tasks_yet')}</span>`;
+        document.getElementById('s_deps_display').innerHTML = _t('ui_no_deps');
         populatePresetPicker('stack');
         /* Standard-Voreinstellung (Preset) für neue Stacks anwenden */
         const _sp = (appData.stackPresets || []).find(p => p.isDefault);
@@ -3333,13 +3336,13 @@ function renderStackTasksContainer(stackId) {
     if(!tasksContainer) return;
     tasksContainer.innerHTML = '';
     const sTasks = appData.tasks.filter(t_obj => t_obj.projectStackId === stackId);
-    if(sTasks.length === 0) { tasksContainer.innerHTML = '<span style="font-size:12px; color:var(--text-muted)">Keine Aufgaben zugeordnet.</span>'; return; }
+    if(sTasks.length === 0) { tasksContainer.innerHTML = `<span style="font-size:12px; color:var(--text-muted)">${_t('no_tasks_assigned')}</span>`; return; }
     sTasks.forEach(t_obj => {
         const st = appData.statuses.find(x => x.id === t_obj.status); const progress = getTaskProgress(t_obj);
         const div = document.createElement('div'); div.style.cssText = "display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:4px; font-size:13px; border:1px solid var(--border-color);";
         let tPausedIcon = t_obj.isPaused && !isTaskDone(t_obj) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
         if(isTaskDone(t_obj)) div.classList.add('is-completed');
-        div.innerHTML = `<div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;"><b>${tPausedIcon}${t_obj.projectName}</b> <span style="color:var(--text-muted); font-size:11px;">(${st? (st.id==='done'?t('col_completed'):st.title) :''})</span></div><div style="width:100px; margin:0 15px; flex-shrink:0;">${generateProgressBarHTML(progress)}</div><div style="display:flex; gap:6px; flex-shrink:0;"><button class="secondary icon-btn" onclick="closeStackModal(); openModal('${t_obj.id}')"><i class="fas fa-external-link-alt"></i> Öffnen</button><button class="secondary icon-btn" style="color:var(--danger);" onclick="removeTaskFromStack('${t_obj.id}')" title="${t('s_remove_from_stack')}"><i class="fas fa-unlink"></i></button></div>`;
+        div.innerHTML = `<div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px;"><b>${tPausedIcon}${t_obj.projectName}</b> <span style="color:var(--text-muted); font-size:11px;">(${st? (st.id==='done'?t('col_completed'):st.title) :''})</span></div><div style="width:100px; margin:0 15px; flex-shrink:0;">${generateProgressBarHTML(progress)}</div><div style="display:flex; gap:6px; flex-shrink:0;"><button class="secondary icon-btn" onclick="closeStackModal(); openModal('${t_obj.id}')"><i class="fas fa-external-link-alt"></i> ${_t('open')}</button><button class="secondary icon-btn" style="color:var(--danger);" onclick="removeTaskFromStack('${t_obj.id}')" title="${t('s_remove_from_stack')}"><i class="fas fa-unlink"></i></button></div>`;
         tasksContainer.appendChild(div);
     });
 }
@@ -3402,12 +3405,12 @@ function addExistingTaskToStack(taskId) {
 function addStackChecklistItem() { 
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     const newId = generateId(); div.setAttribute('data-id', newId);
-    div.innerHTML = buildChecklistItemHTML('Neuer Milestone', false, '', '', newId); 
+    div.innerHTML = buildChecklistItemHTML(_t('new_milestone'), false, '', '', newId); 
     addModalClDragHandlers(div); document.getElementById('s_checklist_container').appendChild(div); 
 }
 function saveStack() {
     try {
-        const id = document.getElementById('s_id').value || generateId(); if(!document.getElementById('s_name').value.trim()) return showToast("Bitte einen Projektnamen eingeben", "error");
+        const id = document.getElementById('s_id').value || generateId(); if(!document.getElementById('s_name').value.trim()) return showToast(_t('need_project_name'), "error");
         
         const existingStack = appData.projectStacks.find(x => x.id === id);
         
@@ -3436,7 +3439,7 @@ function saveStack() {
                 if (newItem.done) {
                     const oldItem = existingStack.checklist.find(c => c.id === newItem.id);
                     if (oldItem && !oldItem.done) {
-                        const msg = getHistoryTimestamp() + `Milestone "${newItem.title}" erledigt.`;
+                        const msg = getHistoryTimestamp() + _tf('hist_ms_done', { n: newItem.title });
                         finalHistory = finalHistory ? finalHistory + '\n' + msg : msg;
                     }
                 }
@@ -3466,21 +3469,21 @@ function saveStack() {
         logActivity('fa-folder', (existingStack ? t('act_stack_edited') : t('act_stack_created')).replace('{n}', sData.name || ''));
         saveToLocal(); closeStackModal(); showToast(t('toast_saved'));
     } catch(e) {
-        console.error(e); showToast("Fehler beim Speichern des Stacks: " + e.message, "error");
+        console.error(e); showToast(_t('err_save_stack') + ' ' + e.message, "error");
     }
 }
 function deleteCurrentStack() {
-    if(!confirm("Möchtest du dieses Stack wirklich in den Papierkorb verschieben? (Zugehörige Aufgaben werden ebenfalls verschoben)")) return;
+    if(!confirm(_t('confirm_trash_stack'))) return;
     const id = document.getElementById('s_id').value; const sIdx = appData.projectStacks.findIndex(s => s.id === id);
     if(sIdx > -1) {
         const stack = appData.projectStacks.splice(sIdx, 1)[0]; appData.deletedItems.push({ type: 'stack', data: stack, deletedAt: Date.now() });
         const tasksToMove = appData.tasks.filter(t_obj => t_obj.projectStackId === id); appData.tasks = appData.tasks.filter(t_obj => t_obj.projectStackId !== id);
         tasksToMove.forEach(t_obj => { appData.deletedItems.push({ type: 'task', data: t_obj, deletedAt: Date.now(), isChild: true }); });
     }
-    saveToLocal(); closeStackModal(); showToast("Stack in den Papierkorb verschoben.");
+    saveToLocal(); closeStackModal(); showToast(_t('stack_trashed'));
 }
 function setStackStatus(id, newStatus) {
-    if(newStatus !== 'active' && isEntityLocked(id)) { showToast("Stack ist durch Abhängigkeiten gesperrt!", "warning"); return; }
+    if(newStatus !== 'active' && isEntityLocked(id)) { showToast(_t('lock_stack'), "warning"); return; }
     const stack = appData.projectStacks.find(s => s.id === id);
     if(stack) { 
         stack.status = newStatus; 
@@ -3490,7 +3493,7 @@ function setStackStatus(id, newStatus) {
         { const _sm = { paused: ['fa-pause', t('act_stack_paused')], active: ['fa-play', t('act_stack_resumed')], completed: ['fa-check', t('act_stack_done')] };
           if(_sm[newStatus]) logActivity(_sm[newStatus][0], _sm[newStatus][1].replace('{n}', stack.name || '')); }
         saveToLocal(); if(document.getElementById('stackModal').classList.contains('active')) { openStackModal(id); } renderView();
-        if(newStatus === 'completed') { showToast("Stack abgeschlossen!"); openRatingModal('stack', id); } 
+        if(newStatus === 'completed') { showToast(_t('stack_completed_toast')); openRatingModal('stack', id); } 
     }
 }
 
@@ -3574,7 +3577,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
             renderTaskChecklistItem(container, ci.title, false, '', '', newId, '', ci.duration || null);
         });
         if (_tp && _tp.note) { const _rte = document.getElementById('t_desc_rte'); if (_rte) _rte.innerHTML = _tp.note.replace(/\n/g, '<br>'); }
-        document.getElementById('t_deps_display').innerHTML = 'Keine Abhängigkeiten definiert.';
+        document.getElementById('t_deps_display').innerHTML = _t('ui_no_deps');
         setTimeout(() => document.getElementById('t_project').focus(), 100);
     }
     actionsContainer.innerHTML = actionsHtml;
@@ -3600,13 +3603,13 @@ function openModal(taskId = null, _scrollToCpId = null) {
 function closeModal() { document.getElementById('taskModal').classList.remove('active'); }
 function addTaskChecklistItem() { 
     const newId = generateId();
-    renderTaskChecklistItem(document.getElementById('t_checklist_container'), 'Neuer Punkt', false, '', '', newId); 
+    renderTaskChecklistItem(document.getElementById('t_checklist_container'), _t('new_point'), false, '', '', newId); 
 }
 function deleteTask() {
-    if(!confirm("Möchtest du diese Aufgabe wirklich in den Papierkorb verschieben?")) return;
+    if(!confirm(_t('confirm_trash_task'))) return;
     const id = document.getElementById('taskId').value; const tIdx = appData.tasks.findIndex(t_obj => t_obj.id === id);
     if(tIdx > -1) { const t_obj = appData.tasks.splice(tIdx, 1)[0]; appData.deletedItems.push({ type: 'task', data: t_obj, deletedAt: Date.now() }); }
-    saveToLocal(); closeModal(); showToast('Aufgabe in den Papierkorb verschoben.');
+    saveToLocal(); closeModal(); showToast(_t('task_trashed'));
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3797,7 +3800,7 @@ function addFilesAsPaths() {
         /* Inhalt nur für diese Sitzung im Speicher halten (kommt nicht ins Backup) */
         cacheFileBlob(fullPath, file);
     }); 
-    input.value = ''; document.getElementById('t_files_fname').innerText = t('no_file_chosen'); renderFileList(); showToast('Dateipfade generiert.');
+    input.value = ''; document.getElementById('t_files_fname').innerText = t('no_file_chosen'); renderFileList(); showToast(_t('paths_generated'));
 }
 function addFilePath() { const path = document.getElementById('t_filepath').value.trim(); if(path) { currentTempFiles.push({ type: 'path', path: path }); document.getElementById('t_filepath').value = ''; renderFileList(); } }
 function removeFile(index) { currentTempFiles.splice(index, 1); renderFileList(); }
@@ -3806,7 +3809,7 @@ function renderFileList() {
     const container = document.getElementById('t_file_list'); let html = '';
     currentTempFiles.forEach((f, i) => { 
         if(f.type === 'blob' || f.type === 'missing-blob') { 
-            html += `<div class="file-item" style="color:var(--danger); border:1px solid var(--danger); padding:5px 10px; margin-bottom:5px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:12px;"><i class="fas fa-exclamation-triangle"></i> ${f.name} (Veraltete Datei)</span><div><button class="secondary icon-btn" onclick="removeFile(${i})"><i class="fas fa-times"></i></button></div></div>`; 
+            html += `<div class="file-item" style="color:var(--danger); border:1px solid var(--danger); padding:5px 10px; margin-bottom:5px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:12px;"><i class="fas fa-exclamation-triangle"></i> ${f.name} ${_t('file_outdated')}</span><div><button class="secondary icon-btn" onclick="removeFile(${i})"><i class="fas fa-times"></i></button></div></div>`; 
         } else if(f.type === 'path') { 
             let safePath = f.path.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const available = isFileAvailable(f);
@@ -3819,7 +3822,7 @@ function renderFileList() {
                     <a href="javascript:void(0)" onclick="openFileViewer('${safePath}')" style="color:var(--text-main); text-decoration:none; outline:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${t('fv_open_in_app')}" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${f.path}</a>
                 </span>
                 <div style="display:flex; gap:5px; margin-left:10px; flex-shrink:0;">
-                    <button class="secondary icon-btn" onclick="copyRawPath('${safePath}')" title="Pfad in Zwischenablage kopieren"><i class="fas fa-copy"></i></button>
+                    <button class="secondary icon-btn" onclick="copyRawPath('${safePath}')" title="${_t('copy_path')}"><i class="fas fa-copy"></i></button>
                     <button class="secondary icon-btn" style="color:var(--danger);" onclick="removeFile(${i})" title="${t('delete')}"><i class="fas fa-times"></i></button>
                 </div>
             </div>`; 
@@ -3829,14 +3832,14 @@ function renderFileList() {
 }
 
 function copyRawPath(path) { 
-    if (navigator.clipboard && window.issecureContext) { navigator.clipboard.writeText(path).then(() => { showToast('Pfad kopiert!'); });
-    } else { const tempInput = document.createElement("input"); tempInput.value = path; document.body.appendChild(tempInput); tempInput.select(); document.execCommand("copy"); document.body.removeChild(tempInput); showToast('Pfad kopiert!'); }
+    if (navigator.clipboard && window.issecureContext) { navigator.clipboard.writeText(path).then(() => { showToast(_t('path_copied')); });
+    } else { const tempInput = document.createElement("input"); tempInput.value = path; document.body.appendChild(tempInput); tempInput.select(); document.execCommand("copy"); document.body.removeChild(tempInput); showToast(_t('path_copied')); }
 }
 
 function saveTask() {
     try {
         const id = document.getElementById('taskId').value || generateId(); const titleInput = document.getElementById('t_project').value.trim();
-        if(!titleInput) { switchTaskTab('tab-general', document.querySelectorAll('#taskModal .modal-tab-btn')[0]); return showToast("Bitte Aufgabenname eingeben.", "error"); }
+        if(!titleInput) { switchTaskTab('tab-general', document.querySelectorAll('#taskModal .modal-tab-btn')[0]); return showToast(_t('need_task_name'), "error"); }
         
         const existingTask = appData.tasks.find(x => x.id === id);
 
@@ -3865,7 +3868,7 @@ function saveTask() {
                 if (newItem.done) {
                     const oldItem = existingTask.checklist.find(c => c.id === newItem.id);
                     if (oldItem && !oldItem.done) {
-                        const msg = getHistoryTimestamp() + `Checklistenpunkt "${newItem.title}" erledigt.`;
+                        const msg = getHistoryTimestamp() + _tf('hist_cp_done', { n: newItem.title });
                         finalNotes = finalNotes ? finalNotes + '\n' + msg : msg;
                     }
                 }
@@ -3906,7 +3909,7 @@ function saveTask() {
         
         logActivity(existingTask ? 'fa-pen' : 'fa-plus', (existingTask ? t('act_task_edited') : t('act_task_created')).replace('{n}', taskData.projectName || ''));
         saveToLocal(); closeModal(); showToast(t('toast_saved'));
-    } catch(e) { console.error(e); showToast("Fehler beim Speichern: " + e.message, "error"); }
+    } catch(e) { console.error(e); showToast(_t('err_save') + ' ' + e.message, "error"); }
 }
 
 // --- 9. VIEWS & RENDERING ---
@@ -3970,7 +3973,7 @@ function renderView() {
 
 function renderPlanner(c) {
     const tabs = [
-        { id: 'schedule', label: '<i class="fas fa-calendar-alt"></i> Kalender' },
+        { id: 'schedule', label: '<i class="fas fa-calendar-alt"></i> ' + _t('calendar') },
         { id: 'timeline', label: '<i class="fas fa-stream"></i> Gantt' }
     ];
     let tabHtml = `<div style="display:flex; gap:0; background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; width:fit-content; margin-bottom:20px; flex-shrink:0;">`;
@@ -4487,7 +4490,7 @@ function renderDependenciesView(c) {
     appData.tasks.forEach(tk => {
         if (!L.task) return;
         if (hideDone && isTaskDone(tk)) return;
-        addNode({ id: tk.id, type: 'task', name: tk.projectName || 'Aufgabe', done: isTaskDone(tk), obj: tk,
+        addNode({ id: tk.id, type: 'task', name: tk.projectName || _t('task'), done: isTaskDone(tk), obj: tk,
                   stackId: tk.projectStackId || '', preds: (tk.predecessors || []).slice() });
         if (L.checklist && tk.checklist) {
             tk.checklist.forEach(ci => {
@@ -4504,7 +4507,7 @@ function renderDependenciesView(c) {
         sk.checklist.forEach(ci => {
             if (!ci.id) return;
             if (hideDone && ci.done) return;
-            addNode({ id: ci.id, type: 'milestone', name: ci.title || 'Meilenstein', done: !!ci.done, obj: ci,
+            addNode({ id: ci.id, type: 'milestone', name: ci.title || _t('milestone'), done: !!ci.done, obj: ci,
                       stackId: sk.id, parentStack: sk.id, preds: (ci.predecessors || []).slice() });
         });
     });
@@ -5013,14 +5016,14 @@ function renderNotesView(c) {
             <button class="secondary ${notessortKey==='priority'?'active':''}" onclick="notessortKey='priority'; notesListScrollPos=0; renderView()"><i class="fas fa-exclamation"></i> ${t('priority')}</button>
         </div>`;
 
-    if(items.length === 0) { html += `<p style="color:var(--text-muted); text-align:center; font-size:12px; margin-top:20px;">Keine Einträge gefunden.</p>`; } 
+    if(items.length === 0) { html += `<p style="color:var(--text-muted); text-align:center; font-size:12px; margin-top:20px;">${_t('notes_no_entries')}</p>`; } 
     else {
         items.forEach(item => {
             const isTask = item.type === 'task'; const icon = isTask ? 'fa-tasks' : 'fa-folder'; const isActive = item.id === activeNoteId;
             const color = isTask ? 'var(--primary-color)' : 'var(--primary-color)'; const bg = isActive ? 'var(--primary-lightest)' : 'var(--surface-color)';
             const border = isActive ? `border-left: 4px solid ${color};` : 'border-left: 4px solid transparent;';
             const isCompleted = isTask ? isTaskDone(item.obj) : (item.obj.status === 'completed'); const isPaused = isTask ? (item.obj.isPaused && !isCompleted) : (item.obj.status === 'paused');
-            const compOpacity = isCompleted ? 'opacity:0.6;' : ''; const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="Pausiert"></i>' : '';
+            const compOpacity = isCompleted ? 'opacity:0.6;' : ''; const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
             
             html += `<div class="draggable-item" draggable="${notessortKey === 'manual'}" ondragstart="event.dataTransfer.setData('text/plain', '${item.id}'); event.dataTransfer.setData('type', 'note-card');" ondrop="handleNoteCardDrop(event, this, '${item.id}')" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" onclick="selectNoteItem('${item.id}')" style="padding:10px; margin-bottom:6px; background:${bg}; ${border} border-radius:var(--radius); border-top:1px solid var(--border-color); border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); cursor:pointer; display:flex; justify-content:space-between; align-items:center; ${compOpacity}">
                         <div style="font-weight:${isActive?'bold':'normal'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${item.name}"><i class="fas ${icon}" style="color:${color}; margin-right:8px;"></i>${pausedIcon}${item.name}</div>
@@ -5029,11 +5032,11 @@ function renderNotesView(c) {
     }
     html += `</div><div class="notes-right-pane">`;
     
-    if(!activeItem) { html += `<div style="margin:auto; color:var(--text-muted); display:flex; flex-direction:column; align-items:center;"><i class="fas fa-file-alt" style="font-size:48px; color:var(--border-color); margin-bottom:15px;"></i> Bitte wähle links einen Eintrag aus.</div>`; } 
+    if(!activeItem) { html += `<div style="margin:auto; color:var(--text-muted); display:flex; flex-direction:column; align-items:center;"><i class="fas fa-file-alt" style="font-size:48px; color:var(--border-color); margin-bottom:15px;"></i> ${_t('notes_pick_left')}</div>`; } 
     else {
         const isTask = activeItem.type === 'task'; const content = isTask ? (activeItem.obj.description || '') : (activeItem.obj.notes || '');
         const icon = isTask ? 'fa-tasks' : 'fa-folder'; const isCompleted = isTask ? isTaskDone(activeItem.obj) : (activeItem.obj.status === 'completed');
-        const isPaused = isTask ? (activeItem.obj.isPaused && !isCompleted) : (activeItem.obj.status === 'paused'); const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:8px;" title="Pausiert"></i>' : '';
+        const isPaused = isTask ? (activeItem.obj.isPaused && !isCompleted) : (activeItem.obj.status === 'paused'); const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:8px;" title="' + _t('paused') + '"></i>' : '';
         
         html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:15px; flex-wrap:wrap; gap:10px;">
                     <h2 style="margin:0; display:flex; align-items:center;">
@@ -5042,7 +5045,7 @@ function renderNotesView(c) {
                     </h2>
                     <div style="display:flex; align-items:center; gap:15px;">
                         <span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar-alt"></i> ${t('due')}: ${activeItem.dueDate||'-'}</span>
-                        <button class="secondary icon-btn" onclick="${isTask?`openModal('${activeItem.id}')`:`openStackModal('${activeItem.id}')`}" title="Gesamte Aufgabe/Stack öffnen"><i class="fas fa-external-link-alt"></i> ${t('open_details')}</button>
+                        <button class="secondary icon-btn" onclick="${isTask?`openModal('${activeItem.id}')`:`openStackModal('${activeItem.id}')`}" title="${_t('open_whole_item')}"><i class="fas fa-external-link-alt"></i> ${t('open_details')}</button>
                     </div>
                  </div>`;
         
@@ -5052,35 +5055,35 @@ function renderNotesView(c) {
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('bold', false, null);"><i class="fas fa-bold"></i></button>
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null);"><i class="fas fa-italic"></i></button>
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null);"><i class="fas fa-underline"></i></button>
-                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('strikeThrough', false, null);" title="Durchgestrichen"><i class="fas fa-strikethrough"></i></button>
+                <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('strikeThrough', false, null);" title="${_t('rte_strike')}"><i class="fas fa-strikethrough"></i></button>
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="toggleRTEHighlight()"><i class="fas fa-highlighter"></i></button>
                 <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertUnorderedList', false, null);"><i class="fas fa-list-ul"></i></button>
                 <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="document.execCommand('insertOrderedList', false, null);"><i class="fas fa-list-ol"></i></button>
                 
                 <div class="dropdown click-only" style="margin:0;">
-                    <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Tabelle einfügen & bearbeiten"><i class="fas fa-table"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                    <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="${_t('rte_table')}"><i class="fas fa-table"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
                     <div class="dropdown-content" style="width: 180px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('create'); this.parentNode.style.display='none';"><i class="fas fa-plus"></i> Neue Tabelle</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('create'); this.parentNode.style.display='none';"><i class="fas fa-plus"></i> ${_t('rte_new_table')}</a>
                         <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
-                        <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Zeilen</div>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowAbove');"><i class="fas fa-arrow-up"></i> Davor einfügen</a>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowBelow');"><i class="fas fa-arrow-down"></i> Danach einfügen</a>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delRow');" style="color:var(--danger);"><i class="fas fa-trash"></i> Zeile löschen</a>
+                        <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">${_t('rte_rows')}</div>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowAbove');"><i class="fas fa-arrow-up"></i> ${_t('rte_insert_before')}</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addRowBelow');"><i class="fas fa-arrow-down"></i> ${_t('rte_insert_after')}</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delRow');" style="color:var(--danger);"><i class="fas fa-trash"></i> ${_t('rte_del_row')}</a>
                         <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
-                        <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">Spalten</div>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColLeft');"><i class="fas fa-arrow-left"></i> Davor einfügen</a>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColRight');"><i class="fas fa-arrow-right"></i> Danach einfügen</a>
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delCol');" style="color:var(--danger);"><i class="fas fa-trash"></i> Spalte löschen</a>
+                        <div style="font-size:10px; color:var(--text-muted); padding:2px 10px;">${_t('rte_cols')}</div>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColLeft');"><i class="fas fa-arrow-left"></i> ${_t('rte_insert_before')}</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('addColRight');"><i class="fas fa-arrow-right"></i> ${_t('rte_insert_after')}</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('delCol');" style="color:var(--danger);"><i class="fas fa-trash"></i> ${_t('rte_del_col')}</a>
                         <hr style="margin:5px 0; border-top:1px solid var(--border-color);">
-                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('toggleHeader');"><i class="fas fa-heading"></i> Kopfzeile an/aus</a>
+                        <a onmousedown="event.preventDefault();" onclick="rtfTableAction('toggleHeader');"><i class="fas fa-heading"></i> ${_t('rte_toggle_header')}</a>
                     </div>
                 </div>
 
                 <div style="min-width:1px; height:15px; background:var(--border-color); margin:0 5px;"></div>
                 
                 <div class="dropdown click-only" style="margin:0;">
-                    <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="Formatierung"><i class="fas fa-paragraph"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
+                    <button class="secondary icon-btn" onmousedown="event.preventDefault();" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'" title="${_t('rte_format')}"><i class="fas fa-paragraph"></i> <i class="fas fa-caret-down" style="font-size:10px;"></i></button>
                     <div class="dropdown-content" style="width: 150px; padding:5px; z-index: 10001;" onclick="event.stopPropagation()">
                         <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H3'); this.parentNode.style.display='none';"><span style="font-size:16px; font-weight:bold;">Titel</span></a>
                         <a onmousedown="event.preventDefault();" onclick="document.execCommand('formatBlock', false, 'H4'); this.parentNode.style.display='none';"><span style="font-size:14px; font-weight:bold;">Überschrift</span></a>
@@ -5118,12 +5121,12 @@ function renderChecklists(c, mode = 'checklists') {
         if(list.length === 0) return '';
 
         hasItems = true; let opacity = isCompleted ? '0.6' : '1'; let stackBadge = stackName ? `<span class="stack-badge" style="margin-left: 10px; font-size: 11px; margin-bottom:0;"><i class="fas fa-folder"></i> ${stackName}</span>` : '';
-        const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:6px;" title="Pausiert"></i>' : '';
-        const lockedIcon = isEntityLocked(parentId) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+        const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:6px;" title="' + _t('paused') + '"></i>' : '';
+        const lockedIcon = isEntityLocked(parentId) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
         let metaBadges = '';
         if (clSortKey === 'dueDate') {
-            let dateStr = dueDate ? new Date(dueDate).toLocaleDateString('de-DE') : '-';
+            let dateStr = dueDate ? new Date(dueDate).toLocaleDateString(ttLocale()) : '-';
             if (dateStr === 'Invalid Date') dateStr = dueDate;
             metaBadges += `<span class="badge" style="background:var(--border-color); color:var(--text-main); margin-left: 10px; margin-bottom:0;"><i class="far fa-calendar-alt"></i> ${t('due_date')}: ${dateStr}</span>`;
         } else if (clSortKey === 'priority' && priority) {
@@ -5149,9 +5152,9 @@ function renderChecklists(c, mode = 'checklists') {
                 if(_src) { if(_src.includes('T')) [d, time] = _src.split('T'); else d = _src; }
                 const _durH = (parseInt(item.duration, 10) || 0) / 60;
                 const _durVal = _durH > 0 ? (Math.round(_durH * 100) / 100) : '';
-                let userOpts = `<option value="">-- Benutzer --</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===item.assigneeId?'selected':''}>${u.name}</option>`).join('');
+                let userOpts = `<option value="">${_t('user_ph')}</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===item.assigneeId?'selected':''}>${u.name}</option>`).join('');
                 let lineThrough = item.done ? 'text-decoration:line-through; opacity:0.6;' : '';
-                let clLocked = isEntityLocked(item.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+                let clLocked = isEntityLocked(item.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('lock_title') + '"></i>' : '';
 
                 h += `
                 <div class="checklist-item draggable-item" draggable="false" data-parent-type="${parentType}" data-parent-id="${parentId}" style="margin-left:25px;" data-id="${item.id}">
@@ -5171,9 +5174,9 @@ function renderChecklists(c, mode = 'checklists') {
                             ${getAvatarHtml(item.assigneeId, 'avatar-sm')}
                             <select class="cl-assignee" onchange="updateGlobalCl('${parentType}', '${parentId}', ${originalIdx}, 'assigneeId', this.value)">${userOpts}</select>
                             <span class="cl-datespan cl-startspan"><input type="date" class="cl-g-date cl-start-date" value="${d}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><input type="time" class="cl-g-time cl-start-time" value="${time}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"></span>
-                            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">Zeit</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="Dauer in Stunden" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">Std</span></span>
-                            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="Abhängigkeiten für diesen Punkt"><i class="fas fa-link"></i></button>
-                            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="Löschen"><i class="fas fa-trash"></i></button>
+                            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">${_t('u_h')}</span></span>
+                            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
+                            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
                     <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>
@@ -5216,7 +5219,7 @@ function updateGlobalCl(type, parentId, idx, field, val) {
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent && parent.checklist && parent.checklist[idx]) { 
         if(field === 'done' && val === true && isEntityLocked(parent.checklist[idx].id)) {
-            showToast("Punkt ist durch Abhängigkeiten gesperrt!", "warning");
+            showToast(_t('lock_point'), "warning");
             if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
             return;
         }
@@ -5230,7 +5233,7 @@ function updateGlobalCl(type, parentId, idx, field, val) {
         if (field === 'done' && val === true && oldVal !== true) {
             const title = parent.checklist[idx].title;
             const msgType = type === 'stack' ? 'Milestone' : 'Checklistenpunkt';
-            const msg = getHistoryTimestamp() + `${msgType} "${title}" erledigt.`;
+            const msg = getHistoryTimestamp() + _tf(type === 'stack' ? 'hist_ms_done' : 'hist_cp_done', { n: title });
             if (type === 'task') {
                 parent.notes = parent.notes ? parent.notes + '\n' + msg : msg;
             } else {
@@ -5238,7 +5241,7 @@ function updateGlobalCl(type, parentId, idx, field, val) {
             }
         }
 
-        saveToLocal(true); if(field === 'done' && val === true) showToast('Abgehakt!'); 
+        saveToLocal(true); if(field === 'done' && val === true) showToast(_t('checked_off')); 
         if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
     }
 }
@@ -5280,7 +5283,7 @@ function updateGlobalClDate(type, parentId, idx, dateVal, timeVal) {
 function addGlobalCl(type, parentId) {
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent) {
-        if(!parent.checklist) parent.checklist = []; parent.checklist.push({ id: generateId(), done: false, title: 'Neuer Punkt', dueDate: '', assigneeId: '', predecessors: [] }); logActivity('fa-plus', t('act_cp_added').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', parent.name || parent.projectName || '')); saveToLocal(true); 
+        if(!parent.checklist) parent.checklist = []; parent.checklist.push({ id: generateId(), done: false, title: _t('new_point'), dueDate: '', assigneeId: '', predecessors: [] }); logActivity('fa-plus', t('act_cp_added').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', parent.name || parent.projectName || '')); saveToLocal(true); 
         if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
     }
 }
@@ -5401,7 +5404,7 @@ function createTaskCard(task) {
                 const newStatusId = task.status;
                 if(draggedTask.status !== newStatusId) {
                     if(newStatusId === 'done' && isEntityLocked(draggedId)) {
-                        showToast("Aufgabe ist durch Abhängigkeiten gesperrt!", "warning");
+                        showToast(_t('lock_task'), "warning");
                         return;
                     }
                     checkTaskCompletion(draggedId, newStatusId);
@@ -5431,7 +5434,7 @@ function createTaskCard(task) {
     const est = parseFloat(task.estimatedTime||0); const spent = parseFloat(task.spentTime||0); 
     let pct = est > 0 ? (spent / est) * 100 : (spent > 0 ? 100 : 0); const isOver = pct > 100; if(pct > 100) pct = 100;
 
-    const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+    const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('lock_title') + '"></i>' : '';
 
     let actionBtns = '';
     actionBtns += `<button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
@@ -5447,12 +5450,12 @@ function createTaskCard(task) {
         const clBarCompact = `<div class="pb-container" style="margin:0; height:5px; border-radius:2px; flex:1;" title="${t('list_prog')}: ${progress}%"><div class="pb-fill" style="width:${progress}%; border-radius:2px;"></div></div>`;
         card.innerHTML = `<div class="compact-row" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
             <div style="width:8px; height:8px; border-radius:50%; background:${shColor}; flex-shrink:0;"></div>
-            <div class="task-title" title="${task.projectName}" style="flex:1; margin-left:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px;">${lockedIcon}${task.projectName || 'Unbenannt'}</div>
+            <div class="task-title" title="${task.projectName}" style="flex:1; margin-left:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px;">${lockedIcon}${task.projectName || _t('unnamed')}</div>
             <div style="display:flex; gap:3px; align-items:center; flex-shrink:0; margin-left:5px;">${actionBtns}</div>
         </div>
         <div class="compact-row" style="margin-top:6px; display:flex; align-items:center; gap:6px; width:100%; min-width:0;">
             ${avatarHtml}
-            <span class="badge ${task.priority}" style="flex-shrink:0; padding:2px 4px; font-size:9px; line-height:1; min-width:14px; text-align:center;" title="Priorität">${prioLabels[task.priority][0]}</span>
+            <span class="badge ${task.priority}" style="flex-shrink:0; padding:2px 4px; font-size:9px; line-height:1; min-width:14px; text-align:center;" title="${_t('prio_title')}">${prioLabels[task.priority][0]}</span>
             <div style="display:flex; flex:1; gap:4px; align-items:center; min-width:0; margin-left:2px;">
                 ${clBarCompact}
                 ${timeBarCompact}
@@ -5471,7 +5474,7 @@ function createTaskCard(task) {
                 + `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-rotate-left"></i></button>`;
             card.innerHTML = `<div class="wk-card done">
                 <div class="wk-card-done-main">
-                    <div class="task-title done" title="${task.projectName || ''}"><i class="fas fa-check-circle wk-done-ic"></i> ${escapeHtmlToday(task.projectName || 'Unbenannt')}</div>
+                    <div class="task-title done" title="${task.projectName || ''}"><i class="fas fa-check-circle wk-done-ic"></i> ${escapeHtmlToday(task.projectName || _t('unnamed'))}</div>
                     ${(doneSh || doneBucket) ? `<div class="wk-card-done-tags">${doneBucket}${doneSh}</div>` : ''}
                 </div>
                 <div class="wk-card-actions">${doneActions}</div>
@@ -5493,7 +5496,7 @@ function createTaskCard(task) {
                     <div class="wk-card-tags">${stackBadge}${shBadge}${bucketBadge}</div>
                     <div class="wk-card-actions">${actionBtns}</div>
                 </div>
-                <div class="task-title">${lockedIcon}${escapeHtmlToday(task.projectName || 'Unbenannt')}</div>
+                <div class="task-title">${lockedIcon}${escapeHtmlToday(task.projectName || _t('unnamed'))}</div>
                 ${timeBarHtml}
                 <div class="wk-card-foot">
                     <div class="wk-card-foot-l">
@@ -5513,7 +5516,7 @@ function dropTaskToColumn(e, newStatus) {
     const id = e.dataTransfer.getData('text/plain'); const type = e.dataTransfer.getData('type'); if(type !== 'task') return;
     const task = appData.tasks.find(t_obj => t_obj.id === id); 
     if(task && task.status !== newStatus) { 
-        if(newStatus === 'done' && isEntityLocked(id)) { showToast("Aufgabe ist durch Abhängigkeiten gesperrt!", "warning"); return; }
+        if(newStatus === 'done' && isEntityLocked(id)) { showToast(_t('lock_task'), "warning"); return; }
         checkTaskCompletion(id, newStatus); let oldStatus = task.status; task.status = newStatus; 
         if(newStatus === 'done') { task.isPaused = false; if(!task.completedAt) { task.completedAt = Date.now(); triggerWorkflows('task_completed', { task }); } } else { delete task.completedAt; }
         triggerWorkflows('task_status_changed', { task, oldStatus, newStatus: newStatus });
@@ -5681,13 +5684,13 @@ function renderStacks(c) {
     html += `<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">`;
     
     let stacks = getFilteredStacks(); stacks = applySort(stacks, stackssortKey);
-    if(stacks.length === 0) html += `<p>Keine Projekt-Stacks vorhanden oder Filter zu restriktiv.</p>`;
+    if(stacks.length === 0) html += `<p>${_t('no_stacks_filter')}</p>`;
     
     stacks.forEach(stack => {
         const sp = getStackProgress(stack.id); const isCompleted = stack.status === 'completed'; const isPaused = stack.status === 'paused';
         let badgeHtml = ''; if(isCompleted) badgeHtml = `<span class="badge low">${t('col_completed')}</span>`; else if(isPaused) badgeHtml = `<span class="badge medium">${t('status_paused')}</span>`;
         const rAvg = getAvgRating(stack.rating); const ratingHtml = rAvg > 0 && isCompleted ? `<span style="font-size:11px; color:var(--warning); font-weight:bold; margin-left:10px;"><i class="fas fa-star"></i> ${rAvg}</span>` : '';
-        const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+        const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
         let btnHtml = '';
         if(!isCompleted) {
@@ -5709,7 +5712,7 @@ function renderStacks(c) {
                 checklistHtml += `<div style="margin-top:10px; font-size:13px; max-height:130px; overflow-y:auto; border-top:1px solid var(--border-color); padding-top:8px;" onclick="event.stopPropagation();"><div style="font-weight:bold; margin-bottom:6px; color:var(--text-main);"><i class="fas fa-flag" style="color:var(--primary-color)"></i> ${t('milestones')}</div>`;
                 filteredCl.forEach((cl) => {
                     const idx = stack.checklist.indexOf(cl);
-                    let clLocked = isEntityLocked(cl.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+                    let clLocked = isEntityLocked(cl.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('lock_title') + '"></i>' : '';
                     checklistHtml += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; background:var(--bg-color); padding:4px 8px; border-radius:4px; border:1px solid var(--border-color); font-size:11px;">
                         <input type="checkbox" style="margin:0; width:auto; cursor:pointer;" ${cl.done ? 'checked' : ''} onchange="updateGlobalCl('stack', '${stack.id}', ${idx}, 'done', this.checked)">
                         ${clLocked}<span style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; ${cl.done ? 'text-decoration:line-through; color:var(--text-muted);' : ''}" title="${cl.title}">${cl.title}</span>
@@ -5785,17 +5788,17 @@ function renderList(c) {
             <div class="dropdown-content" style="padding:15px; width:220px; right:0; max-height:400px; overflow-y:auto; display:none; z-index:1000;" onclick="event.stopPropagation()">
                 <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">${t('master_data')}</div>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.assignee?'checked':''} onchange="toggleListCol('assignee', this.checked)"> ${t('user')}</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.stakeholder?'checked':''} onchange="toggleListCol('stakeholder', this.checked)"> Stakeholder</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.bucket?'checked':''} onchange="toggleListCol('bucket', this.checked)"> Bucket (Kategorie)</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.status?'checked':''} onchange="toggleListCol('status', this.checked)"> Status</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" ${cols.priority?'checked':''} onchange="toggleListCol('priority', this.checked)"> Priorität</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.stakeholder?'checked':''} onchange="toggleListCol('stakeholder', this.checked)"> ${_t('col_stakeholder')}</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.bucket?'checked':''} onchange="toggleListCol('bucket', this.checked)"> ${_t('col_bucket_cat')}</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.status?'checked':''} onchange="toggleListCol('status', this.checked)"> ${_t('wf_grp_status')}</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" ${cols.priority?'checked':''} onchange="toggleListCol('priority', this.checked)"> ${_t('prio_title')}</label>
                 
                 <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">${t('planning')}</div>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.startDate?'checked':''} onchange="toggleListCol('startDate', this.checked)"> ${t('start_date')}</label>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.dueDate?'checked':''} onchange="toggleListCol('dueDate', this.checked)"> ${t('due_date')}</label>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.recurrence?'checked':''} onchange="toggleListCol('recurrence', this.checked)"> ${t('recurrence')}</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.timeSpent?'checked':''} onchange="toggleListCol('timeSpent', this.checked)"> Zeitaufwand (Balken)</label>
-                <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" ${cols.progress?'checked':''} onchange="toggleListCol('progress', this.checked)"> Fortschritt (Balken)</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.timeSpent?'checked':''} onchange="toggleListCol('timeSpent', this.checked)"> ${_t('col_time_bar')}</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:15px; cursor:pointer;"><input type="checkbox" ${cols.progress?'checked':''} onchange="toggleListCol('progress', this.checked)"> ${_t('col_progress_bar')}</label>
 
                 <div style="font-size:11px; font-weight:bold; color:var(--text-muted); margin-bottom:10px; border-bottom:1px solid var(--border-color); padding-bottom:5px;">${t('details')}</div>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; cursor:pointer;"><input type="checkbox" ${cols.description?'checked':''} onchange="toggleListCol('description', this.checked)"> ${t('notes')}</label>
@@ -5809,17 +5812,17 @@ function renderList(c) {
     
     if(cols.assignee) html += `<th width="50"></th>`;
     html += `<th onclick="toggleSort('projectName')">${t('list_task_stack')} ${getSortIcon('projectName')}</th>`;
-    if(cols.stakeholder) html += `<th onclick="toggleSort('stakeholderId')">Stakeholder ${getSortIcon('stakeholderId')}</th>`;
-    if(cols.bucket) html += `<th onclick="toggleSort('bucket')">Bucket ${getSortIcon('bucket')}</th>`;
-    if(cols.status) html += `<th onclick="toggleSort('status')">Status ${getSortIcon('status')}</th>`;
-    if(cols.priority) html += `<th onclick="toggleSort('priority')">Prio ${getSortIcon('priority')}</th>`;
+    if(cols.stakeholder) html += `<th onclick="toggleSort('stakeholderId')">${_t('col_stakeholder')} ${getSortIcon('stakeholderId')}</th>`;
+    if(cols.bucket) html += `<th onclick="toggleSort('bucket')">${_t('col_bucket')} ${getSortIcon('bucket')}</th>`;
+    if(cols.status) html += `<th onclick="toggleSort('status')">${_t('wf_grp_status')} ${getSortIcon('status')}</th>`;
+    if(cols.priority) html += `<th onclick="toggleSort('priority')">${_t('col_prio_short')} ${getSortIcon('priority')}</th>`;
     if(cols.startDate) html += `<th onclick="toggleSort('startDate')">${t('start_date')} ${getSortIcon('startDate')}</th>`;
     if(cols.dueDate) html += `<th onclick="toggleSort('dueDate')">${t('due_date')} ${getSortIcon('dueDate')}</th>`;
     if(cols.recurrence) html += `<th>${t('recurrence')}</th>`;
     if(cols.timeSpent) html += `<th width="150">${t('list_time')}</th>`;
     if(cols.progress) html += `<th width="150">${t('list_prog')}</th>`;
     if(cols.description) html += `<th>${t('notes')}</th>`;
-    if(cols.checklist) html += `<th>Checkliste</th>`;
+    if(cols.checklist) html += `<th>${_t('sr_checklist')}</th>`;
     if(cols.files) html += `<th>${t('list_files')}</th>`;
     if(cols.notes) html += `<th>${t('history')}</th>`;
     
@@ -5843,17 +5846,17 @@ function renderList(c) {
         const shBadge = sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin-left:10px; margin-bottom:0;">${sh.name}</span>` : '';
         const bucketText = stack.bucket ? `<span class="badge" style="margin-left:10px; background:var(--border-color); color:var(--text-main); font-weight:normal;">${stack.bucket}</span>` : '';
         let badge = ''; if(stack.status==='completed') badge=`<span class="badge low" style="margin-left:5px;">${t('col_completed')}</span>`; else if(stack.status==='paused') badge=`<span class="badge medium" style="margin-left:5px;">${t('status_paused')}</span>`;
-        const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="Gesperrt durch Abhängigkeit"></i>' : '';
+        const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
         html += `<tr class="table-row-group clickable-row ${stack.status==='completed' ? 'is-completed' : ''}" onclick="openStackModal('${stack.id}')">`;
-        if(cols.assignee) html += `<td data-label="Assignee">${getAvatarHtml(stack.assigneeId, 'avatar-sm')}</td>`;
+        if(cols.assignee) html += `<td data-label="${_t('dl_assignee')}">${getAvatarHtml(stack.assigneeId, 'avatar-sm')}</td>`;
         
-        let kwBadge = ''; if(stack.dueDate) { const kw = getISOWeek(new Date(stack.dueDate)); kwBadge = `<span style="font-size:10px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 4px; border-radius:3px; margin-left:10px;">KW ${kw}</span>`; }
+        let kwBadge = ''; if(stack.dueDate) { const kw = getISOWeek(new Date(stack.dueDate)); kwBadge = `<span style="font-size:10px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 4px; border-radius:3px; margin-left:10px;">${_t('cw')} ${kw}</span>`; }
 
-        html += `<td data-label="Projekt-Stack" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
+        html += `<td data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
         
         if(endColSpan > 0) {
-            html += `<td data-label="Übersicht" colspan="${endColSpan}" style="padding: 5px 15px;">`;
+            html += `<td data-label="${_t('dl_uebersicht')}" colspan="${endColSpan}" style="padding: 5px 15px;">`;
             if(cols.progress) { html += `<div style="font-size:10px; color:var(--primary-color); font-weight:bold;">${t('tasks')} (${sp.tPct}%)</div>${generateProgressBarHTML(sp.tPct)}<div style="font-size:10px; color:var(--primary-color); font-weight:bold; margin-top:2px;">${t('milestones')} (${sp.mPct}%)</div>${generateProgressBarHTML(sp.mPct, false)}`; } 
             else { html += `<span style="font-size:11px; color:var(--text-muted);"><i>-</i></span>`; }
             html += `</td>`;
@@ -5865,7 +5868,7 @@ function renderList(c) {
     const standalone = sortArray(filteredTasks.filter(t_obj => !t_obj.projectStackId));
     if(standalone.length > 0) { 
         let totalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan;
-        html += `<tr class="table-row-group"><td data-label="Gruppierung" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
+        html += `<tr class="table-row-group"><td data-label="${_t('dl_gruppierung')}" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
         standalone.forEach(task => { html += generateListRow(task, false); }); 
     }
     c.innerHTML = html + `</tbody></table></div>`;
@@ -5875,7 +5878,7 @@ function renderList(c) {
     });
     } catch (err) {
         console.error('renderList error:', err);
-        c.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-muted);"><i class="fas fa-triangle-exclamation" style="font-size:28px; color:var(--warning); display:block; margin-bottom:12px;"></i><b style="color:var(--text-main);">Die Liste konnte nicht geladen werden.</b><div style="margin-top:6px; font-size:13px;">${(err && err.message) ? err.message : ''}</div><button style="margin-top:16px;" onclick="switchView(&#39;kanban&#39;)">Zur Kanban-Ansicht</button></div>`;
+        c.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-muted);"><i class="fas fa-triangle-exclamation" style="font-size:28px; color:var(--warning); display:block; margin-bottom:12px;"></i><b style="color:var(--text-main);">${_t('list_load_fail')}</b><div style="margin-top:6px; font-size:13px;">${(err && err.message) ? err.message : ''}</div><button style="margin-top:16px;" onclick="switchView(&#39;kanban&#39;)">Zur Kanban-Ansicht</button></div>`;
     }
 }
 
@@ -5884,31 +5887,31 @@ function generateListRow(task, isIndented) {
     let rHtml = `<tr class="clickable-row ${isTaskDone(task) ? 'is-completed' : ''}" onclick="openModal('${task.id}')">`;
     let indentStyle = isIndented && window.innerWidth > 768 ? 'padding-left:30px;' : '';
     
-    if(cols.assignee) { rHtml += `<td data-label="Benutzer" style="${indentStyle}">${getAvatarHtml(task.assigneeId, 'avatar-sm')}</td>`; indentStyle = ''; }
+    if(cols.assignee) { rHtml += `<td data-label="${_t('dl_benutzer')}" style="${indentStyle}">${getAvatarHtml(task.assigneeId, 'avatar-sm')}</td>`; indentStyle = ''; }
     
-    let pausedIcon = task.isPaused && !isTaskDone(task) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="Pausiert"></i>' : '';
-    const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt"></i>' : '';
-    rHtml += `<td data-label="Aufgabenname" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b></td>`;
+    let pausedIcon = task.isPaused && !isTaskDone(task) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
+    const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('locked') + '"></i>' : '';
+    rHtml += `<td data-label="${_t('dl_aufgabenname')}" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b></td>`;
     
-    if(cols.stakeholder) rHtml += `<td data-label="Stakeholder">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
-    if(cols.bucket) rHtml += `<td data-label="Bucket"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
-    if(cols.status) rHtml += `<td data-label="Status">${st ? (st.id === 'done' ? t('col_completed') : st.title) : '-'}</td>`;
-    if(cols.priority) rHtml += `<td data-label="Priorität">${task.priority}</td>`;
-    if(cols.startDate) rHtml += `<td data-label="Startdatum"><span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar"></i> ${task.startDate||'-'}</span></td>`;
+    if(cols.stakeholder) rHtml += `<td data-label="${_t('dl_stakeholder')}">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
+    if(cols.bucket) rHtml += `<td data-label="${_t('dl_bucket')}"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
+    if(cols.status) rHtml += `<td data-label="${_t('dl_status')}">${st ? (st.id === 'done' ? t('col_completed') : st.title) : '-'}</td>`;
+    if(cols.priority) rHtml += `<td data-label="${_t('dl_prioritaet')}">${({high:_t('prio_high'),medium:_t('prio_med'),low:_t('prio_low')})[task.priority] || task.priority}</td>`;
+    if(cols.startDate) rHtml += `<td data-label="${_t('dl_startdatum')}"><span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar"></i> ${task.startDate||'-'}</span></td>`;
     
-    let kwBadge = ''; if(task.dueDate) { const kw = getISOWeek(new Date(task.dueDate)); kwBadge = `<div style="font-size:9px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 3px; border-radius:3px; display:inline-block; margin-top:2px;">KW ${kw}</div>`; }
-    if(cols.dueDate) rHtml += `<td data-label="Fälligkeit"><span style="font-size:12px; display:block;"><i class="far fa-calendar-alt"></i> ${task.dueDate||'-'}</span>${kwBadge}</td>`;
+    let kwBadge = ''; if(task.dueDate) { const kw = getISOWeek(new Date(task.dueDate)); kwBadge = `<div style="font-size:9px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 3px; border-radius:3px; display:inline-block; margin-top:2px;">${_t('cw')} ${kw}</div>`; }
+    if(cols.dueDate) rHtml += `<td data-label="${_t('dl_faelligkeit')}"><span style="font-size:12px; display:block;"><i class="far fa-calendar-alt"></i> ${task.dueDate||'-'}</span>${kwBadge}</td>`;
     
-    if(cols.recurrence) { const recMap = {none: '-', daily: t('daily'), weekly: t('weekly'), monthly: t('monthly'), yearly: t('yearly'), custom: t('custom')}; rHtml += `<td data-label="Wiederholung"><span style="font-size:11px;">${recMap[task.recurrence] || '-'}</span></td>`; }
+    if(cols.recurrence) { const recMap = {none: '-', daily: t('daily'), weekly: t('weekly'), monthly: t('monthly'), yearly: t('yearly'), custom: t('custom')}; rHtml += `<td data-label="${_t('dl_wiederholung')}"><span style="font-size:11px;">${recMap[task.recurrence] || '-'}</span></td>`; }
 
     if(cols.timeSpent) {
         const est = parseFloat(task.estimatedTime||0); const spent = parseFloat(task.spentTime||0);
         let pct = est > 0 ? (spent / est) * 100 : (spent > 0 ? 100 : 0); const isOver = pct > 100; if(pct > 100) pct = 100;
-        rHtml += `<td data-label="Aufwand"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; margin-bottom:2px;"><span>${spent}h</span><span>${est}h</span></div><div class="time-pb-container" style="margin-top:0;"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></td>`;
+        rHtml += `<td data-label="${_t('dl_aufwand')}"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; margin-bottom:2px;"><span>${spent}h</span><span>${est}h</span></div><div class="time-pb-container" style="margin-top:0;"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></td>`;
     }
 
-    if(cols.progress) rHtml += `<td data-label="Fortschritt"><div class="list-progress-cell" style="display:flex; align-items:center; gap:8px; width:100%; min-width:110px;"><span style="flex:1 1 auto; min-width:60px; display:block;">${generateProgressBarHTML(progress)}</span><small style="flex:0 0 auto; min-width:32px; text-align:right;">${progress}%</small></div></td>`;
-    if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-label="Notizen"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
+    if(cols.progress) rHtml += `<td data-label="${_t('dl_fortschritt')}"><div class="list-progress-cell" style="display:flex; align-items:center; gap:8px; width:100%; min-width:110px;"><span style="flex:1 1 auto; min-width:60px; display:block;">${generateProgressBarHTML(progress)}</span><small style="flex:0 0 auto; min-width:32px; text-align:right;">${progress}%</small></div></td>`;
+    if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-label="${_t('dl_notizen')}"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
     if(cols.checklist) { const cl = task.checklist || []; const clDone = cl.filter(c=>c.done).length;
         let cpExtra = '';
         /* Bei abgeschlossenen Aufgaben die offenen, zukünftigen Checkpunkte lesbar auflisten */
@@ -5917,9 +5920,9 @@ function generateListRow(task, isIndented) {
             const futureCps = cl.filter(c => !c.done && (c.dueDate || '').split('T')[0] >= _todayIso);
             if(futureCps.length) cpExtra = `<div style="margin-top:4px; display:flex; flex-direction:column; gap:2px;">` + futureCps.map(c => `<span style="font-size:11px; color:var(--text-main);"><i class="far fa-square" style="color:var(--primary-color); margin-right:4px;"></i>${escapeHtmlToday ? escapeHtmlToday(c.title) : c.title}${c.dueDate ? ` <span style="color:var(--text-muted);">(${(c.dueDate||'').split('T')[0]})</span>` : ''}</span>`).join('') + `</div>`;
         }
-        rHtml += `<td data-label="Checkliste"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span>${cpExtra}</td>`; }
-    if(cols.files) { const files = task.files || []; rHtml += `<td data-label="Dateien"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
-    if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-label="Historie"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
+        rHtml += `<td data-label="${_t('dl_checkliste')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span>${cpExtra}</td>`; }
+    if(cols.files) { const files = task.files || []; rHtml += `<td data-label="${_t('dl_dateien')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
+    if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-label="${_t('dl_historie')}"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
     
     rHtml += `</tr>`; return rHtml;
 }
@@ -6021,7 +6024,7 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
 
     standaloneTasks.forEach(t_obj => { 
         const progress = getTaskProgress(t_obj); let timeBarHtml = ''; let actionBtns = ''; const isCompleted = isTaskDone(t_obj);
-        const lockedIcon = isEntityLocked(t_obj.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="Gesperrt"></i>' : '';
+        const lockedIcon = isEntityLocked(t_obj.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('locked') + '"></i>' : '';
 
         if(!isCompleted) {
             if(t_obj.isPaused) actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${t_obj.id}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
@@ -6047,7 +6050,7 @@ function renderGroupedStack(sId, showTimeStats, groupKey, targetGroupVal) {
     const s = appData.projectStacks.find(x => x.id === sId); if(!s) return '';
     const allStackTasks = appData.tasks.filter(tx => tx.projectStackId === sId);
     let sEst = 0, sspent = 0; allStackTasks.forEach(tx => { sEst += parseFloat(tx.estimatedTime||0); sspent += parseFloat(tx.spentTime||0); });
-    const sLockedIcon = isEntityLocked(sId) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="Gesperrt"></i>' : '';
+    const sLockedIcon = isEntityLocked(sId) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('locked') + '"></i>' : '';
 
     let timeBarHtml = '';
     if(showTimeStats) {
@@ -6187,7 +6190,7 @@ function scheduleAssignDate(type, id, dateStr, timeStr = null) {
     const [y, mo, da] = dateStr.split('-');
     const dateLabel = `${da}.${mo}.${y}`;
     saveToLocal(); safeRenderSchedule();
-    showToast(`"${changedName}" für ${dateLabel}${timeStr ? ' um ' + timeStr + ' Uhr' : ''} eingeplant.`);
+    showToast(_tf('sched_planned', { n: changedName, d: dateLabel, t: timeStr ? _tf('sched_at_time', { t: timeStr }) : '' }));
 }
 function handleSchedDropDate(e, el, dateStr) {
     e.preventDefault(); e.stopPropagation();
@@ -6234,11 +6237,11 @@ function quickDeferEvent(type, id, parentId, origDateStr) {
             if(clItem) { clItem.dueDate = newDateStr; changedName = clItem.title; }
         }
     }
-    saveToLocal(); safeRenderSchedule(); showToast(`"${changedName}" auf Morgen verschoben.`);
+    saveToLocal(); safeRenderSchedule(); showToast(_tf('sched_deferred', { n: changedName }));
 }
 
 function quickCompleteEvent(type, id, parentId) {
-    if(isEntityLocked(id)) return showToast("Element ist durch Abhängigkeiten gesperrt!", "warning");
+    if(isEntityLocked(id)) return showToast(_t('lock_element'), "warning");
     let changedName = '';
     if(type === 'task') {
         const task = appData.tasks.find(x => x.id === id);
@@ -6253,7 +6256,7 @@ function quickCompleteEvent(type, id, parentId) {
             if(clItem) { clItem.done = true; changedName = clItem.title; }
         }
     }
-    saveToLocal(); safeRenderSchedule(); showToast(`"${changedName}" erledigt!`);
+    saveToLocal(); safeRenderSchedule(); showToast(_tf('sched_done', { n: changedName }));
 }
 
 /* Wechselt zur Zeiterfassung und stellt sicher, dass nicht die Budget-Unteransicht offen bleibt. */
@@ -6384,16 +6387,16 @@ function renderSchedule(c) {
     if(isDay || isWeek || isMonth || isYear) {
         let label = ''; let wStart, wEnd;
         if (isYear) { label = `${scheduleCurrentDate.getFullYear()}`; } 
-        else if (isMonth) { label = `${scheduleCurrentDate.toLocaleString('de-DE', { month: 'long' })} ${scheduleCurrentDate.getFullYear()}`; } 
+        else if (isMonth) { label = `${scheduleCurrentDate.toLocaleString(ttLocale(), { month: 'long' })} ${scheduleCurrentDate.getFullYear()}`; } 
         else if (isWeek) {
             const currentDay = scheduleCurrentDate.getDay(); const diff = scheduleCurrentDate.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
             wStart = new Date(scheduleCurrentDate); wStart.setDate(diff); wStart.setHours(0,0,0,0);
             wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); const opts = { day: '2-digit', month: 'short' }; const kw = getISOWeek(wStart);
-            label = `${wStart.toLocaleDateString('de-DE', opts)} - ${wEnd.toLocaleDateString('de-DE', opts)} ${wEnd.getFullYear()} (KW ${kw})`;
+            label = `${wStart.toLocaleDateString(ttLocale(), opts)} - ${wEnd.toLocaleDateString(ttLocale(), opts)} ${wEnd.getFullYear()} (${_t('cw')} ${kw})`;
         }
         else if (isDay) {
             const opts = { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' };
-            label = scheduleCurrentDate.toLocaleDateString('de-DE', opts);
+            label = scheduleCurrentDate.toLocaleDateString(ttLocale(), opts);
         }
 
         html += `<div style="display:flex; gap:5px; align-items:center; width:100%; justify-content:space-between;">
@@ -6425,10 +6428,10 @@ function renderSchedule(c) {
 
             // Ganztägige Box
             html += `<div id="sched-allday-drop" ondragover="handleSchedDragOver(event, this)" ondragleave="handleSchedDragLeave(this)" ondrop="handleSchedDropDate(event, this, '${dStr}')" style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); margin-bottom:15px; padding:15px; box-shadow:var(--shadow); flex-shrink:0;">`;
-            html += `<h4 style="margin-bottom:10px; font-size:13px; color:var(--text-muted);"><i class="fas fa-calendar-day"></i> Ganztägig / Ohne konkrete Uhrzeit</h4>`;
+            html += `<h4 style="margin-bottom:10px; font-size:13px; color:var(--text-muted);"><i class="fas fa-calendar-day"></i> ${_t('sched_allday')}</h4>`;
             
             if(allDayEvents.length === 0) {
-                html += `<div style="font-size:12px; color:var(--text-muted); font-style:italic;">Keine Einträge für diesen Tag.</div>`;
+                html += `<div style="font-size:12px; color:var(--text-muted); font-style:italic;">${_t('sched_no_entries_day')}</div>`;
             } else {
                 html += `<div style="display:flex; flex-wrap:wrap; gap:8px;">`;
                 allDayEvents.forEach(ev => {
@@ -6457,7 +6460,7 @@ function renderSchedule(c) {
 
             // Horizontaler Zeitverlauf
             html += `<div style="background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); padding:15px; box-shadow:var(--shadow); overflow-x:auto; flex:1; display:flex; flex-direction:column;">`;
-            html += `<h4 style="margin-bottom:15px; font-size:13px; color:var(--text-muted);"><i class="fas fa-clock"></i> Tagesverlauf (${wdStartStr} - ${wdEndStr} Uhr)</h4>`;
+            html += `<h4 style="margin-bottom:15px; font-size:13px; color:var(--text-muted);"><i class="fas fa-clock"></i> ${_tf('day_course', { a: wdStartStr, b: wdEndStr })}</h4>`;
 
             let levelOccupied = [[]];
             let timedEventsRenderData = [];
@@ -6568,7 +6571,7 @@ function renderSchedule(c) {
             let gridCols = workDays.length; if(gridCols === 0) gridCols = 7;
             html += `<div style="overflow-x:auto;"><div class="calendar-grid" style="min-width:700px; gap:0; border-left:1px solid var(--border-color); border-top:1px solid var(--border-color); grid-template-columns: repeat(${gridCols}, 1fr);">`;
             
-            const dayNames = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+            const dayNames = ({ de:['So','Mo','Di','Mi','Do','Fr','Sa'], en:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], fr:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] })[ttLang()] || ['So','Mo','Di','Mi','Do','Fr','Sa'];
             let sortedWorkDays = [...workDays].sort((a,b) => { if(a===0) return 1; if(b===0) return -1; return a-b; });
             const _todayDow = new Date().getDay();
             sortedWorkDays.forEach(d => { const _isTodayCol = (d === _todayDow); html += `<div class="cal-day-header" style="border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); border-radius:0; border-left:none; border-top:none; ${_isTodayCol ? 'color:var(--text-main); font-weight:800; background:#FFF6DA; background:color-mix(in srgb, var(--wk-magnet, #FFC93C) 24%, var(--surface-color)); box-shadow: inset 0 -3px 0 var(--wk-magnet, #FFC93C);' : ''}">${dayNames[d]}</div>`; });
@@ -6590,8 +6593,8 @@ function renderSchedule(c) {
                     let actualStart = ev.data.startDate; let actualDue = ev.data.dueDate;
                     if(ev.type === 'milestone' || ev.type === 'task-checklist') { actualStart = null; actualDue = ev.data.dueDate ? ev.data.dueDate.split('T')[0] : null; }
                     let isstartToday = actualStart === dateStr; let isDueToday = actualDue === dateStr;
-                    let startBadge = isstartToday ? `<span style="background:var(--success); color:white; padding:2px 4px; border-radius:3px; font-size:9px; margin-right:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.2);">START</span>` : '';
-                    let dueBadge = isDueToday ? `<span style="background:var(--danger); color:white; padding:2px 4px; border-radius:3px; font-size:9px; margin-left:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.2);"><i class="fas fa-exclamation-circle"></i> FÄLLIG</span>` : '';
+                    let startBadge = isstartToday ? `<span style="background:var(--success); color:white; padding:2px 4px; border-radius:3px; font-size:9px; margin-right:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.2);">${_t('start_badge')}</span>` : '';
+                    let dueBadge = isDueToday ? `<span style="background:var(--danger); color:white; padding:2px 4px; border-radius:3px; font-size:9px; margin-left:4px; font-weight:bold; box-shadow:0 1px 2px rgba(0,0,0,0.2);"><i class="fas fa-exclamation-circle"></i> ${_t('sched_due_badge')}</span>` : '';
 
                     let displayTitle = title;
                     if (ev.span === 'start' && !isstartToday) displayTitle = title + ' &rarr;';
@@ -6624,7 +6627,7 @@ function renderSchedule(c) {
                 });
                 
                 let kwBadge = ''; const iterD = new Date(dateStr);
-                if(iterD.getDay() === 1 || iterD.getDate() === 1) { kwBadge = `<span style="font-size:9px; color:var(--primary-color); background:var(--primary-lightest); padding:2px 4px; border-radius:4px; margin-right:auto;">KW ${getISOWeek(iterD)}</span>`; }
+                if(iterD.getDay() === 1 || iterD.getDate() === 1) { kwBadge = `<span style="font-size:9px; color:var(--primary-color); background:var(--primary-lightest); padding:2px 4px; border-radius:4px; margin-right:auto;">${_t('cw')} ${getISOWeek(iterD)}</span>`; }
 
                 const _isToday = (dateStr === todayStr);
                 /* Heutiger Tag: Hervorhebung muss inline gesetzt werden, da die
@@ -6679,7 +6682,7 @@ function renderSchedule(c) {
         } else if (isYear) {
             html += `<div class="year-grid">`; const y = scheduleCurrentDate.getFullYear();
             for(let m = 0; m < 12; m++) {
-                let monthName = new Date(y, m, 1).toLocaleString('de-DE', {month: 'long'});
+                let monthName = new Date(y, m, 1).toLocaleString(ttLocale(), {month: 'long'});
                 let mEvents = events.filter(e => e.date.getFullYear() === y && e.date.getMonth() === m);
                 const isCurrentMonth = (new Date().getFullYear() === y && new Date().getMonth() === m);
                 const monthFirstDayStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
@@ -6724,7 +6727,7 @@ function renderSchedule(c) {
                             <span class="mc-title">${escapeHtmlToday(en.title)}</span>
                         </div>`).join('')}
                         ${restCount > 0 ? `<div class="mc-more">+${restCount} ${t('year_more')}</div>` : ''}
-                        ${entries.length === 0 ? `<span style="opacity:0.5; font-size:12px; display:block; text-align:center; margin-top:10px;">Keine Einträge</span>` : ''}
+                        ${entries.length === 0 ? `<span style="opacity:0.5; font-size:12px; display:block; text-align:center; margin-top:10px;">${_t('sched_no_entries')}</span>` : ''}
                     </div>
                 </div>`;
             }
@@ -6812,7 +6815,7 @@ function renderSchedule(c) {
             } else if (!isTaskType && actualStack && ev.type === 'milestone') {
                 contextStr += `<span style="color:var(--text-muted);"><i class="fas fa-folder"></i> Stack: ${actualStack.name}</span>`;
             } else if (isTaskType && actualTask && ev.type === 'task-checklist') {
-                contextStr += `<span style="color:var(--text-muted);"><i class="fas fa-tasks"></i> Aufgabe: ${actualTask.projectName}</span>`;
+                contextStr += `<span style="color:var(--text-muted);"><i class="fas fa-tasks"></i> ${_t('sched_task_ctx')} ${actualTask.projectName}</span>`;
             }
 
             if(sh) contextStr += (contextStr ? ' <span style="color:var(--border-color); margin:0 5px;">|</span> ' : '') + `<span style="color:${sh.color};"><i class="fas fa-user"></i> ${sh.name}</span>`;
@@ -6829,7 +6832,7 @@ function renderSchedule(c) {
             if(clToSearch && clToSearch.length > 0) {
                 const openStep = clToSearch.find(c => !c.done);
                 if(openStep) {
-                    nextStepHtml = `<div style="font-size:12px; color:var(--text-muted); margin-top:8px; display:flex; align-items:center; gap:5px;"><i class="fas fa-arrow-right" style="color:var(--primary-color);"></i> <b>Nächster Schritt:</b> ${openStep.title}</div>`;
+                    nextStepHtml = `<div style="font-size:12px; color:var(--text-muted); margin-top:8px; display:flex; align-items:center; gap:5px;"><i class="fas fa-arrow-right" style="color:var(--primary-color);"></i> <b>${_t('sched_next_step')}</b> ${openStep.title}</div>`;
                 }
             }
 
@@ -6848,8 +6851,8 @@ function renderSchedule(c) {
 
             const d = ev.date;
             const dNum = d.getDate();
-            const dMon = d.toLocaleString('de-DE', {month:'short'});
-            const dWd = d.toLocaleString('de-DE', {weekday:'short'});
+            const dMon = d.toLocaleString(ttLocale(), {month:'short'});
+            const dWd = d.toLocaleString(ttLocale(), {weekday:'short'});
             
             let isLate = new Date() > d && !isComp;
             let dateColor = isLate ? 'var(--danger)' : 'var(--primary-color)';
@@ -6857,7 +6860,7 @@ function renderSchedule(c) {
 
             const clickFn = isTaskType ? `openModal('${actualTask.id}')` : `openStackModal('${actualStack.id}')`;
             let pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-            let lockedIcon = isEntityLocked(ev.data.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="Gesperrt"></i>' : '';
+            let lockedIcon = isEntityLocked(ev.data.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('locked') + '"></i>' : '';
 
             const targetId = ev.type === 'milestone' || ev.type === 'task-checklist' ? ev.data.id : (actualTask ? actualTask.id : actualStack.id);
             const parentId = actualTask ? actualTask.id : (actualStack ? actualStack.id : null);
@@ -6865,9 +6868,9 @@ function renderSchedule(c) {
             let actionHtml = `<div style="display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
                 ${getAvatarHtml(assigneeId, 'avatar-md')}
                 <div style="display:flex; gap:5px; margin-top:10px;">
-                    <button class="secondary icon-btn" style="color:var(--success); border-color:var(--success); background:rgba(16,185,129,0.05);" onclick="event.stopPropagation(); quickCompleteEvent('${ev.type}', '${targetId}', '${parentId}')" title="Erledigt"><i class="fas fa-check"></i></button>
-                    ${isTaskType ? `<button class="secondary icon-btn" style="color:var(--primary-color); border-color:var(--primary-color); background:var(--primary-lightest);" onclick="event.stopPropagation(); quickTrackTime('${actualTask.id}')" title="Zeit buchen"><i class="fas fa-stopwatch"></i></button>` : ''}
-                    <button class="secondary icon-btn" style="color:var(--text-muted);" onclick="event.stopPropagation(); quickDeferEvent('${ev.type}', '${targetId}', '${parentId}', '${ev.origDateStr}')" title="Auf Morgen verschieben"><i class="fas fa-calendar-plus"></i></button>
+                    <button class="secondary icon-btn" style="color:var(--success); border-color:var(--success); background:rgba(16,185,129,0.05);" onclick="event.stopPropagation(); quickCompleteEvent('${ev.type}', '${targetId}', '${parentId}')" title="${_t('cl_done_title')}"><i class="fas fa-check"></i></button>
+                    ${isTaskType ? `<button class="secondary icon-btn" style="color:var(--primary-color); border-color:var(--primary-color); background:var(--primary-lightest);" onclick="event.stopPropagation(); quickTrackTime('${actualTask.id}')" title="${_t('sched_track_time')}"><i class="fas fa-stopwatch"></i></button>` : ''}
+                    <button class="secondary icon-btn" style="color:var(--text-muted);" onclick="event.stopPropagation(); quickDeferEvent('${ev.type}', '${targetId}', '${parentId}', '${ev.origDateStr}')" title="${_t('sched_defer_title')}"><i class="fas fa-calendar-plus"></i></button>
                 </div>
             </div>`;
 
@@ -6902,11 +6905,11 @@ function renderSchedule(c) {
             return sHtml;
         };
 
-        html += renderSection('Überfällig', 'fa-exclamation-circle', 'var(--danger)', groups.overdue);
-        html += renderSection('Heute', 'fa-calendar-day', 'var(--primary-color)', groups.today);
-        html += renderSection('Morgen', 'fa-sun', 'var(--warning)', groups.tomorrow);
-        html += renderSection('Diese Woche', 'fa-calendar-week', 'var(--text-main)', groups.thisWeek);
-        html += renderSection('Später', 'fa-calendar', 'var(--text-muted)', groups.later);
+        html += renderSection(_t('notif_overdue'), 'fa-exclamation-circle', 'var(--danger)', groups.overdue);
+        html += renderSection(_t('today'), 'fa-calendar-day', 'var(--primary-color)', groups.today);
+        html += renderSection(_t('tomorrow'), 'fa-sun', 'var(--warning)', groups.tomorrow);
+        html += renderSection(_t('today_this_week'), 'fa-calendar-week', 'var(--text-main)', groups.thisWeek);
+        html += renderSection(_t('today_later'), 'fa-calendar', 'var(--text-muted)', groups.later);
 
         /* Vergangene Abwesenheiten: eingeklappt am Ende, neueste zuerst */
         if (groups.past.length > 0) {
@@ -6920,9 +6923,9 @@ function renderSchedule(c) {
         if(listEvents.length === 0) {
             html += `<div style="text-align:center; padding: 60px 20px; color:var(--text-muted); background:var(--surface-color); border-radius:var(--radius); border:1px dashed var(--border-color); margin-top:20px;">
                 <i class="fas fa-mug-hot" style="font-size:48px; color:var(--border-color); margin-bottom:20px; display:block;"></i>
-                <h3 style="margin-bottom:10px; color:var(--text-main);">Alles erledigt!</h3>
-                <p style="font-size:13px; max-width:400px; margin:0 auto 20px auto;">Du hast momentan keine offenen Termine oder Deadlines in diesem Zeitraum. Zeit für einen Kaffee, oder?</p>
-                <button onclick="openModal()"><i class="fas fa-plus"></i> Neue Aufgabe planen</button>
+                <h3 style="margin-bottom:10px; color:var(--text-main);">${_t('sched_all_done')}</h3>
+                <p style="font-size:13px; max-width:400px; margin:0 auto 20px auto;">${_t('sched_all_done_desc')}</p>
+                <button onclick="openModal()"><i class="fas fa-plus"></i> ${_t('sched_plan_task')}</button>
             </div>`;
         }
         html += `</div>`;
@@ -6932,8 +6935,8 @@ function renderSchedule(c) {
     if(unscheduledItems.length > 0) {
         let unschHtml = `<div style="margin-top: 40px; max-width:900px; margin-left:auto; margin-right:auto; text-align:left;">
             <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:5px; margin-bottom:15px; font-size:16px;">
-                <i class="fas fa-inbox" style="color:var(--text-muted); "></i> Backlog / Ungeplant
-                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">(Tipp: Klicke auf ein Element, um ein Datum festzulegen, oder ziehe es direkt in die Planung)</span>
+                <i class="fas fa-inbox" style="color:var(--text-muted); "></i> ${_t('backlog')}
+                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">${_t('backlog_tip_drag')}</span>
             </h3><div style="display:flex; flex-wrap:wrap; gap:10px; justify-content: start;">`;
         
         unscheduledItems.forEach(item => {
@@ -7086,8 +7089,8 @@ function handleTimelineMouseMove(e) {
         const rect = track.getBoundingClientRect();
         preview.style.display = 'block';
         preview.style.left = (clientX - rect.left) + 'px';
-        let sstr = newStart ? new Date(newStart).toLocaleDateString('de-DE') : '';
-        let eStr = newEnd ? new Date(newEnd).toLocaleDateString('de-DE') : '';
+        let sstr = newStart ? new Date(newStart).toLocaleDateString(ttLocale()) : '';
+        let eStr = newEnd ? new Date(newEnd).toLocaleDateString(ttLocale()) : '';
         preview.innerText = (sstr === eStr || !sstr) ? (eStr || sstr) : `${sstr} - ${eStr}`;
     }
 }
@@ -7138,7 +7141,7 @@ function handleTimelineMouseUp(e) {
                 checkWorkdayWarning(newE, changedName);
             }
         }
-        saveToLocal(); safeRenderTimeline(); showToast('Datum absolut angepasst!');
+        saveToLocal(); safeRenderTimeline(); showToast(_t('date_set_abs'));
     }
     tlDragState = null;
 }
@@ -7154,7 +7157,7 @@ function handleTimelineDragOver(e, minDateMs) {
     const daysOffset = (x - 220) / appData.settings.tlPixelsPerDay;
     const d = new Date(minDateMs + (daysOffset * 86400000));
     
-    preview.style.display = 'block'; preview.style.left = x + 'px'; preview.innerText = d.toLocaleDateString('de-DE');
+    preview.style.display = 'block'; preview.style.left = x + 'px'; preview.innerText = d.toLocaleDateString(ttLocale());
 }
 
 function handleTimelineDragLeave() { const preview = document.getElementById('timeline-drag-preview'); if(preview) preview.style.display = 'none'; }
@@ -7193,7 +7196,7 @@ function closeMarkerModal() { document.getElementById('markerModal').classList.r
 
 function saveMarker() {
     const id = document.getElementById('m_id').value; const name = document.getElementById('m_name').value.trim(); const date = document.getElementById('m_date').value;
-    if (!name || !date) return showToast('Bitte Name und Datum angeben.', 'error');
+    if (!name || !date) return showToast(_t('need_name_date'), 'error');
     
     if (id) { const m = appData.timelineMarkers.find(x => x.id === id); if(m) { m.name = name; m.date = date; } } 
     else { appData.timelineMarkers.push({ id: generateId(), name: name, date: date }); }
@@ -7256,9 +7259,9 @@ function renderTimeline(c) {
         <div style="flex:1;">${sortHtml}</div>
         
         <div style="display:flex; align-items:center; background:var(--surface-color); border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; margin-bottom:10px; box-shadow: var(--shadow);">
-            <button class="secondary" style="border:none; border-radius:0; height:36px; border-right:1px solid var(--border-color); font-size:12px; font-weight:bold; padding: 0 15px;" onclick="scrollToTodayTimeline()" title="Zum heutigen Datum springen"><i class="fas fa-bullseye" style="color:var(--primary-color);"></i> ${t('gantt_today')}</button>
-            <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px; border-right:1px solid var(--border-color);" onclick="zoomTimeline(-1)" title="Herauszoomen"><i class="fas fa-minus"></i></button>
-            <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px;" onclick="zoomTimeline(1)" title="Hineinzoomen"><i class="fas fa-plus"></i></button>
+            <button class="secondary" style="border:none; border-radius:0; height:36px; border-right:1px solid var(--border-color); font-size:12px; font-weight:bold; padding: 0 15px;" onclick="scrollToTodayTimeline()" title="${_t('gantt_jump_today')}"><i class="fas fa-bullseye" style="color:var(--primary-color);"></i> ${t('gantt_today')}</button>
+            <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px; border-right:1px solid var(--border-color);" onclick="zoomTimeline(-1)" title="${_t('zoom_out')}"><i class="fas fa-minus"></i></button>
+            <button class="secondary icon-btn" style="border:none; border-radius:0; height:36px; width:40px;" onclick="zoomTimeline(1)" title="${_t('zoom_in')}"><i class="fas fa-plus"></i></button>
         </div>
     </div>
 
@@ -7333,7 +7336,7 @@ function renderTimeline(c) {
     items = applySort(items, timelineSortKey); unscheduledItems = applySort(unscheduledItems, timelineSortKey);
     
     if(items.length === 0 && unscheduledItems.length === 0) {
-        return c.innerHTML = html + `<p style="color:var(--text-muted)">Füge Aufgaben/Stacks mit Datum hinzu.</p>`;
+        return c.innerHTML = html + `<p style="color:var(--text-muted)">${_t('gantt_empty')}</p>`;
     }
 
     let allDates = [];
@@ -7365,13 +7368,13 @@ function renderTimeline(c) {
             const kw = getISOWeek(iterDate); const year = iterDate.getFullYear();
             const isCurrentKW = (kw === currentKW && (year === currentKWYear || year === currentKWYear -1 || year === currentKWYear + 1)); 
             const kwColor = isCurrentKW ? 'var(--primary-color)' : 'var(--text-muted)'; const kwBg = isCurrentKW ? 'var(--primary-lightest)' : 'transparent'; const kwFontWeight = isCurrentKW ? 'bold' : 'normal';
-            kwHtml += `<div style="position:absolute; left:${xPos}px; top:0; padding-left:4px; font-size:10px; color:${kwColor}; background:${kwBg}; height:16px; border-left:1px solid var(--border-color); white-space:nowrap; z-index:5; font-weight:${kwFontWeight}; width:${7 * appData.settings.tlPixelsPerDay}px; display:flex; align-items:center;">KW ${kw}</div>`;
+            kwHtml += `<div style="position:absolute; left:${xPos}px; top:0; padding-left:4px; font-size:10px; color:${kwColor}; background:${kwBg}; height:16px; border-left:1px solid var(--border-color); white-space:nowrap; z-index:5; font-weight:${kwFontWeight}; width:${7 * appData.settings.tlPixelsPerDay}px; display:flex; align-items:center;">${_t('cw')} ${kw}</div>`;
             bgLinesHtml += `<div style="position:absolute; left:${xPos}px; top:16px; bottom:0; width:1px; background:var(--border-color); z-index:0; pointer-events:none;"></div>`;
         }
         
         if (iterDate.getDate() === 1 || (totalDays < 60 && dayOfWeek === 1)) {
            dayHtml += `<div class="timeline-axis-tick" style="left:${xPos}px; bottom:0; height:4px; transform: translateX(-50%);"></div>`;
-           dayHtml += `<div class="timeline-axis-label" style="left:${xPos}px; bottom:4px; font-size:9px; transform: translateX(-50%);">${iterDate.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'})}</div>`;
+           dayHtml += `<div class="timeline-axis-label" style="left:${xPos}px; bottom:4px; font-size:9px; transform: translateX(-50%);">${iterDate.toLocaleDateString(ttLocale(), {day:'2-digit', month:'2-digit'})}</div>`;
         }
         const _iso = iterDate.getFullYear() + '-' + String(iterDate.getMonth()+1).padStart(2,'0') + '-' + String(iterDate.getDate()).padStart(2,'0');
         const _abs = _absByDate[_iso];
@@ -7559,7 +7562,7 @@ function renderTimeline(c) {
 
         const safeTargetName = p2.name.replace(/'/g, "\\'");
         pathsHtml += `
-            <g class="gantt-link-group" onclick="handleDependencyLinkClick('${safeTargetName}')" title="Klicken, um in die Abhängigkeiten-Ansicht zu wechseln">
+            <g class="gantt-link-group" onclick="handleDependencyLinkClick('${safeTargetName}')" title="${_t('gantt_link_title')}">
                 <path class="visible-line" d="${pathD}" fill="none" stroke="#${cleanColor}" stroke-width="2" opacity="1" marker-end="url(#arrow-${cleanColor})" />
                 <path class="hitbox" d="${pathD}" fill="none" stroke="transparent" stroke-width="15" />
             </g>
@@ -7579,9 +7582,9 @@ function renderTimeline(c) {
             <div class="timeline-track-container" style="position: relative;">
                 <div style="min-width: ${trackWidth + 220}px; position: relative;">
                     
-                    ${absBandsHtml ? `<div class="gantt-abs-strip" style="display:flex; height:24px; position:relative; z-index:31; border-bottom:1px solid var(--border-color);"><div class="timeline-header-col" style="display:flex; align-items:center; padding:0 15px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);"><i class="fas fa-plane-departure" style="margin-right:5px;"></i>Abwesenheit</div><div style="position:relative; width:${trackWidth}px;">${absBandsHtml}</div></div>` : ''}
+                    ${absBandsHtml ? `<div class="gantt-abs-strip" style="display:flex; height:24px; position:relative; z-index:31; border-bottom:1px solid var(--border-color);"><div class="timeline-header-col" style="display:flex; align-items:center; padding:0 15px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);"><i class="fas fa-plane-departure" style="margin-right:5px;"></i>${_t('absence')}</div><div style="position:relative; width:${trackWidth}px;">${absBandsHtml}</div></div>` : ''}
                     <div style="display: flex; height: 35px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 30; background: var(--surface-color);">
-                        <div class="timeline-header-col" style="display: flex; align-items: flex-end; padding: 5px 15px; font-weight: bold; font-size:11px;">Projekt / Aufgabe</div>
+                        <div class="timeline-header-col" style="display: flex; align-items: flex-end; padding: 5px 15px; font-weight: bold; font-size:11px;">${_t('gantt_project_task')}</div>
                         <div style="position: relative; width: ${trackWidth}px;">
                             ${kwHtml}
                             ${dayHtml}
@@ -7611,8 +7614,8 @@ function renderTimeline(c) {
     if(unscheduledItems.length > 0) {
         let unschHtml = `<div style="margin-top: 40px; max-width:900px; margin-left:auto; margin-right:auto; text-align:left;">
             <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:5px; margin-bottom:15px; font-size:16px;">
-                <i class="fas fa-inbox" style="color:var(--text-muted); "></i> Backlog / Ungeplant
-                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">(Tipp: Klicke auf ein Element, um ein Datum festzulegen)</span>
+                <i class="fas fa-inbox" style="color:var(--text-muted); "></i> ${_t('backlog')}
+                <span style="font-size:11px; font-weight:normal; color:var(--text-muted); margin-left:10px;">${_t('backlog_tip')}</span>
             </h3><div style="display:flex; flex-wrap:wrap; gap:10px; justify-content: start;">`;
         
         unscheduledItems.forEach(item => {
@@ -7650,7 +7653,7 @@ function updateTimerDisplays() {
                 if(delItem) tName = delItem.data.projectName;
             }
             
-            globalHtml += `<div class="global-timer" onclick="goToTimeTracking()" style="cursor:pointer;" title="Klicken um zur Zeiterfassung zu wechseln"><i class="fas fa-circle"></i> ${timeStr} <span class="gt-task-name" style="font-weight:normal; max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${tName}</span> <button class="icon-btn" style="background:transparent; border:none; padding:0; color:var(--danger);" onclick="event.stopPropagation(); stopTimer('${id}')" title="Stoppen"><i class="fas fa-stop"></i></button></div>`;
+            globalHtml += `<div class="global-timer" onclick="goToTimeTracking()" style="cursor:pointer;" title="${_t('timer_goto')}"><i class="fas fa-circle"></i> ${timeStr} <span class="gt-task-name" style="font-weight:normal; max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${tName}</span> <button class="icon-btn" style="background:transparent; border:none; padding:0; color:var(--danger);" onclick="event.stopPropagation(); stopTimer('${id}')" title="${_t('stop')}"><i class="fas fa-stop"></i></button></div>`;
             
             mobileTimerHtml += `<div style="background:var(--danger); color:white; padding:15px; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; cursor:pointer;" onclick="closeMobileMoreMenu(); goToTimeTracking()">
                 <div style="overflow:hidden;">
@@ -7680,8 +7683,8 @@ function updateTimerDisplays() {
 }
 
 function addTimer() {
-    const taskId = document.getElementById('new_timer_task').value; if(!taskId) return showToast('Bitte Aufgabe wählen.', 'error');
-    if(!activeTimers[taskId]) { activeTimers[taskId] = { taskId, running: false, start: 0, accum: 0, note: '' }; localStorage.setItem('proman_timers', JSON.stringify(activeTimers)); renderTimeTracking(document.getElementById('mainContainer')); showToast('Timer hinzugefügt.'); }
+    const taskId = document.getElementById('new_timer_task').value; if(!taskId) return showToast(_t('need_task'), 'error');
+    if(!activeTimers[taskId]) { activeTimers[taskId] = { taskId, running: false, start: 0, accum: 0, note: '' }; localStorage.setItem('proman_timers', JSON.stringify(activeTimers)); renderTimeTracking(document.getElementById('mainContainer')); showToast(_t('timer_added')); }
 }
 
 function startTimer(taskId) {
@@ -7704,7 +7707,7 @@ function stopTimer(taskId) {
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
         task.spentTime = (parseFloat(task.spentTime || 0) + rH).toFixed(2); 
-        const logText = `[Zeiterfassung am ${date} | ${rH}h] ${note}`.trim(); 
+        const logText = _tf('log_entry', { d: date, h: rH, n: note }).trim(); 
         task.notes = task.notes ? task.notes + '\n' + logText : logText; 
     }
     
@@ -8459,29 +8462,29 @@ function renderTimeTracking(c) {
     <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
         <div style="flex:1; min-width:300px; display:flex; flex-direction:column; gap:20px;">
             <div style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); border-radius:var(--radius);">
-                <h3 style="margin-bottom:15px; color:var(--text-main);"><i class="fas fa-stopwatch" style="color:var(--primary-color)"></i> Live-Timer (Pro Aufgabe)</h3>
+                <h3 style="margin-bottom:15px; color:var(--text-main);"><i class="fas fa-stopwatch" style="color:var(--primary-color)"></i> ${_t('live_timer')}</h3>
                 <div style="display:flex; gap:10px; margin-bottom:15px;"><select id="new_timer_task" style="flex:1">${taskOpts}</select><button onclick="addTimer()"><i class="fas fa-plus"></i></button></div>
                 <div id="timers_container" style="display:flex; flex-direction:column; gap:10px;">`;
     for(let id in activeTimers) {
         const timer = activeTimers[id]; 
         const { task } = getTaskOrDeleted(id);
         const taskName = task ? task.projectName : 'Unbekannt';
-        const isPaused = task && task.isPaused && !isTaskDone(task); const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="Pausiert"></i>' : '';
+        const isPaused = task && task.isPaused && !isTaskDone(task); const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
         let ms = timer.accum; if(timer.running) ms += Date.now() - timer.start; let s = Math.floor(ms / 1000); let m = Math.floor(s / 60); let h = Math.floor(m / 60);
         let timeStr = [h, m%60, s%60].map(v => v.toString().padStart(2, '0')).join(':');
         let playBtn = timer.running ? 'color:var(--primary-color)' : ''; let pauseBtn = !timer.running && timer.accum > 0 ? 'color:var(--primary-color)' : '';
         html += `<div style="display:flex; align-items:center; gap: 10px; background: var(--bg-color); padding: 10px; border-radius: var(--radius); border:1px solid var(--border-color); flex-wrap:wrap;">
             <div style="flex:1; min-width:100%; font-weight:bold; font-size:14px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; margin-bottom:5px;" title="${taskName}">${pausedIcon}${taskName}</div>
-            <input type="text" id="timer_note_${id}" value="${timer.note}" placeholder="Notiz..." style="flex:1; min-width:100px; margin:0; padding:6px; font-size:12px;" onchange="updateTimerNote('${id}', this.value)">
+            <input type="text" id="timer_note_${id}" value="${timer.note}" placeholder="${_t('timer_note_ph')}" style="flex:1; min-width:100px; margin:0; padding:6px; font-size:12px;" onchange="updateTimerNote('${id}', this.value)">
             <div id="timer_display_${id}" style="font-size: 18px; font-family: monospace; font-weight: bold; width: 85px; text-align:center;">${timeStr}</div>
             <div style="display:flex; gap:5px;">
                 <button class="secondary icon-btn" style="font-size:14px; width:44px; height:44px; ${playBtn}" onclick="startTimer('${id}')"><i class="fas fa-play"></i></button>
                 <button class="secondary icon-btn" style="font-size:14px; width:44px; height:44px; ${pauseBtn}" onclick="pauseTimer('${id}')"><i class="fas fa-pause"></i></button>
-                <button class="secondary icon-btn" style="font-size:14px; width:44px; height:44px; color:var(--danger); border-color:var(--danger);" onclick="stopTimer('${id}')" title="Stoppen"><i class="fas fa-stop"></i></button>
+                <button class="secondary icon-btn" style="font-size:14px; width:44px; height:44px; color:var(--danger); border-color:var(--danger);" onclick="stopTimer('${id}')" title="${_t('stop')}"><i class="fas fa-stop"></i></button>
             </div>
         </div>`;
     }
-    if(Object.keys(activeTimers).length === 0) html += `<div style="font-size:12px; color:var(--text-muted)">Keine aktiven Timer.</div>`;
+    if(Object.keys(activeTimers).length === 0) html += `<div style="font-size:12px; color:var(--text-muted)">${_t('no_active_timers')}</div>`;
     html += `   </div><p style="font-size:11px; color:var(--text-muted); margin-top:15px;">${t('timer_hint')}</p></div>
             <div id="tt_manual_box" style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color);">
                 <h3 style="margin-bottom:15px;">${t('time_manual')}</h3>
@@ -8494,16 +8497,16 @@ function renderTimeTracking(c) {
         <div style="background:var(--surface-color); padding:20px; border-radius:var(--radius); border:1px solid var(--border-color); flex:2; min-width:300px; max-height:calc(100vh - 120px); overflow-y:auto;">
             <h3 style="margin-bottom:4px;">${t('booking_history')} <span style="font-weight:normal; color:var(--text-muted); font-size:13px;">(${sortedLogs.length})</span></h3>
             <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;"><i class="fas fa-calendar-days"></i> ${ttRangeLabel()} · ${t('tr_total')}: <b style="color:var(--text-main);">${ttNum(sortedLogsTotal)} h</b></div>
-            <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>${t('date')}</th><th>${t('task')}</th><th>${t('duration')}</th><th>Notiz</th><th width="80"></th></tr></thead><tbody>`;
-    if(sortedLogs.length === 0) html += `<tr><td colspan="5">${ttRangeActive() ? t('tr_empty') : 'Keine Einträge.'}</td></tr>`;
+            <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>${t('date')}</th><th>${t('task')}</th><th>${t('duration')}</th><th>${_t('x_note')}</th><th width="80"></th></tr></thead><tbody>`;
+    if(sortedLogs.length === 0) html += `<tr><td colspan="5">${ttRangeActive() ? t('tr_empty') : _t('tt_no_entries')}</td></tr>`;
     sortedLogs.forEach((log) => {
         const { task, deleted } = getTaskOrDeleted(log.taskId);
         const isPaused = task && task.isPaused && !isTaskDone(task); 
-        const pausedIcon = isPaused && !deleted ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="Pausiert"></i>' : '';
+        const pausedIcon = isPaused && !deleted ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
         const taskName = task ? task.projectName : 'Unbekannt';
-        const deletedPill = deleted ? `<span class="badge" style="background:var(--danger); color:white; font-size:10px; margin-left:8px; padding: 2px 6px;">Gelöscht</span>` : '';
+        const deletedPill = deleted ? `<span class="badge" style="background:var(--danger); color:white; font-size:10px; margin-left:8px; padding: 2px 6px;">${_t('tr_deleted')}</span>` : '';
         
-        html += `<tr><td data-label="Datum">${log.date}</td><td data-label="Aufgabe"><b>${pausedIcon}${taskName}${deletedPill}</b></td><td data-label="Dauer"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="Notiz">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+        html += `<tr><td data-label="${_t('dl_datum')}">${log.date}</td><td data-label="${_t('dl_aufgabe')}"><b>${pausedIcon}${taskName}${deletedPill}</b></td><td data-label="${_t('dl_dauer')}"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="${_t('dl_notiz')}">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
     });
     html += `</tbody></table></div></div></div>`;
     c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(() => { positionTimeLensMagnet(); ttRevealActiveRangeChip(); });
@@ -8511,14 +8514,14 @@ function renderTimeTracking(c) {
 
 function addManualTimeLog() {
     const taskId = document.getElementById('tt_task').value; const hours = parseFloat(document.getElementById('tt_hours').value); const date = document.getElementById('tt_date').value; const note = document.getElementById('tt_note').value.trim();
-    if(!taskId || !hours || !date) return showToast('Bitte Aufgabe, Datum und Stunden ausfüllen.', 'error');
+    if(!taskId || !hours || !date) return showToast(_t('tt_need_fields'), 'error');
     
     appData.timeLogs.push({ id: generateId(), taskId, hours, date, note });
     { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(hours)).replace('{n}', _tk ? _tk.projectName : '')); }
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
         task.spentTime = (parseFloat(task.spentTime || 0) + hours).toFixed(2); 
-        const logText = `[Zeiterfassung am ${date} | ${hours}h] ${note}`.trim(); 
+        const logText = _tf('log_entry', { d: date, h: hours, n: note }).trim(); 
         task.notes = task.notes ? task.notes + '\n' + logText : logText; 
     }
     saveToLocal(true); showToast(t('toast_saved'));
@@ -8552,7 +8555,7 @@ function saveEditedTimeLog() {
 }
 
 function deleteTimeLog(id) {
-    if(!confirm(t('delete') + "? Die Ist-Zeit der zugehörigen Aufgabe wird entsprechend zurückgerechnet.")) return;
+    if(!confirm(t('delete') + '? ' + _t('tt_confirm_delete_log'))) return;
     const log = appData.timeLogs.find(l => l.id === id);
     if(log && log.taskId) { const t_obj = appData.tasks.find(x => x.id === log.taskId); if(t_obj) t_obj.spentTime = Math.max(0, parseFloat(t_obj.spentTime || 0) - log.hours).toFixed(2); }
     appData.timeLogs = appData.timeLogs.filter(l => l.id !== id); saveToLocal(true); showToast(t('toast_deleted'));
@@ -8595,7 +8598,7 @@ function triggerDownloadJSON(obj, filename) {
 }
 
 function exportSharedData(tasksToShare, stacksToShare, filename = "proman_shared.json") {
-    const shareData = buildSharePackage(tasksToShare, stacksToShare); triggerDownloadJSON(shareData, filename); showToast('Paket erstellt und wird heruntergeladen.');
+    const shareData = buildSharePackage(tasksToShare, stacksToShare); triggerDownloadJSON(shareData, filename); showToast(_t('share_created'));
 }
 
 function exportSingleTaskJSON() {
@@ -8641,16 +8644,16 @@ function importJSON(event) {
                 if(imported.stacks) { imported.stacks.forEach(is => { const idx = appData.projectStacks.findIndex(s => s.id === is.id); if(idx > -1) appData.projectStacks[idx] = is; else appData.projectStacks.push(is); mergedStacks++; }); }
                 let mergedTasks = 0;
                 if(imported.tasks) { imported.tasks.forEach(it => { const idx = appData.tasks.findIndex(t_obj => t_obj.id === it.id); if(idx > -1) appData.tasks[idx] = it; else appData.tasks.push(it); mergedTasks++; }); }
-                histResetSnapshot(); saveToLocal(true); showToast(`Geteilte Daten importiert: ${mergedTasks} Aufgaben, ${mergedStacks} Stacks aktualisiert.`); setTimeout(() => window.location.reload(), 1000);
+                histResetSnapshot(); saveToLocal(true); showToast(_tf('share_imported', { t: mergedTasks, s: mergedStacks })); setTimeout(() => window.location.reload(), 1000);
             } else if(imported.tasks) { 
                 stripObsoleteThemeData(imported);
                 appData = imported; 
                 if(!appData.settings.views) { appData.settings.views = [...defaultViews]; }
                 if(!appData.settings.noteOrder) appData.settings.noteOrder = [];
                 if(!appData.timeLogs) appData.timeLogs=[]; 
-                histResetSnapshot(); saveToLocal(true); showToast('Voll-Backup erfolgreich importiert!'); setTimeout(() => window.location.reload(), 1000);
+                histResetSnapshot(); saveToLocal(true); showToast(_t('backup_imported')); setTimeout(() => window.location.reload(), 1000);
             } 
-        } catch(err) { showToast('Fehler beim Lesen der JSON.', 'error'); } 
+        } catch(err) { showToast(_t('json_read_error'), 'error'); } 
     }; 
     reader.readAsText(file); event.target.value = '';
 }
@@ -8662,42 +8665,51 @@ function xlsxAddBrandHeader(worksheet, title) {
     try {
         const company = (appData.settings && appData.settings.companyName) ? appData.settings.companyName : '';
         const line = [company ? company + ' – ' + title : title];
-        XLSX.utils.sheet_add_aoa(worksheet, [line, [new Date().toLocaleDateString('de-DE')], []], { origin: 'A1' });
+        XLSX.utils.sheet_add_aoa(worksheet, [line, [new Date().toLocaleDateString(ttLocale())], []], { origin: 'A1' });
     } catch (e) { console.warn('Excel-Kopf konnte nicht gesetzt werden', e); }
     return worksheet;
 }
 
+/* Excel-Spaltenköpfe in der gewählten Sprache (Zeilen werden mit deutschen Schlüsseln aufgebaut). */
+function xlLocalize(rows) {
+    const M = { Projekt_Stack: 'x_stack', Aufgabenname: 'x_task_name', Stakeholder: 'x_stakeholder', Kategorie: 'x_category', Status: 'x_status',
+        'Priorität': 'x_priority', Start: 'x_start', 'Fälligkeit': 'x_due', 'Aufwand_Geschätzt': 'x_effort_est', Aufwand_Bisher: 'x_effort_spent',
+        Notizen: 'x_notes', Notiz: 'x_note', Datum: 'x_date', Aufgabe: 'x_task', Stunden: 'x_hours', Art: 'x_kind', Historie: 'x_history' };
+    const prio = { high: _t('prio_high'), medium: _t('prio_med'), low: _t('prio_low') };
+    return rows.map(r => { const o = {}; for (const k in r) { let v = r[k]; if (k === 'Priorität' && prio[v]) v = prio[v]; o[M[k] ? _t(M[k]) : k] = v; } return o; });
+}
+
 function exportExcel() {
-    if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
+    if(typeof XLSX === 'undefined') return showToast(_t('xlsx_loading'), 'error');
     const wsData = getFilteredTasks().map(t_obj => {
         const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); const plainDesc = t_obj.description ? t_obj.description.replace(/<[^>]*>?/gm, '') : '';
         return { Projekt_Stack: stack ? stack.name : '-', Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime, Notizen: plainDesc };
     });
-    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, "Aufgaben"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgaben"); XLSX.writeFile(workbook, "Projekte.xlsx");
+    const worksheet = XLSX.utils.json_to_sheet(xlLocalize(wsData), { origin: "A4" }); xlsxAddBrandHeader(worksheet, _t('x_tasks')); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, _t('x_tasks')); XLSX.writeFile(workbook, _t('x_file_projects') + '.xlsx');
 }
 
 function exportSingleTaskExcel() {
-    if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
+    if(typeof XLSX === 'undefined') return showToast(_t('xlsx_loading'), 'error');
     const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return;
     const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); const plainDesc = t_obj.description ? t_obj.description.replace(/<[^>]*>?/gm, '') : '';
     const wsData = [{ Projekt_Stack: stack ? stack.name : '-', Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime, Notizen: plainDesc }];
-    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, t_obj.projectName || "Aufgabe"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Aufgabe"); XLSX.writeFile(workbook, `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.xlsx`);
+    const worksheet = XLSX.utils.json_to_sheet(xlLocalize(wsData), { origin: "A4" }); xlsxAddBrandHeader(worksheet, t_obj.projectName || _t('x_task')); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, _t('x_task')); XLSX.writeFile(workbook, `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.xlsx`);
 }
 
 function exportSingleStackExcel() {
-    if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
+    if(typeof XLSX === 'undefined') return showToast(_t('xlsx_loading'), 'error');
     const id = document.getElementById('s_id').value; const stack = appData.projectStacks.find(s => s.id === id); if(!stack) return;
     const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
     const wsData = tasks.map(t_obj => {
         const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); const st = appData.statuses.find(s => s.id === t_obj.status);
         return { Aufgabenname: t_obj.projectName, Stakeholder: sh ? sh.name : '-', Kategorie: t_obj.bucket, Status: st ? st.title : '-', Priorität: t_obj.priority, Start: t_obj.startDate, Fälligkeit: t_obj.dueDate, Aufwand_Geschätzt: t_obj.estimatedTime, Aufwand_Bisher: t_obj.spentTime };
     });
-    if(wsData.length === 0) wsData.push({ Notiz: 'Keine Aufgaben in diesem Stack vorhanden.' });
-    const worksheet = XLSX.utils.json_to_sheet(wsData, { origin: "A4" }); xlsxAddBrandHeader(worksheet, stack.name || "Stack"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, stack.name.substring(0, 31)); XLSX.writeFile(workbook, `Stack_${stack.name.replace(/\s+/g, '_')}.xlsx`);
+    if(wsData.length === 0) wsData.push({ Notiz: _t('x_no_tasks_stack') });
+    const worksheet = XLSX.utils.json_to_sheet(xlLocalize(wsData), { origin: "A4" }); xlsxAddBrandHeader(worksheet, stack.name || "Stack"); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, stack.name.substring(0, 31)); XLSX.writeFile(workbook, `Stack_${stack.name.replace(/\s+/g, '_')}.xlsx`);
 }
 
 function exportTimeExcel() {
-    if(typeof XLSX === 'undefined') return showToast('Excel Bibliothek lädt noch.', 'error');
+    if(typeof XLSX === 'undefined') return showToast(_t('xlsx_loading'), 'error');
     const wsData = ttRangeLogs().slice().sort((a,b) => String(a.date).localeCompare(String(b.date))).map(log => {
         let task = appData.tasks.find(x => x.id === log.taskId);
         let deleted = false;
@@ -8705,24 +8717,24 @@ function exportTimeExcel() {
             let delItem = appData.deletedItems.find(x => x.type === 'task' && x.data.id === log.taskId);
             if(delItem) { task = delItem.data; deleted = true; }
         }
-        const tName = task ? task.projectName + (deleted ? ' (Gelöscht)' : '') : 'Unbekannt';
+        const tName = task ? task.projectName + (deleted ? ' ' + _t('x_deleted') : '') : _t('x_unknown');
         return { Datum: log.date, Aufgabe: tName, Stunden: log.hours, Notiz: log.note };
     });
-    const worksheet = XLSX.utils.json_to_sheet(wsData); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Zeiterfassung");
+    const worksheet = XLSX.utils.json_to_sheet(xlLocalize(wsData)); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, _t('x_sheet_time'));
     const absData = (appData.absences || []).filter(a => ttInRange(a.date)).slice().sort((a,b) => a.date.localeCompare(b.date)).map(a => ({ Datum: a.date, Art: ttAbsLabel(a.type), Stunden: a.hours, Notiz: a.note || '' }));
-    if(absData.length > 0) { const wsAbs = XLSX.utils.json_to_sheet(absData); XLSX.utils.book_append_sheet(workbook, wsAbs, "Abwesenheiten"); }
+    if(absData.length > 0) { const wsAbs = XLSX.utils.json_to_sheet(xlLocalize(absData)); XLSX.utils.book_append_sheet(workbook, wsAbs, _t('x_sheet_abs')); }
     const _rb = ttRangeBounds();
-    XLSX.writeFile(workbook, (_rb.from || _rb.to) ? `Zeiterfassung_${_rb.from || 'start'}_${_rb.to || 'heute'}.xlsx` : "Zeiterfassung.xlsx");
+    XLSX.writeFile(workbook, (_rb.from || _rb.to) ? `${_t('x_sheet_time')}_${_rb.from || 'start'}_${_rb.to || _t('x_today')}.xlsx` : _t('x_sheet_time') + '.xlsx');
 }
 
 function generateRichTextReport() {
-    const viewObj = appData.settings.views.find(v => v.id === currentView); const viewName = viewObj ? viewObj.name : 'Export'; 
+    const viewObj = appData.settings.views.find(v => v.id === currentView); const viewName = viewObj ? viewObj.name : _t('x_export'); 
     const tasks = getFilteredTasks(); const stacks = getFilteredStacks();
-    let html = `<div style="font-family: Helvetica, Arial, sans-serif; color: #333;"><h1 style="color: ${appData.customColor}; border-bottom: 2px solid ${appData.customColor}; padding-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">ProMan Export: ${viewName}</h1><p style="font-family: Helvetica, Arial, sans-serif;"><em>Erstellt am: ${new Date().toLocaleDateString('de-DE')}</em></p><br/>`;
+    let html = `<div style="font-family: Helvetica, Arial, sans-serif; color: #333;"><h1 style="color: ${appData.customColor}; border-bottom: 2px solid ${appData.customColor}; padding-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">${_t('x_export_head')} ${viewName}</h1><p style="font-family: Helvetica, Arial, sans-serif;"><em>${_t('x_created_on')} ${new Date().toLocaleDateString(ttLocale())}</em></p><br/>`;
     
     if(currentView === 'time') {
         html += `<p style="font-family: Helvetica, Arial, sans-serif;"><b>${t('tr_title')}:</b> ${ttRangeLabel()}</p>`;
-        html += `<table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>Datum</th><th>Aufgabe</th><th>Dauer (h)</th><th>Notiz</th></tr>`;
+        html += `<table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>${_t('x_date')}</th><th>${_t('x_task')}</th><th>${_t('x_duration_h')}</th><th>${_t('x_note')}</th></tr>`;
         ttRangeLogs().forEach(log => { 
             let task = appData.tasks.find(x => x.id === log.taskId);
             let deleted = false;
@@ -8730,18 +8742,18 @@ function generateRichTextReport() {
                 let delItem = appData.deletedItems.find(x => x.type === 'task' && x.data.id === log.taskId);
                 if(delItem) { task = delItem.data; deleted = true; }
             }
-            const tName = task ? task.projectName : 'Unbekannt';
-            const delTag = deleted ? ' <span style="color:red; font-size:10px;">(Gelöscht)</span>' : '';
+            const tName = task ? task.projectName : _t('x_unknown');
+            const delTag = deleted ? ` <span style="color:red; font-size:10px;">${_t('x_deleted')}</span>` : '';
             html += `<tr><td>${log.date}</td><td><b>${tName}${delTag}</b></td><td>${log.hours}</td><td>${log.note||'-'}</td></tr>`; 
         });
         html += `</table>`;
     } else if(currentView === 'stacks' || currentView === 'list' || currentView === 'notes') {
         stacks.forEach(stack => {
             const sp = getStackProgress(stack.id);
-            html += `<div style="margin-bottom: 20px; font-family: Helvetica, Arial, sans-serif;"><h2 style="background-color: #f3f4f6; padding: 10px; border-left: 5px solid ${appData.customColor}; margin-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">📁 Stack: ${stack.name}</h2><ul style="list-style-type: none; padding-left: 0; font-family: Helvetica, Arial, sans-serif;"><li><b>Start:</b> ${stack.startDate||'-'} | <b>Deadline:</b> ${stack.dueDate||'-'}</li><li><b>Fortschritt:</b> Aufgaben (${sp.tPct}%) / Milestones (${sp.mPct}%)</li></ul>${stack.notes ? `<div style="font-family: Helvetica, Arial, sans-serif; margin-bottom:10px;">${stack.notes}</div>` : ''}`;
+            html += `<div style="margin-bottom: 20px; font-family: Helvetica, Arial, sans-serif;"><h2 style="background-color: #f3f4f6; padding: 10px; border-left: 5px solid ${appData.customColor}; margin-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">📁 ${_t('x_stack_label')} ${stack.name}</h2><ul style="list-style-type: none; padding-left: 0; font-family: Helvetica, Arial, sans-serif;"><li><b>${_t('x_start')}:</b> ${stack.startDate||'-'} | <b>${_t('x_target')}:</b> ${stack.dueDate||'-'}</li><li><b>${_t('x_progress')}:</b> ${_tf('x_progress_line', { t: sp.tPct, m: sp.mPct })}</li></ul>${stack.notes ? `<div style="font-family: Helvetica, Arial, sans-serif; margin-bottom:10px;">${stack.notes}</div>` : ''}`;
             const sTasks = tasks.filter(t_obj => t_obj.projectStackId === stack.id);
             if(sTasks.length > 0) {
-                html += `<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>Aufgabe</th><th>Stakeholder</th><th>Status</th><th>Fälligkeit</th><th>Fortschritt</th></tr>`;
+                html += `<table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>${_t('x_task')}</th><th>${_t('x_stakeholder')}</th><th>${_t('x_status')}</th><th>${_t('x_due')}</th><th>${_t('x_progress')}</th></tr>`;
                 sTasks.forEach(t_obj => { const st = appData.statuses.find(s => s.id === t_obj.status); const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); html += `<tr><td><b>${t_obj.projectName}</b></td><td>${sh ? sh.name : '-'}</td><td>${st ? st.title : '-'}</td><td>${t_obj.dueDate||'-'}</td><td>${getTaskProgress(t_obj)}%</td></tr>`; });
                 html += `</table>`;
             }
@@ -8749,21 +8761,21 @@ function generateRichTextReport() {
         });
         const standalone = tasks.filter(t_obj => !t_obj.projectStackId);
         if(standalone.length > 0) {
-            html += `<h2 style="padding: 10px; margin-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">📄 Einzelaufgaben</h2><table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>Aufgabe</th><th>Status</th><th>Fälligkeit</th><th>Fortschritt</th></tr>`;
+            html += `<h2 style="padding: 10px; margin-bottom: 5px; font-family: Helvetica, Arial, sans-serif;">📄 ${_t('x_single_tasks')}</h2><table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>${_t('x_task')}</th><th>${_t('x_status')}</th><th>${_t('x_due')}</th><th>${_t('x_progress')}</th></tr>`;
             standalone.forEach(t_obj => { const st = appData.statuses.find(s => s.id === t_obj.status); html += `<tr><td><b>${t_obj.projectName}</b></td><td>${st ? st.title : '-'}</td><td>${t_obj.dueDate||'-'}</td><td>${getTaskProgress(t_obj)}%</td></tr>`; }); html += `</table>`;
-            if(currentView === 'notes') { standalone.forEach(t_obj => { if(t_obj.description) { html += `<div style="margin-top:15px;"><h4>Notizen zu: ${t_obj.projectName}</h4><div>${t_obj.description}</div></div>`; } }); }
+            if(currentView === 'notes') { standalone.forEach(t_obj => { if(t_obj.description) { html += `<div style="margin-top:15px;"><h4>${_t('x_notes_on')} ${t_obj.projectName}</h4><div>${t_obj.description}</div></div>`; } }); }
         }
     } else if (currentView === 'kanban') {
         appData.statuses.forEach(status => {
             const sTasks = tasks.filter(t_obj => t_obj.status === status.id);
             if(sTasks.length > 0) {
                 html += `<h2 style="color: ${appData.customColor}; border-bottom: 1px solid #ccc; font-family: Helvetica, Arial, sans-serif;">${status.title} (${sTasks.length})</h2><ul style="font-family: Helvetica, Arial, sans-serif;">`;
-                sTasks.forEach(t_obj => { const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); html += `<li style="margin-bottom:10px;"><b>${t_obj.projectName}</b> <span style="color: #666; font-size:12px;">(Fällig: ${t_obj.dueDate||'-'} | Prio: ${t_obj.priority})</span><br/>Stakeholder: ${sh?sh.name:'-'} | Fortschritt: ${getTaskProgress(t_obj)}%</li>`; }); html += `</ul>`;
+                sTasks.forEach(t_obj => { const sh = appData.stakeholders.find(s => s.id === t_obj.stakeholderId); html += `<li style="margin-bottom:10px;"><b>${t_obj.projectName}</b> <span style="color: #666; font-size:12px;">(${_t('x_due_short')} ${t_obj.dueDate||'-'} | ${_t('col_prio_short')}: ${t_obj.priority})</span><br/>${_t('x_stakeholder')}: ${sh?sh.name:'-'} | ${_t('x_progress')}: ${getTaskProgress(t_obj)}%</li>`; }); html += `</ul>`;
             }
         });
     } else {
-        html += `<table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>Projekt/Stack</th><th>Aufgabe</th><th>Status</th><th>Fälligkeit</th></tr>`;
-        tasks.forEach(t_obj => { const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); html += `<tr><td>${stack?stack.name:'Einzelaufgabe'}</td><td><b>${t_obj.projectName}</b></td><td>${st ? st.title : '-'}</td><td>${t_obj.dueDate||'-'}</td></tr>`; }); html += `</table>`;
+        html += `<table style="width: 100%; border-collapse: collapse; font-family: Helvetica, Arial, sans-serif;" border="1" cellpadding="5"><tr style="background-color: #e5e7eb;"><th>${_t('x_stack_slash')}</th><th>${_t('x_task')}</th><th>${_t('x_status')}</th><th>${_t('x_due')}</th></tr>`;
+        tasks.forEach(t_obj => { const st = appData.statuses.find(s => s.id === t_obj.status); const stack = appData.projectStacks.find(ps => ps.id === t_obj.projectStackId); html += `<tr><td>${stack?stack.name:_t('x_single_task')}</td><td><b>${t_obj.projectName}</b></td><td>${st ? st.title : '-'}</td><td>${t_obj.dueDate||'-'}</td></tr>`; }); html += `</table>`;
     }
     return html + `</div>`;
 }
@@ -8774,7 +8786,7 @@ async function buildAttachmentsHtmlForWord(tasks) {
     for (const task of tasks) {
         const shots = await captureTaskAttachments(task);
         if (!shots.length) continue;
-        anyShots += `<h3 style="font-family:Helvetica,Arial,sans-serif; margin-top:18px;">${escapeHtmlToday(task.projectName || 'Aufgabe')}</h3>`;
+        anyShots += `<h3 style="font-family:Helvetica,Arial,sans-serif; margin-top:18px;">${escapeHtmlToday(task.projectName || _t('x_task'))}</h3>`;
         shots.forEach(s => {
             anyShots += `<div style="margin-bottom:14px;"><div style="font-size:11px; color:#666; font-family:Helvetica,Arial,sans-serif; margin-bottom:4px;">${escapeHtmlToday(s.label)}</div><img src="${s.dataUrl}" style="max-width:640px; border:1px solid #ccc;" /></div>`;
         });
@@ -8842,21 +8854,21 @@ function wordStackBlock(stack) {
     if (stack.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === stack.stakeholderId); if (sh) shName = sh.name; }
 
     let h = `<div style="border-left:3pt solid ${accent}; padding-left:10pt; margin:0 0 18pt 0;">`;
-    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; text-transform:uppercase; letter-spacing:0.4pt;">Projekt-Stack</div>`;
+    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; text-transform:uppercase; letter-spacing:0.4pt;">${_t('x_stack')}</div>`;
     h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(stack.name || '-')}</div>`;
     h += wordMetaTable([
-        ['Stakeholder', shName],
-        ['Zuständig', assignee],
-        ['Start', fmt(stack.startDate)],
-        ['Ziel', fmt(stack.dueDate)],
-        ['Aufgaben', String(appData.tasks.filter(x => x.projectStackId === stack.id).length)]
+        [_t('x_stakeholder'), shName],
+        [_t('x_assignee'), assignee],
+        [_t('x_start'), fmt(stack.startDate)],
+        [_t('x_target'), fmt(stack.dueDate)],
+        [_t('x_tasks'), String(appData.tasks.filter(x => x.projectStackId === stack.id).length)]
     ]);
     if (stack.notes && String(stack.notes).trim() && stack.notes !== '<br>') {
         h += wordSection(t('sec_notes'));
         h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:10pt; color:#22262b;">${stack.notes}</div>`;
     }
     if (stack.checklist && stack.checklist.length) {
-        h += wordSection('Milestones');
+        h += wordSection(_t('x_milestones'));
         h += wordChecklist(stack.checklist);
     }
     return h + `</div>`;
@@ -8884,18 +8896,18 @@ function wordTaskBlock(task) {
     if (task.projectStackId) { const s = appData.projectStacks.find(x => x.id === task.projectStackId); if (s) stackName = s.name; }
 
     let h = `<div style="border-left:3pt solid ${shColor}; padding-left:10pt; margin:0 0 18pt 0;">`;
-    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(task.projectName || 'Unbenannte Aufgabe')}</div>`;
+    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(task.projectName || _t('x_unnamed_task'))}</div>`;
     if (stackName) h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; margin-top:1pt;">${escapeHtmlToday(stackName)}</div>`;
 
     h += wordMetaTable([
-        ['Stakeholder', wordPill(shName, shColor), true],
-        ['Status', wordPill(statusLabel, statusColor), true],
-        ['Kategorie', wordPill(task.bucket || '-', bucketColor), true],
-        ['Priorität', wordPill(prioLabel, prioColor), true],
-        ['Zuständig', assignee],
-        ['Start', fmt(task.startDate)],
-        ['Ziel', fmt(task.dueDate)],
-        ['Aufwand (Ist/Soll)', `${task.spentTime || 0} / ${task.estimatedTime || 0} h`]
+        [_t('x_stakeholder'), wordPill(shName, shColor), true],
+        [_t('x_status'), wordPill(statusLabel, statusColor), true],
+        [_t('x_category'), wordPill(task.bucket || '-', bucketColor), true],
+        [_t('x_priority'), wordPill(prioLabel, prioColor), true],
+        [_t('x_assignee'), assignee],
+        [_t('x_start'), fmt(task.startDate)],
+        [_t('x_target'), fmt(task.dueDate)],
+        [_t('x_effort'), `${task.spentTime || 0} / ${task.estimatedTime || 0} h`]
     ]);
 
     if (task.description && task.description.trim() && task.description !== '<br>') {
@@ -8922,7 +8934,7 @@ function exportSingleTaskWord() {
     const id = document.getElementById('taskId').value;
     const t_obj = appData.tasks.find(x => x.id === id);
     if (!t_obj) return;
-    return exportWord({ tasks: [t_obj], title: t_obj.projectName || 'Aufgabe', filename: `Aufgabe_${String(t_obj.projectName || 'Aufgabe').replace(/\s+/g, '_')}.doc` });
+    return exportWord({ tasks: [t_obj], title: t_obj.projectName || _t('x_task'), filename: `${_t('x_task')}_${String(t_obj.projectName || _t('x_task')).replace(/\s+/g, '_')}.doc` });
 }
 
 /* Word-Export eines Projekt-Stacks inkl. seiner Aufgaben (Teilen > Word) */
@@ -8931,14 +8943,14 @@ function exportSingleStackWord() {
     const stack = appData.projectStacks.find(s => s.id === id);
     if (!stack) return;
     const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
-    return exportWord({ tasks, stack, title: stack.name || 'Projekt-Stack', filename: `Stack_${String(stack.name || 'Stack').replace(/\s+/g, '_')}.doc` });
+    return exportWord({ tasks, stack, title: stack.name || _t('x_stack'), filename: `Stack_${String(stack.name || 'Stack').replace(/\s+/g, '_')}.doc` });
 }
 
 async function exportWord(opts) {
     const accent = wordAccent();
     const logo = appData.settings.companyLogo;
     const company = appData.settings.companyName || '';
-    const today = new Date().toLocaleDateString('de-DE');
+    const today = new Date().toLocaleDateString(ttLocale());
     const scoped = opts && Array.isArray(opts.tasks);
 
     /* Welche Aufgaben gehören in den Bericht? */
@@ -8948,7 +8960,7 @@ async function exportWord(opts) {
 
     const docTitle = (opts && opts.title) ? opts.title
         : ((tasks.length === 1)
-            ? (tasks[0].projectName || 'Aufgabe')
+            ? (tasks[0].projectName || _t('x_task'))
             : `ProMan – ${t('view_' + currentView) !== 'view_' + currentView ? t('view_' + currentView) : currentView}`);
 
     /* Kopfbereich: Logo oben links, Titel daneben, dünne Trennlinie */
@@ -8978,7 +8990,7 @@ async function exportWord(opts) {
     let attachments = '';
     try {
         if (tasks.length) {
-            showToast('Anhänge werden aufbereitet...', 'info');
+            showToast(_t('att_preparing'), 'info');
             attachments = await buildAttachmentsHtmlForWord(tasks);
         }
     } catch (e) { console.warn('Anhänge für Word-Export fehlgeschlagen', e); }
@@ -9024,22 +9036,22 @@ function exportICS() {
 
     getFilteredTasks().forEach(t_obj => {
         let desc = []; let plainDesc = t_obj.description ? t_obj.description.replace(/<[^>]*>?/gm, '') : '';
-        if(plainDesc) desc.push(`Notizen: ${plainDesc}`); if(t_obj.history) desc.push(`Historie: ${t_obj.history}`);
-        if(t_obj.files && t_obj.files.length) { desc.push(`Dateien/Pfade:`); t_obj.files.forEach(f => desc.push(`- ${f.type === 'path' ? f.path : f.name}`)); }
+        if(plainDesc) desc.push(`${_t('x_notes')}: ${plainDesc}`); if(t_obj.history) desc.push(`${_t('x_history')}: ${t_obj.history}`);
+        if(t_obj.files && t_obj.files.length) { desc.push(`${_t('x_files')}:`); t_obj.files.forEach(f => desc.push(`- ${f.type === 'path' ? f.path : f.name}`)); }
         let descStr = desc.join('\n');
-        if(t_obj.startDate || t_obj.dueDate) addEvent(`task-${t_obj.id}`, `Aufgabe: ${t_obj.projectName}`, t_obj.startDate, t_obj.dueDate, descStr, false);
+        if(t_obj.startDate || t_obj.dueDate) addEvent(`task-${t_obj.id}`, `${_t('x_task')}: ${t_obj.projectName}`, t_obj.startDate, t_obj.dueDate, descStr, false);
         if(t_obj.checklist) t_obj.checklist.forEach((cl, idx) => { if(cl.dueDate && !cl.done) addEvent(`cl-${t_obj.id}-${idx}`, `Checkpunkt: ${cl.title} (${t_obj.projectName})`, cl.dueDate, cl.dueDate, descStr, cl.dueDate.includes('T')); });
     });
 
     getFilteredStacks().forEach(s => {
-        let plainNotes = s.notes ? s.notes.replace(/<[^>]*>?/gm, '') : ''; let descStr = plainNotes ? `Notizen: ${plainNotes}` : '';
+        let plainNotes = s.notes ? s.notes.replace(/<[^>]*>?/gm, '') : ''; let descStr = plainNotes ? `${_t('x_notes')}: ${plainNotes}` : '';
         if(s.startDate || s.dueDate) addEvent(`stack-${s.id}`, `Projekt: ${s.name}`, s.startDate, s.dueDate, descStr, false);
         if(s.checklist) s.checklist.forEach((m, idx) => { if(m.dueDate && !m.done) addEvent(`ms-${s.id}-${idx}`, `Milestone: ${m.title} (${s.name})`, m.dueDate, m.dueDate, descStr, m.dueDate.includes('T')); });
     });
 
     icsLines.push("END:VCALENDAR"); const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
     const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `ProMan_Kalender_${new Date().toISOString().split('T')[0]}.ics`; a.click(); URL.revokeObjectURL(url);
-    showToast(t('toast_pdf').replace('PDF', 'Kalender (.ics)'));
+    showToast(t('toast_pdf').replace('PDF', _t('ics_calendar')));
 }
 
 /* Wandelt einen Hex-Farbwert in ein [r,g,b]-Array (mit Fallback). */
@@ -9136,15 +9148,15 @@ function pdfChecklistMeta(cl) {
     }
     if (durMin > 0) {
         const h = Math.floor(durMin / 60), m = durMin % 60;
-        meta.push(h > 0 ? (m > 0 ? `${h} Std ${m} Min` : `${h} Std`) : `${m} Min`);
+        meta.push(h > 0 ? (m > 0 ? `${h} ${_t('u_h')} ${m} ${_t('u_min')}` : `${h} ${_t('u_h')}`) : `${m} ${_t('u_min')}`);
     }
     if (cl.assigneeId) { const u = appData.users.find(x => x.id === cl.assigneeId); if (u) meta.push(u.name); }
     return meta.join(' · ');
 }
 
 async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraFiles = []) {
-    if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') { return showToast('PDF Bibliotheken laden noch.', 'error'); }
-    showToast('PDF wird generiert... Bitte warten.', 'info');
+    if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') { return showToast(_t('pdf_loading'), 'error'); }
+    showToast(_t('pdf_generating'), 'info');
     const { jsPDF } = window.jspdf; const doc = new jsPDF('p', 'mm', 'a4');
     const pageHeight = doc.internal.pageSize.height; const pageWidth = doc.internal.pageSize.width;
     const M = 14;                       /* Seitenrand */
@@ -9288,7 +9300,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
                 if (srcY < totalSrcH) { doc.addPage(); destY = 20; }
             }
             return destY + 4;
-        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText("Fehler beim Laden des formatierten Textes.", x, y, maxWidth); }
+        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText(_t('pdf_rtf_error'), x, y, maxWidth); }
     }
 
     /* ── Kopfbereich: ohne Hintergrundfarbe, Titel in Schwarz ── */
@@ -9309,7 +9321,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
     setMuted();
     const companyName = (appData.settings && appData.settings.companyName) ? appData.settings.companyName : '';
     if (companyName) doc.text(companyName, titleX, 20.5);
-    doc.text(new Date().toLocaleDateString('de-DE'), pageWidth - M, 15, { align: 'right' });
+    doc.text(new Date().toLocaleDateString(ttLocale()), pageWidth - M, 15, { align: 'right' });
     doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.4);
     doc.line(M, bandH, pageWidth - M, bandH);
 
@@ -9324,17 +9336,17 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
         doc.rect(M, yPos, 2.5, boxH, 'F');
         doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); setMuted();
-        doc.text('PROJEKT-STACK', M + 7, yPos + 5.5);
+        doc.text(_t('x_stack').toUpperCase(), M + 7, yPos + 5.5);
         doc.setFontSize(13); doc.setFont("helvetica", "bold"); setInk();
         doc.text(doc.splitTextToSize(String(stackObj.name || '-'), contentWidth - 14)[0], M + 7, yPos + 11.5);
         yPos += boxH + 8;
 
         if(stackObj.startDate || stackObj.dueDate) {
-            yPos = metaRow('Start', pdfFormatDateTime(stackObj.startDate), 'Ziel', pdfFormatDateTime(stackObj.dueDate), yPos);
+            yPos = metaRow(_t('x_start'), pdfFormatDateTime(stackObj.startDate), _t('x_target'), pdfFormatDateTime(stackObj.dueDate), yPos);
         }
-        if(stackObj.notes) { yPos = sectionTitle('Notizen', yPos); yPos = await renderRTFToPDF(stackObj.notes, M, yPos, contentWidth); yPos += 2; }
+        if(stackObj.notes) { yPos = sectionTitle(_t('x_notes'), yPos); yPos = await renderRTFToPDF(stackObj.notes, M, yPos, contentWidth); yPos += 2; }
         if(stackObj.checklist && stackObj.checklist.length > 0) {
-            yPos = sectionTitle('Milestones', yPos);
+            yPos = sectionTitle(_t('x_milestones'), yPos);
             stackObj.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
             yPos += 3;
         }
@@ -9342,7 +9354,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         doc.line(M, yPos, pageWidth - M, yPos); yPos += 9;
     }
 
-    if(tasksArray.length === 0) { doc.setFontSize(11); setMuted(); doc.text("Keine Aufgaben vorhanden.", M, yPos); }
+    if(tasksArray.length === 0) { doc.setFontSize(11); setMuted(); doc.text(_t('x_no_tasks'), M, yPos); }
 
     /* ── Aufgabenkarten ── */
     for (let index = 0; index < tasksArray.length; index++) {
@@ -9367,7 +9379,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
             let stackSuffix = '';
             if(!stackObj && task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if(stack) stackSuffix = stack.name; }
             const titleMax = contentWidth - 10 - (stackSuffix ? 52 : 0);
-            doc.text(doc.splitTextToSize(String(task.projectName || 'Unbenannte Aufgabe'), titleMax)[0], M + 5, yPos + 7.4);
+            doc.text(doc.splitTextToSize(String(task.projectName || _t('x_unnamed_task')), titleMax)[0], M + 5, yPos + 7.4);
             if(stackSuffix) {
                 doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
                 doc.text(doc.splitTextToSize(stackSuffix, 48)[0], pageWidth - M - 5, yPos + 7.2, { align: 'right' });
@@ -9377,7 +9389,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         } else if(task.projectStackId) {
             /* Stack-Zugehörigkeit trotzdem ausweisen */
             const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId);
-            if(stack) { doc.setFontSize(9); setMuted(); doc.text(`Stack: ${stack.name}`, M, yPos); setInk(); yPos += 6; }
+            if(stack) { doc.setFontSize(9); setMuted(); doc.text(`${_t('x_stack_label')} ${stack.name}`, M, yPos); setInk(); yPos += 6; }
         }
 
         /* Kennzahlen */
@@ -9390,21 +9402,21 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         const prioColor = PRIO_COLORS[task.priority] || [130, 138, 148];
         const prioLabel = task.priority === 'high' ? t('prio_high') : (task.priority === 'medium' ? t('prio_med') : (task.priority === 'low' ? t('prio_low') : (task.priority || '-')));
 
-        yPos = metaRowPills('Stakeholder', shName, shColor, 'Status', statusLabel, statusColor, yPos);
-        yPos = metaRowPills('Kategorie', task.bucket || '-', bucketColor, 'Priorität', prioLabel, prioColor, yPos);
-        yPos = metaRow('Start', pdfFormatDateTime(task.startDate), 'Ziel', pdfFormatDateTime(task.dueDate), yPos);
-        yPos = metaRow('Aufwand (Ist/Soll)', `${task.spentTime || 0} / ${task.estimatedTime || 0} h`, 'Zuständig', (() => { const u = appData.users.find(x => x.id === task.assigneeId); return u ? u.name : '-'; })(), yPos);
+        yPos = metaRowPills(_t('x_stakeholder'), shName, shColor, _t('x_status'), statusLabel, statusColor, yPos);
+        yPos = metaRowPills(_t('x_category'), task.bucket || '-', bucketColor, _t('x_priority'), prioLabel, prioColor, yPos);
+        yPos = metaRow(_t('x_start'), pdfFormatDateTime(task.startDate), _t('x_target'), pdfFormatDateTime(task.dueDate), yPos);
+        yPos = metaRow(_t('x_effort'), `${task.spentTime || 0} / ${task.estimatedTime || 0} h`, _t('x_assignee'), (() => { const u = appData.users.find(x => x.id === task.assigneeId); return u ? u.name : '-'; })(), yPos);
         yPos += 1;
 
-        if(task.description) { yPos = sectionTitle('Notizen', yPos); yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth); yPos += 2; }
+        if(task.description) { yPos = sectionTitle(_t('x_notes'), yPos); yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth); yPos += 2; }
         if(task.checklist && task.checklist.length > 0) {
-            yPos = sectionTitle('Checkliste', yPos);
+            yPos = sectionTitle(_t('x_checklist'), yPos);
             task.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
             yPos += 3;
         }
-        if(task.notes) { yPos = sectionTitle('Historie', yPos); doc.setFontSize(9.5); setMuted(); yPos = printWrappedText(task.notes, M, yPos, contentWidth, 9.5, false); setInk(); yPos += 3; }
+        if(task.notes) { yPos = sectionTitle(_t('x_history'), yPos); doc.setFontSize(9.5); setMuted(); yPos = printWrappedText(task.notes, M, yPos, contentWidth, 9.5, false); setInk(); yPos += 3; }
         if(task.files && task.files.length > 0) {
-            yPos = sectionTitle('Dateien / Pfade', yPos);
+            yPos = sectionTitle(_t('x_files'), yPos);
             doc.setFontSize(9); setMuted();
             task.files.forEach(f => { const fname = f.type === 'blob' ? f.name : f.path; yPos = printWrappedText(`• ${fname}`, M + 2, yPos, contentWidth - 4, 9, false); });
             setInk(); yPos += 3;
@@ -9521,20 +9533,20 @@ async function confirmPdfExport() {
     const files = pdfExportExtraFiles.slice();
     const m = document.getElementById('pdfExportModal'); if (m) m.classList.remove('active');
     _pdfExportRunner = null; pdfExportExtraFiles = [];
-    if (typeof runner === 'function') { try { await runner(files); } catch (e) { console.warn(e); showToast('PDF-Export fehlgeschlagen.', 'error'); } }
+    if (typeof runner === 'function') { try { await runner(files); } catch (e) { console.warn(e); showToast(_t('pdf_export_failed'), 'error'); } }
 }
 
 function exportPDFGefiltert() {
-    openPdfExportModal((extra) => createPDF(getFilteredTasks(), "ProMan: Gefilterte Aufgaben", "ProMan_Gefiltert.pdf", null, extra));
+    openPdfExportModal((extra) => createPDF(getFilteredTasks(), _t('pdf_filtered_title'), _t('pdf_filtered_file') + '.pdf', null, extra));
 }
 function exportSingleTaskPDF() {
     const id = document.getElementById('taskId').value; const t_obj = appData.tasks.find(x => x.id === id); if(!t_obj) return;
-    openPdfExportModal((extra) => createPDF([t_obj], t_obj.projectName || 'Aufgabe', `Aufgabe_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`, null, extra));
+    openPdfExportModal((extra) => createPDF([t_obj], t_obj.projectName || _t('x_task'), `${_t('x_task')}_${t_obj.projectName.replace(/\s+/g, '_')}.pdf`, null, extra));
 }
 function exportSingleStackPDF() {
     const id = document.getElementById('s_id').value; const stack = appData.projectStacks.find(s => s.id === id); if(!stack) return;
     const tasks = appData.tasks.filter(t_obj => t_obj.projectStackId === id);
-    openPdfExportModal((extra) => createPDF(tasks, "Projekt-Stack Übersicht", `Stack_${stack.name.replace(/\s+/g, '_')}.pdf`, stack, extra));
+    openPdfExportModal((extra) => createPDF(tasks, _t('pdf_stack_overview'), `Stack_${stack.name.replace(/\s+/g, '_')}.pdf`, stack, extra));
 }
 
 // --- NOTIFICATION MODAL ---
@@ -9584,9 +9596,9 @@ function snoozeNotifModal(minutes = 30) {
         }
         saveToLocal(true);
         const label = minutes >= 60
-            ? ((minutes % 60 === 0) ? `${minutes / 60} ${minutes === 60 ? 'Stunde' : 'Stunden'}` : `${Math.floor(minutes / 60)} Std ${minutes % 60} Min`)
-            : `${minutes} Minuten`;
-        showToast(`Erinnerung in ${label} erneut.`);
+            ? ((minutes % 60 === 0) ? `${minutes / 60} ${minutes === 60 ? _t('snooze_hour') : _t('snooze_hours')}` : `${Math.floor(minutes / 60)} ${_t('u_h')} ${minutes % 60} ${_t('u_min')}`)
+            : `${minutes} ${_t('snooze_minutes')}`;
+        showToast(_tf('snooze_toast', { l: label }));
     }
     dismissNotifModal();
 }
@@ -9710,7 +9722,7 @@ function renderPresetsPanel() {
                         <label>${t('view_checklists')}</label>
                         <div class="preset-cl-list" data-kind="${kind}" data-pid="${p.id}">
                             ${_presetClNorm(p.checklist).map((ci, idx) => `<div class="preset-cl-row" data-idx="${idx}">
-                                <i class="fas fa-grip-vertical preset-cl-drag" title="Verschieben"></i>
+                                <i class="fas fa-grip-vertical preset-cl-drag" title="${_t('move')}"></i>
                                 <input class="preset-cl-title" value="${(ci.title||'').replace(/"/g,'&quot;')}" placeholder="${t('preset_cl_item_ph')||'Checklistenpunkt'}" onchange="presetClSetTitle('${kind}','${p.id}',${idx},this.value)">
                                 <input class="preset-cl-dur" type="number" min="0" step="0.25" value="${ci.duration ? Math.round((ci.duration/60)*100)/100 : ''}" placeholder="0" title="${t('preset_cl_time_title')||'Zeit in Stunden (optional)'}" onchange="presetClSetDuration('${kind}','${p.id}',${idx},this.value)">
                                 <span class="preset-cl-unit">h</span>
@@ -9925,14 +9937,14 @@ function renderLogoPreviewTE() {
     const fname     = document.getElementById('logo_fname_te');
     if(!container) return;
     if(appData.settings.companyLogo) {
-        if(fname) fname.textContent = 'Logo gespeichert';
+        if(fname) fname.textContent = _t('logo_saved');
         container.innerHTML = `<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <img src="${appData.settings.companyLogo}" style="max-height:56px; max-width:200px; border:1px solid var(--border-color); border-radius:var(--radius); background:white; padding:4px;">
-            <button class="secondary icon-btn" style="color:var(--danger);" onclick="appData.settings.companyLogo=null; renderLogoPreviewTE(); renderLogoPreview(); saveToLocal(true); document.getElementById('logo_fname_te').textContent='Keine Datei ausgewählt';" title="Logo entfernen"><i class="fas fa-trash"></i></button>
+            <button class="secondary icon-btn" style="color:var(--danger);" onclick="appData.settings.companyLogo=null; renderLogoPreviewTE(); renderLogoPreview(); saveToLocal(true); document.getElementById('logo_fname_te').textContent='Keine Datei ausgewählt';" title="${_t('logo_remove')}"><i class="fas fa-trash"></i></button>
         </div>`;
     } else {
         container.innerHTML = '';
-        if(fname) fname.textContent = 'Keine Datei ausgewählt';
+        if(fname) fname.textContent = _t('no_file_chosen');
     }
 }
 
@@ -10036,7 +10048,7 @@ function applyThemePreview() {
 }
 
 function resetThemeToDefaults() {
-    if(!confirm('Standard-Theme wiederherstellen? Alle aktuellen Anpassungen gehen verloren.')) return;
+    if(!confirm(_t('theme_reset_q'))) return;
     if(appData.settings) appData.settings.customTheme = null;
     const root = document.documentElement;
     ['--bg-color','--surface-color','--text-main','--text-muted','--border-color',
@@ -10045,12 +10057,12 @@ function resetThemeToDefaults() {
     appData.customColor = defaultThemeVars.light.primary;
     saveToLocal(true);
     openThemeEditorTab();
-    showToast('Standard-Theme wiederhergestellt.', 'info');
+    showToast(_t('theme_restored'), 'info');
 }
 
 function saveCurrentTheme() {
     const name = document.getElementById('themeNameInput')?.value.trim();
-    if(!name) { showToast('Bitte einen Theme-Namen eingeben.', 'warning'); return; }
+    if(!name) { showToast(_t('theme_need_name'), 'warning'); return; }
     const theme = getEditorThemeValues();
     const themes = getThemes();
     const existing = themes.find(t => t.name === name);
@@ -10058,7 +10070,7 @@ function saveCurrentTheme() {
     saveThemes(themes);
     applyThemePreview();
     renderThemeSelector();
-    showToast(`Theme "${name}" gespeichert.`, 'success');
+    showToast(_tf('theme_saved', { n: name }), 'success');
 }
 
 function loadThemeFromSelector() {
@@ -10087,14 +10099,14 @@ function loadThemeFromSelector() {
     if(blurLabel)  blurLabel.textContent  = blurVal + 'px';
 
     applyThemePreview();
-    showToast(`Theme "${theme.name}" geladen.`, 'success');
+    showToast(_tf('theme_loaded', { n: theme.name }), 'success');
 }
 
 function renameCurrentTheme() {
     const sel = document.getElementById('themeSelector');
-    if(!sel || !sel.value) { showToast('Bitte zuerst ein Theme auswählen.', 'warning'); return; }
+    if(!sel || !sel.value) { showToast(_t('theme_pick_first'), 'warning'); return; }
     const newName = document.getElementById('themeNameInput')?.value.trim();
-    if(!newName) { showToast('Bitte einen neuen Namen eingeben.', 'warning'); return; }
+    if(!newName) { showToast(_t('theme_need_new_name'), 'warning'); return; }
     const themes = getThemes();
     const theme = themes.find(t => t.id === sel.value);
     if(!theme) return;
@@ -10105,19 +10117,19 @@ function renameCurrentTheme() {
     renderThemeSelector();
     const newSel = document.getElementById('themeSelector');
     if(newSel) newSel.value = savedId;
-    showToast(`Theme umbenannt: "${oldName}" → "${newName}"`, 'success');
+    showToast(_tf('theme_renamed', { a: oldName, b: newName }), 'success');
 }
 
 function deleteCurrentTheme() {
     const sel = document.getElementById('themeSelector');
-    if(!sel || !sel.value) { showToast('Bitte zuerst ein Theme auswählen.', 'warning'); return; }
+    if(!sel || !sel.value) { showToast(_t('theme_pick_first'), 'warning'); return; }
     const themes = getThemes();
     const theme = themes.find(t => t.id === sel.value);
     if(!theme) return;
-    if(!confirm(`Theme "${theme.name}" wirklich löschen?`)) return;
+    if(!confirm(_tf('theme_delete_q', { n: theme.name }))) return;
     saveThemes(themes.filter(t => t.id !== sel.value));
     renderThemeSelector();
-    showToast(`Theme "${theme.name}" gelöscht.`, 'info');
+    showToast(_tf('theme_deleted', { n: theme.name }), 'info');
 }
 
 function renderThemeSelector() {
@@ -10126,7 +10138,7 @@ function renderThemeSelector() {
     if(!sel) return;
     const themes = getThemes();
     const currentId = sel.value;
-    sel.innerHTML = '<option value="">-- Theme auswählen --</option>' +
+    sel.innerHTML = '<option value="">' + _t('theme_pick_ph') + '</option>' +
         themes.map(t => `<option value="${t.id}" ${t.id === currentId ? 'selected' : ''}>${t.name}</option>`).join('');
     if(preview) {
         preview.innerHTML = themes.map(t => {
@@ -10266,10 +10278,10 @@ function renderToday(c) {
         <div class="wk-hero-left">
             <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
             <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
-            <div class="wk-hero-track" title="${ttNum(_booked)} h gebucht · ${ttNum(_elapsed)} h vergangen · Soll ${ttNum(_target)} h">
+            <div class="wk-hero-track" title="${_tf('hub_track_title', { a: ttNum(_booked), b: ttNum(_elapsed), c: ttNum(_target) })}">
                 <span class="wk-elapsed" style="width:${_elapsedPct}%"></span>
                 <i class="wk-booked" style="width:${_bookedPct}%"></i>
-                <span class="wk-track-label">${ttNum(_openToTarget)} von ${ttNum(_target)} h offen</span>
+                <span class="wk-track-label">${_tf('hub_open_of', { a: ttNum(_openToTarget), b: ttNum(_target) })}</span>
             </div>
             <p class="wk-hero-note">${info.missing > 0.01
                 ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
@@ -10507,7 +10519,7 @@ function createTodayItemCard(it) {
     if (it.kind === 'checkpoint') card.classList.add('wk-cp-striped');   /* schräges Muster überlagert den Streifen */
     card.style.cursor = 'pointer';
     card.onclick = () => { try { eval(meta.click); } catch(e){} };
-    const name = it.obj.name || it.obj.title || it.obj.projectName || 'Unbenannt';
+    const name = it.obj.name || it.obj.title || it.obj.projectName || _t('unnamed');
     const parentName = it.parent ? (it.parent.name || it.parent.projectName || '') : '';
     const dueStr = (it.dueDate || '').split('T')[0];
     let cpActions = '';
@@ -10693,8 +10705,8 @@ function ttHeuteBook(iso){
         const more = document.createElement('button');
         more.className = 'wk-userchip wk-morechip';
         more.id = 'wkMoreChip';
-        more.title = 'Mehr';
-        more.setAttribute('aria-label', 'Mehr');
+        more.title = _t('ui_more');
+        more.setAttribute('aria-label', _t('ui_more'));
         more.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
         more.onclick = function (e) { e.stopPropagation(); if (typeof openTopMoreMenu === 'function') openTopMoreMenu(); };
         bar.appendChild(more);
@@ -10702,8 +10714,8 @@ function ttHeuteBook(iso){
       const chip = document.createElement('button');
       chip.className = 'wk-userchip';
       chip.id = 'wkUserChip';
-      chip.title = 'Profil & Einstellungen';
-      chip.setAttribute('aria-label', 'Profil & Einstellungen');
+      chip.title = _t('profile_settings'); chip.setAttribute('data-i18n-title', 'profile_settings'); chip.setAttribute('data-i18n-aria', 'profile_settings');
+      chip.setAttribute('aria-label', _t('profile_settings'));
       chip.onclick = function () { openSettings(); };
       bar.appendChild(chip);
     }
@@ -10942,8 +10954,8 @@ function ttHeuteBook(iso){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 0));
   else setTimeout(start, 0);
 
-  function labelNewTask() { try { const v = t('new_task'); if (v && v !== 'new_task') return v; } catch(e){} return 'Neue Aufgabe'; }
-  function labelNewStack() { try { const v = t('new_stack'); if (v && v !== 'new_stack') return v; } catch(e){} return 'Neuer Stapel'; }
+  function labelNewTask() { try { const v = t('new_task'); if (v && v !== 'new_task') return v; } catch(e){} return _t('new_task'); }
+  function labelNewStack() { try { const v = t('new_stack'); if (v && v !== 'new_stack') return v; } catch(e){} return _t('new_stack'); }
 
   function toggleFab() {
     const m = document.getElementById('wkFabMenu');
@@ -11004,7 +11016,7 @@ function ttHeuteBook(iso){
         let stackId = targetTask.projectStackId;
         if (!stackId) {
             stackId = generateId();
-            const baseName = (targetTask.projectName || 'Neues Stack');
+            const baseName = (targetTask.projectName || _t('new_stack'));
             appData.projectStacks.push({ id: stackId, name: baseName, status: 'active', checklist: [], startDate: '', dueDate: '', notes: '', history: '', assigneeId: '', stakeholderId: '', bucket: targetTask.bucket || '', predecessors: [] });
             targetTask.projectStackId = stackId;
         }
@@ -11012,7 +11024,7 @@ function ttHeuteBook(iso){
         /* gleiche Spalte/Status beibehalten wie Zielaufgabe */
         saveToLocal();
         renderView();
-        showToast('Aufgaben als Stack gruppiert.');
+        showToast(_t('stacks_grouped'));
     }
 
     function moveTask(taskId, newStatus, beforeId) {
@@ -11027,7 +11039,7 @@ function ttHeuteBook(iso){
             appData.tasks.splice(to < 0 ? appData.tasks.length : to, 0, mv);
             saveToLocal(); renderView(); return;
         }
-        if (newStatus === 'done' && isEntityLocked(taskId)) { showToast('Aufgabe ist durch Abhängigkeiten gesperrt!', 'warning'); return; }
+        if (newStatus === 'done' && isEntityLocked(taskId)) { showToast(_t('lock_task'), 'warning'); return; }
         checkTaskCompletion(taskId, newStatus);
         const oldStatus = task.status;
         task.status = newStatus;
@@ -11368,15 +11380,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return noTasks && noStacks && onlyDefaultUser;
     }
 
-    const WEEK = [['1', 'Mo'], ['2', 'Di'], ['3', 'Mi'], ['4', 'Do'], ['5', 'Fr'], ['6', 'Sa'], ['0', 'So']];
+    const WEEK = [['1', 'wd_mo'], ['2', 'wd_di'], ['3', 'wd_mi'], ['4', 'wd_do'], ['5', 'wd_fr'], ['6', 'wd_sa'], ['0', 'wd_so']];
 
     /* ---------- Product-Tour-Folien ---------- */
     const tour = [
-        { icon: 'fa-hand-sparkles', title: 'Willkommen bei ProMan', text: 'Deine Werkstatt für Projekte, Aufgaben und Zeit. In wenigen Schritten ist alles startklar – hier eine kurze Tour.', place: 'today' },
-        { icon: 'fa-gauge-high', title: 'Hub – dein Tagesüberblick', text: 'Der Hub zeigt gebuchte und offene Stunden, anstehende Fälligkeiten und deine Auslastung auf einen Blick.', place: 'today' },
-        { icon: 'fa-table-columns', title: 'Arbeit – Kanban, Liste, Zeitplan', text: 'Aufgaben ziehst du per Drag & Drop zwischen Spalten. Zwei Aufgaben übereinander bilden ein Stack. Alles auch als Liste, Kalender oder Gantt.', place: 'arbeit' },
-        { icon: 'fa-clock', title: 'Zeit erfassen', text: 'Buche Arbeitszeit je Aufgabe oder Checklistenpunkt. Soll-/Ist-Stunden, Abwesenheiten und ein Zeitkonto sind eingebaut.', place: 'zeit' },
-        { icon: 'fa-project-diagram', title: 'Abhängigkeiten & Verwaltung', text: 'Verknüpfe Aufgaben und Checklistenpunkte, verwalte Stakeholder, Buckets und Workflows. Jetzt richten wir die Basis ein.', place: 'verwaltung' }
+        { icon: 'fa-hand-sparkles', get title() { return _t('onb_tour1_t'); }, get text() { return _t('onb_tour1_x'); }, place: 'today' },
+        { icon: 'fa-gauge-high', get title() { return _t('onb_tour2_t'); }, get text() { return _t('onb_tour2_x'); }, place: 'today' },
+        { icon: 'fa-table-columns', get title() { return _t('onb_tour3_t'); }, get text() { return _t('onb_tour3_x'); }, place: 'arbeit' },
+        { icon: 'fa-clock', get title() { return _t('onb_tour4_t'); }, get text() { return _t('onb_tour4_x'); }, place: 'zeit' },
+        { icon: 'fa-project-diagram', get title() { return _t('onb_tour5_t'); }, get text() { return _t('onb_tour5_x'); }, place: 'verwaltung' }
     ];
 
     let ov, body, footer, stepIdx, tourIdx;
@@ -11414,14 +11426,14 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="onb-tour-ic"><i class="fas ${s.icon}"></i></div>
             <h2>${s.title}</h2>
             <p>${s.text}</p>
-            ${tourIdx === 0 ? `<button class="onb-demo-btn" id="onbDemo"><i class="fas fa-wand-magic-sparkles"></i> Mit Demo-Daten starten</button><div class="onb-demo-note">Beispiel-Projekte eines Marketing-Teams (Briefe &amp; Papiertragetaschen) inkl. Zeitbuchungen, Urlaub/Krankheit und Abhängigkeiten.</div>` : ''}
+            ${tourIdx === 0 ? `<button class="onb-demo-btn" id="onbDemo"><i class="fas fa-wand-magic-sparkles"></i> ${_t('onb_demo_btn')}</button><div class="onb-demo-note">${_t('onb_demo_note')}</div>` : ''}
             <div class="onb-dots">${tour.map((_, i) => `<span class="${i === tourIdx ? 'on' : ''}"></span>`).join('')}</div>
         </div>`;
         footer.innerHTML = `
-            <button class="onb-skip" id="onbSkipTour">Tour überspringen</button>
+            <button class="onb-skip" id="onbSkipTour">${_t('onb_skip_tour')}</button>
             <div class="onb-nav">
-                ${tourIdx > 0 ? `<button class="secondary" id="onbTourBack">Zurück</button>` : ''}
-                <button id="onbTourNext">${tourIdx < tour.length - 1 ? 'Weiter' : 'Einrichtung starten'}</button>
+                ${tourIdx > 0 ? `<button class="secondary" id="onbTourBack">${_t('onb_back')}</button>` : ''}
+                <button id="onbTourNext">${tourIdx < tour.length - 1 ? _t('onb_next') : _t('onb_start_setup')}</button>
             </div>`;
         document.getElementById('onbSkipTour').onclick = startForm;
         document.getElementById('onbTourNext').onclick = () => { if (tourIdx < tour.length - 1) { tourIdx++; showTour(); } else startForm(); };
@@ -11433,9 +11445,9 @@ document.addEventListener('DOMContentLoaded', () => {
         /* Aus den Einstellungen mit bestehenden Daten gestartet? Dann Sicherung anbieten. */
         const hasData = (appData.tasks && appData.tasks.length) || (appData.projectStacks && appData.projectStacks.length);
         if (hasData) {
-            const backup = confirm('Es sind bereits Daten vorhanden. Sollen die aktuellen Daten vorher als Sicherung (JSON) heruntergeladen werden?\n\nOK = Sicherung herunterladen und fortfahren\nAbbrechen = ohne Sicherung fortfahren');
+            const backup = confirm(_t('onb_backup_q'));
             if (backup) { try { exportJSON(); } catch (e) {} }
-            if (!confirm('Demo-Daten jetzt erzeugen? Die vorhandenen Projekte, Aufgaben und Buchungen werden dabei ersetzt.')) return;
+            if (!confirm(_t('onb_demo_q'))) return;
         }
         try { generateDemoData(); } catch (e) { console.error('Demo-Daten-Fehler', e); }
         appData.settings.onboardingCompleted = true;
@@ -11443,49 +11455,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ov) ov.remove();
         try { renderSidebar(); } catch (e) {}
         try { switchView('today'); } catch (e) { try { renderView(); } catch (e2) {} }
-        try { showToast('Demo-Daten erzeugt – viel Spaß beim Ausprobieren!'); } catch (e) {}
+        try { showToast(_t('onb_demo_done')); } catch (e) {}
     }
 
     /* ---------- Formular-Schritte ---------- */
     const steps = [
         {
-            key: 'name', icon: 'fa-user', title: 'Dein Name', hint: 'Wie heißt du (Team-Mitglied)? Damit legen wir dein Profil an.',
-            render: () => `<input type="text" id="onb_name" placeholder="z. B. Alex Muster" value="${collected.name || ''}">`,
+            key: 'name', icon: 'fa-user', get title() { return _t('onb_s_name_t'); }, get hint() { return _t('onb_s_name_h'); },
+            render: () => `<input type="text" id="onb_name" placeholder="${_t('onb_name_ph')}" value="${collected.name || ''}">`,
             save: () => { const v = (document.getElementById('onb_name').value || '').trim(); if (v) collected.name = v; }
         },
         {
-            key: 'workdays', icon: 'fa-calendar-week', title: 'Arbeitstage', hint: 'An welchen Wochentagen arbeitest du?',
-            render: () => { const cur = collected.workDays || (appData.settings.workDays || [1, 2, 3, 4, 5]).map(String); return `<div class="onb-week">${WEEK.map(([v, l]) => `<button type="button" class="onb-day ${cur.includes(v) ? 'on' : ''}" data-d="${v}" onclick="this.classList.toggle('on')">${l}</button>`).join('')}</div>`; },
+            key: 'workdays', icon: 'fa-calendar-week', get title() { return _t('onb_s_days_t'); }, get hint() { return _t('onb_s_days_h'); },
+            render: () => { const cur = collected.workDays || (appData.settings.workDays || [1, 2, 3, 4, 5]).map(String); return `<div class="onb-week">${WEEK.map(([v, l]) => `<button type="button" class="onb-day ${cur.includes(v) ? 'on' : ''}" data-d="${v}" onclick="this.classList.toggle('on')">${_t(l)}</button>`).join('')}</div>`; },
             save: () => { const days = Array.from(body.querySelectorAll('.onb-day.on')).map(b => b.dataset.d); collected.workDays = days; }
         },
         {
-            key: 'hours', icon: 'fa-business-time', title: 'Arbeitszeiten', hint: 'Von wann bis wann arbeitest du üblicherweise?',
-            render: () => `<div class="onb-row2"><label>Von<input type="time" id="onb_from" value="${collected.from || appData.settings.timeTrackFrom || '08:00'}"></label><label>Bis<input type="time" id="onb_to" value="${collected.to || appData.settings.timeTrackTo || '17:00'}"></label></div>`,
+            key: 'hours', icon: 'fa-business-time', get title() { return _t('onb_s_hours_t'); }, get hint() { return _t('onb_s_hours_h'); },
+            render: () => `<div class="onb-row2"><label>${_t('tr_from')}<input type="time" id="onb_from" value="${collected.from || appData.settings.timeTrackFrom || '08:00'}"></label><label>${_t('tr_to')}<input type="time" id="onb_to" value="${collected.to || appData.settings.timeTrackTo || '17:00'}"></label></div>`,
             save: () => { collected.from = document.getElementById('onb_from').value; collected.to = document.getElementById('onb_to').value; }
         },
         {
-            key: 'target', icon: 'fa-hourglass-half', title: 'Soll-Stunden pro Tag', hint: 'Wie viele Stunden willst du pro Arbeitstag einplanen?',
+            key: 'target', icon: 'fa-hourglass-half', get title() { return _t('onb_s_target_t'); }, get hint() { return _t('onb_s_target_h'); },
             render: () => `<input type="number" id="onb_target" min="0" max="24" step="0.25" placeholder="8" value="${collected.target != null ? collected.target : (appData.settings.targetHoursPerDay || 8)}">`,
             save: () => { const v = parseFloat(document.getElementById('onb_target').value); if (!isNaN(v) && v > 0) collected.target = v; }
         },
         {
-            key: 'email', icon: 'fa-envelope', title: 'E-Mail', hint: 'Für Benachrichtigungen (optional).',
-            render: () => `<input type="email" id="onb_email" placeholder="name@firma.de" value="${collected.email || appData.settings.notificationEmail || ''}">`,
+            key: 'email', icon: 'fa-envelope', get title() { return _t('onb_s_email_t'); }, get hint() { return _t('onb_s_email_h'); },
+            render: () => `<input type="email" id="onb_email" placeholder="${_t('onb_email_ph')}" value="${collected.email || appData.settings.notificationEmail || ''}">`,
             save: () => { const v = (document.getElementById('onb_email').value || '').trim(); if (v) collected.email = v; }
         },
         {
-            key: 'columns', icon: 'fa-table-columns', title: 'Kanban-Spalten', hint: 'Passe die Spalten deines Boards an (eine pro Zeile). Die Spalte „Abgeschlossen" ist ein fester System-Standard.',
-            render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done').map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="Zu erledigen\nIn Bearbeitung\nPrüfung">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> Abgeschlossen <span>(System-Standard)</span></div>`; },
+            key: 'columns', icon: 'fa-table-columns', get title() { return _t('onb_s_cols_t'); }, get hint() { return _t('onb_s_cols_h'); },
+            render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done').map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="${_t('onb_cols_ph')}">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> ${_t('col_completed')} <span>${_t('onb_system_default')}</span></div>`; },
             save: () => { const lines = (document.getElementById('onb_cols').value || '').split('\n').map(s => s.trim()).filter(Boolean); if (lines.length) collected.columns = lines; }
         },
         {
-            key: 'stakeholders', icon: 'fa-users', title: 'Stakeholder', hint: 'Wichtige Beteiligte / Auftraggeber (eine pro Zeile, optional).',
-            render: () => { const cur = collected.stakeholders || (appData.stakeholders || []).map(s => s.name); return `<textarea id="onb_sh" rows="4" placeholder="Kunde A\nAbteilung Marketing">${cur.join('\n')}</textarea>`; },
+            key: 'stakeholders', icon: 'fa-users', get title() { return _t('onb_s_sh_t'); }, get hint() { return _t('onb_s_sh_h'); },
+            render: () => { const cur = collected.stakeholders || (appData.stakeholders || []).map(s => s.name); return `<textarea id="onb_sh" rows="4" placeholder="${_t('onb_sh_ph')}">${cur.join('\n')}</textarea>`; },
             save: () => { const lines = (document.getElementById('onb_sh').value || '').split('\n').map(s => s.trim()).filter(Boolean); collected.stakeholders = lines; }
         },
         {
-            key: 'buckets', icon: 'fa-layer-group', title: 'Buckets', hint: 'Kategorien zum Einsortieren von Aufgaben (eine pro Zeile, optional).',
-            render: () => { const cur = collected.buckets || (appData.buckets || []); return `<textarea id="onb_buckets" rows="4" placeholder="Entwicklung\nDesign\nAdministration">${cur.join('\n')}</textarea>`; },
+            key: 'buckets', icon: 'fa-layer-group', get title() { return _t('onb_s_bk_t'); }, get hint() { return _t('onb_s_bk_h'); },
+            render: () => { const cur = collected.buckets || (appData.buckets || []); return `<textarea id="onb_buckets" rows="4" placeholder="${_t('onb_bk_ph')}">${cur.join('\n')}</textarea>`; },
             save: () => { const lines = (document.getElementById('onb_buckets').value || '').split('\n').map(s => s.trim()).filter(Boolean); collected.buckets = lines; }
         }
     ];
@@ -11501,10 +11513,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
         if (s.after) s.after();
         footer.innerHTML = `
-            <button class="onb-skip" id="onbSkipStep">Überspringen</button>
+            <button class="onb-skip" id="onbSkipStep">${_t('onb_skip')}</button>
             <div class="onb-nav">
-                ${stepIdx > 0 ? `<button class="secondary" id="onbBack">Zurück</button>` : ''}
-                <button id="onbNext">${stepIdx < steps.length - 1 ? 'Weiter' : 'Fertig'}</button>
+                ${stepIdx > 0 ? `<button class="secondary" id="onbBack">${_t('onb_back')}</button>` : ''}
+                <button id="onbNext">${stepIdx < steps.length - 1 ? _t('onb_next') : _t('onb_finish')}</button>
             </div>`;
         document.getElementById('onbSkipStep').onclick = () => next(true);
         document.getElementById('onbNext').onclick = () => next(false);
@@ -11527,7 +11539,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ov) ov.remove();
         try { renderSidebar(); } catch (e) {}
         try { renderView(); } catch (e) {}
-        try { showToast('Einrichtung abgeschlossen – viel Erfolg!'); } catch (e) {}
+        try { showToast(_t('onb_done')); } catch (e) {}
     }
 
     function applyCollected() {

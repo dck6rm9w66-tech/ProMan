@@ -3278,3 +3278,32 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 @media (hover: none) and (pointer: coarse) {
     .kanban-cards .task-card, .gantt-bar { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 }
+
+/* ============================================================
+   Eingabefelder: keine erzwungene Mindestbreite (v. a. iOS Safari)
+   Safari gibt Datum-, Zeit-, Zahl- und Textfeldern eine eigene Mindestbreite
+   (nach Schrift und Datumsformat bzw. ca. 20 Zeichen). In Flex- und Grid-Zeilen
+   ist "min-width:auto" der Standard – das Feld darf dann nicht schmaler werden
+   als diese Eigenbreite und schiebt sich über das Nachbarfeld. Darum hier:
+   Felder und Raster-/Zeilen-Zellen dürfen immer bis auf ihren Platz schrumpfen.
+   ============================================================ */
+.form-grid-2 > *, .form-grid-3 > *, .settings-grid > *, .tt-range-dates > *, .onb-row2 > * { min-width: 0; }
+@media (max-width: 1088px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="range"]),
+    select, textarea { min-width: 0 !important; max-width: 100%; }
+}
+/* Nur iOS (Safari und alle iPhone-Browser, die WebKit nutzen) */
+@supports (-webkit-touch-callout: none) {
+    @media (max-width: 1088px) {
+        /* Native Datums-/Zeit-Darstellung abschalten: erst dann gibt Safari die feste
+           Eigenbreite auf. Antippen öffnet weiterhin den iOS-Datums- bzw. Zeitwähler. */
+        input[type="date"], input[type="time"], input[type="datetime-local"], input[type="month"] {
+            -webkit-appearance: none; appearance: none;
+            display: block; width: 100%; min-height: 44px; line-height: 1.2;
+        }
+        input::-webkit-date-and-time-value { text-align: left; margin: 0; min-width: 0; }
+        /* Unter 16px Schriftgrösse vergrössert Safari beim Antippen die ganze Seite */
+        input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="range"]),
+        select, textarea { font-size: 16px !important; }
+    }
+}
