@@ -3307,3 +3307,21 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
         select, textarea { font-size: 16px !important; }
     }
 }
+
+/* Abwesenheiten: Umfang ganzer Tag / halber Tag / Stunden (Teil-Kompensation) */
+.tt-scope { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tt-scope-btn.secondary { font-size: 12px !important; padding: 5px 10px !important; min-height: 0 !important; border-radius: 16px !important; font-weight: 500 !important; }
+.tt-scope-btn.secondary[aria-pressed="true"] { background: var(--wk-magnet, var(--primary-color)) !important; border-color: var(--wk-magnet, var(--primary-color)) !important; color: var(--wk-graphite, #fff) !important; font-weight: 600 !important; }
+.tt-scope-modal { display: flex; }
+.tt-scope-modal .tt-scope-btn.secondary { flex: 1 1 0; font-size: 13px !important; padding: 8px 10px !important; }
+.tt-scope-hours { width: 70px !important; min-width: 0 !important; margin: 0 !important; padding: 4px 8px !important; font-size: 12px; min-height: 0 !important; }
+.tt-scope-unit { font-size: 11px; color: var(--text-muted); }
+.tt-partial { margin: -4px 0 15px; padding: 12px; border: 1px dashed var(--border-color); border-radius: var(--radius); background: var(--bg-color); }
+.tt-partial[hidden] { display: none; }
+.tt-partial-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tt-partial-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); min-width: 0; margin: 0; }
+.tt-partial-grid input { margin: 0; min-width: 0; }
+.tt-partial-hint { font-size: 11px; color: var(--text-muted); margin: 8px 0 0; }
+@media (max-width: 480px) { .tt-partial-grid { grid-template-columns: 1fr 1fr; } .tt-partial-grid label:last-child { grid-column: 1 / -1; } }
+/* Kalender: Teil-Abwesenheit als kleines Symbol in der Ecke, der Tag behält seine normale Farbe */
+.tt-day-part { position: absolute; top: 3px; right: 4px; font-size: 9px; color: var(--tt-abs); }

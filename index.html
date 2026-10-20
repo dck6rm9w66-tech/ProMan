@@ -23,7 +23,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261014-35">
+    <link rel="stylesheet" href="styles.css?v=20261020-36">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -411,10 +411,23 @@
                     <div><span class="form-label" data-i18n="tt_from">Von</span><input type="date" id="abs_from"></div>
                     <div><span class="form-label" data-i18n="tt_to">Bis</span><input type="date" id="abs_to"></div>
                 </div>
-                <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:15px; cursor:pointer;">
-                    <input type="checkbox" id="abs_half" style="width:auto; margin:0;"> <span data-i18n="tt_half_day">Halbe Tage</span>
-                </label>
-                <div><span class="form-label" data-i18n="time_note">Notiz</span><input type="text" id="abs_note" placeholder="..."></div>
+                <div style="margin-bottom:15px;">
+                    <span class="form-label" data-i18n="tt_scope">Umfang</span>
+                    <div id="abs_scope" class="tt-scope tt-scope-modal" role="group" data-value="full">
+                        <button type="button" class="secondary tt-scope-btn" data-v="full" aria-pressed="true" onclick="ttAbsModalScope('full')" data-i18n="tt_scope_full">Ganzer Tag</button>
+                        <button type="button" class="secondary tt-scope-btn" data-v="half" aria-pressed="false" onclick="ttAbsModalScope('half')" data-i18n="tt_scope_half">Halber Tag</button>
+                        <button type="button" class="secondary tt-scope-btn" data-v="hours" aria-pressed="false" onclick="ttAbsModalScope('hours')" data-i18n="tt_scope_hours">Stunden</button>
+                    </div>
+                </div>
+                <div id="abs_partial_row" class="tt-partial" hidden>
+                    <div class="tt-partial-grid">
+                        <label><span data-i18n="tt_abs_time_from">Abwesend ab</span><input type="time" id="abs_time_from" oninput="ttAbsModalCalc()"></label>
+                        <label><span data-i18n="tt_abs_time_to">bis</span><input type="time" id="abs_time_to" oninput="ttAbsModalCalc()"></label>
+                        <label><span data-i18n="tt_abs_hours_lbl">Stunden pro Tag</span><input type="number" id="abs_hours" min="0.25" step="0.25" placeholder="h"></label>
+                    </div>
+                    <p class="tt-partial-hint" data-i18n="tt_abs_time_hint">Uhrzeit eingeben, z. B. 15:00 bis Arbeitsende – die Stunden werden automatisch berechnet.</p>
+                </div>
+                <div><span class="form-label" data-i18n="time_note">Notiz</span><input type="text" id="abs_note" placeholder="..." data-i18n-placeholder="abs_note_ph"></div>
                 <p style="font-size:11px; color:var(--text-muted); margin-top:12px;" data-i18n="tt_abs_modal_hint">Arbeitsfreie Tage (z.B. Wochenenden) werden automatisch übersprungen.</p>
             </div>
             <div class="modal-footer" style="justify-content: flex-end;">
@@ -1254,8 +1267,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js?v=20261014-35"></script>
-    <script src="app.js?v=20261014-35"></script>
+    <script src="i18n.js?v=20261020-36"></script>
+    <script src="app.js?v=20261020-36"></script>
 
 </body>
 </html>

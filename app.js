@@ -6783,7 +6783,7 @@ function renderSchedule(c) {
                 const absDate = a.date ? ttFmtDate(a.date) : '';
                 return `<div class="agenda-card absence" style="--abs:${ttAbsColor(a.type)}" onclick="switchView('time')">
                     <div class="agenda-ic" style="background:${ttAbsColor(a.type)}"><i class="fas ${ttAbsIcon(a.type)}"></i></div>
-                    <div class="agenda-body"><b>${ttAbsLabel(a.type)}</b><span class="agenda-sub">${absDate}${a.note ? ' · ' + escapeHtmlToday(a.note) : ''}</span></div>
+                    <div class="agenda-body"><b>${ttAbsLabel(a.type)}</b><span class="agenda-sub">${absDate}${ttAbsRange(a)}${a.note ? ' · ' + escapeHtmlToday(a.note) : ''}</span></div>
                     <div class="agenda-hours">${ttNum(a.hours)} h</div>
                 </div>`;
             }
@@ -7730,6 +7730,8 @@ let ttSelectedDays = [];
 let ttSelectedDay = null;   /* zuletzt gewählter Einzeltag für die manuelle Erfassung */
 let ttLastClickedDay = null;
 let ttHalfDay = false;
+let ttAbsScope = 'full';   /* 'full' | 'half' | 'hours' – Umfang in der Auswahl-Leiste */
+let ttAbsScopeHours = '';
 
 function ttEsc(str) { return String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function ttAbsLabel(type) { const cfg = ABSENCE_TYPES[type]; return cfg ? t(cfg.key) : type; }
@@ -7765,8 +7767,9 @@ function ttDayInfo(iso) {
     let booked = 0;
     (appData.timeLogs || []).forEach(l => { if (l.date === iso) booked += parseFloat(l.hours) || 0; });
     const abs = (appData.absences || []).filter(a => a.date === iso);
-    let absHours = 0; abs.forEach(a => absHours += parseFloat(a.hours) || 0);
-    const total = booked + absHours;
+    let absHours = 0, compHours = 0;
+    abs.forEach(a => { const h = parseFloat(a.hours) || 0; absHours += h; if (a.type === 'other') compHours += h; });
+    const total = booked + absHours;   /* deckt das Tagessoll ab (Status / offene Tage) */
     const todayIso = ttTodayIso();
     let status;
     if (target === 0)                 status = total > 0 ? 'bonus' : 'free';
@@ -7775,7 +7778,8 @@ function ttDayInfo(iso) {
     else if (iso === todayIso)        status = 'current';   // heute laeuft noch -> nicht als Fehler markieren
     else if (total > 0)               status = 'partial';
     else                              status = 'missing';
-    return { iso, target, booked, absences: abs, absHours, total, missing: Math.max(0, target - total), status };
+    return { iso, target, booked, absences: abs, absHours, compHours, total, missing: Math.max(0, target - total), status,
+             fullAbsence: abs.length > 0 && target > 0 && absHours + 0.001 >= target };
 }
 
 function ttPeriodRange() {
@@ -7788,7 +7792,7 @@ function ttPeriodRange() {
 function ttPeriodStats() {
     const { start, end } = ttPeriodRange();
     const todayIso = ttTodayIso();
-    let sollTotal = 0, sollToDate = 0, booked = 0, absHours = 0, istToDate = 0;
+    let sollTotal = 0, sollToDate = 0, booked = 0, absHours = 0, compHours = 0, istToDate = 0;
     const openDays = [], absList = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const info = ttDayInfo(ttIso(d));
@@ -7796,13 +7800,15 @@ function ttPeriodStats() {
         if (info.iso <= todayIso) {
             // Soll zaehlt fuer heute erst, sobald der Tag angefangen wurde zu buchen
             if (info.iso < todayIso || info.total > 0) sollToDate += info.target;
-            istToDate += info.total;
+            /* Kompensation = Überzeit beziehen: der Tag gilt als abgedeckt, die Stunden werden aber
+               nicht gutgeschrieben – dadurch sinkt der Saldo um genau diese Zeit. */
+            istToDate += info.total - info.compHours;
         }
-        booked += info.booked; absHours += info.absHours;
+        booked += info.booked; absHours += info.absHours; compHours += info.compHours;
         if (info.status === 'missing' || info.status === 'partial') openDays.push(info);
         info.absences.forEach(a => absList.push(a));
     }
-    return { sollTotal, sollToDate, booked, absHours, istToDate, saldo: istToDate - sollToDate, openDays, absList };
+    return { sollTotal, sollToDate, booked, absHours, compHours, istToDate, saldo: istToDate - sollToDate, openDays, absList };
 }
 
 // Offene Tage ausserhalb des angezeigten Monats (damit nichts untergeht)
@@ -7826,15 +7832,22 @@ function ttOpenDaysOutside() {
 }
 
 // --- Aktionen ---
-function ttSetAbsenceRaw(iso, type, hours, note) {
+function ttSetAbsenceRaw(iso, type, hours, note, timeFrom, timeTo) {
     if (!appData.absences) appData.absences = [];
-    appData.absences = appData.absences.filter(a => a.date !== iso);
-    appData.absences.push({
-        id: generateId(), date: iso, type: type,
-        hours: Math.round((parseFloat(hours) || 0) * 100) / 100,
-        note: note || '', userId: appData.settings.currentUserId || null
-    });
+    const h = Math.round((parseFloat(hours) || 0) * 100) / 100;
+    const target = ttIsWorkDay(iso) ? ttTargetHours() : 0;
+    const isFull = target > 0 && h + 0.001 >= target;
+    /* Ganzer Tag ersetzt alle Abwesenheiten dieses Tages. Eine Teil-Abwesenheit (z. B. 2 h Kompensation
+       für einen Arzttermin) ersetzt nur einen früheren Eintrag derselben Art – ein halber Tag Krank und
+       eine Stunde Kompensation am selben Tag bleiben so beide erhalten. */
+    appData.absences = appData.absences.filter(a => a.date !== iso || (!isFull && a.type !== type));
+    const entry = { id: generateId(), date: iso, type: type, hours: h, note: note || '', userId: appData.settings.currentUserId || null };
+    if (!isFull && timeFrom && timeTo) { entry.from = timeFrom; entry.to = timeTo; }
+    appData.absences.push(entry);
 }
+/* Zeitspanne einer Teil-Abwesenheit für die Anzeige, z. B. " · 15:00–17:00" */
+function ttAbsRange(a) { return a && a.from && a.to ? ` · ${a.from}–${a.to}` : ''; }
+function ttTimeToH(v) { const m = /^(\d{1,2}):(\d{2})$/.exec(v || ''); return m ? parseInt(m[1], 10) + parseInt(m[2], 10) / 60 : null; }
 
 // 1-Klick-Buchung aus der Liste "Offene Tage": bucht genau die fehlende Zeit
 function ttQuickAbsence(iso, type) {
@@ -7870,17 +7883,24 @@ function ttSelectOpenDays() {
 }
 
 function ttClearSelection() { ttSelectedDays = []; ttLastClickedDay = null; refreshTimeAccount(); }
-function ttToggleHalfDay(cb) { ttHalfDay = !!cb.checked; }
+function ttToggleHalfDay(cb) { ttHalfDay = !!cb.checked; ttAbsScope = ttHalfDay ? 'half' : 'full'; }
+function ttSetAbsScope(v) { ttAbsScope = v; ttHalfDay = v === 'half'; refreshTimeAccount(); if (v === 'hours') setTimeout(() => { const el = document.getElementById('tt_scope_hours'); if (el) el.focus(); }, 0); }
+function ttSetAbsScopeHours(v) { ttAbsScopeHours = v; }
 
 function ttApplySelection(type) {
     if (ttSelectedDays.length === 0) return;
-    const hours = ttHalfDay ? ttTargetHours() / 2 : ttTargetHours();
+    let hours = ttTargetHours();
+    if (ttAbsScope === 'half') hours = ttTargetHours() / 2;
+    if (ttAbsScope === 'hours') {
+        hours = parseFloat(String(ttAbsScopeHours).replace(',', '.'));
+        if (!(hours > 0)) return showToast(_t('tt_need_hours'), 'error');
+    }
     let n = 0, skipped = 0;
     ttSelectedDays.forEach(iso => {
         if (!ttIsWorkDay(iso)) { skipped++; return; }
         ttSetAbsenceRaw(iso, type, hours); n++;
     });
-    ttSelectedDays = []; ttHalfDay = false;
+    ttSelectedDays = []; ttHalfDay = false; ttAbsScope = 'full'; ttAbsScopeHours = '';
     saveToLocal(true);
     showToast(`${n} ${t('tt_days_booked')} (${ttAbsLabel(type)})${skipped ? ` – ${skipped} ${t('tt_skipped_free')}` : ''}`);
     refreshTimeAccount();
@@ -7944,7 +7964,21 @@ function ttJumpToManual() {
     }
 }
 
-function ttOpenAbsenceRange(presetType) {
+/* Umfang im Dialog umschalten und Stunden aus „ab … bis …" berechnen */
+function ttAbsModalScope(v) {
+    document.querySelectorAll('#abs_scope .tt-scope-btn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+    document.getElementById('abs_scope').dataset.value = v;
+    document.getElementById('abs_partial_row').hidden = v !== 'hours';
+    if (v === 'hours') setTimeout(() => document.getElementById('abs_time_from').focus(), 0);
+}
+function ttAbsModalCalc() {
+    const a = ttTimeToH(document.getElementById('abs_time_from').value);
+    const b = ttTimeToH(document.getElementById('abs_time_to').value);
+    if (a !== null && b !== null && b > a) document.getElementById('abs_hours').value = String(Math.round((b - a) * 100) / 100);
+}
+function ttOpenPartialComp() { ttOpenAbsenceRange('other', 'hours'); }
+
+function ttOpenAbsenceRange(presetType, presetScope) {
     const today = ttTodayIso();
     let from = today, to = today;
     if (ttSelectedDays.length > 0) {
@@ -7954,8 +7988,11 @@ function ttOpenAbsenceRange(presetType) {
     document.getElementById('abs_from').value = from;
     document.getElementById('abs_to').value = to;
     document.getElementById('abs_type').value = presetType || 'vacation';
-    document.getElementById('abs_half').checked = false;
     document.getElementById('abs_note').value = '';
+    document.getElementById('abs_hours').value = '';
+    document.getElementById('abs_time_from').value = '';
+    document.getElementById('abs_time_to').value = getWorkDayEnd();
+    ttAbsModalScope(presetScope || 'full');
     document.getElementById('absenceModal').classList.add('active');
 }
 function ttCloseAbsenceRange() { document.getElementById('absenceModal').classList.remove('active'); }
@@ -7964,16 +8001,25 @@ function ttSaveAbsenceRange() {
     const from = document.getElementById('abs_from').value;
     const to   = document.getElementById('abs_to').value;
     const type = document.getElementById('abs_type').value;
-    const half = document.getElementById('abs_half').checked;
+    const scope = document.getElementById('abs_scope').dataset.value || 'full';
     const note = document.getElementById('abs_note').value.trim();
     if (!from || !to) return showToast(t('tt_need_dates'), 'error');
     if (to < from) return showToast(t('tt_range_invalid'), 'error');
-    const hours = half ? ttTargetHours() / 2 : ttTargetHours();
+    let hours = ttTargetHours(), tFrom = '', tTo = '';
+    if (scope === 'half') hours = ttTargetHours() / 2;
+    if (scope === 'hours') {
+        tFrom = document.getElementById('abs_time_from').value; tTo = document.getElementById('abs_time_to').value;
+        const a = ttTimeToH(tFrom), b = ttTimeToH(tTo);
+        if (a !== null && b !== null && b <= a) return showToast(_t('tt_time_invalid'), 'error');
+        hours = parseFloat(String(document.getElementById('abs_hours').value).replace(',', '.'));
+        if (!(hours > 0)) return showToast(_t('tt_need_hours'), 'error');
+        if (a === null || b === null) { tFrom = ''; tTo = ''; }
+    }
     let n = 0, skipped = 0;
     let d = ttParse(from); const stop = ttParse(to);
     while (d <= stop) {
         const iso = ttIso(d);
-        if (ttIsWorkDay(iso)) { ttSetAbsenceRaw(iso, type, hours, note); n++; } else skipped++;
+        if (ttIsWorkDay(iso)) { ttSetAbsenceRaw(iso, type, hours, note, tFrom, tTo); n++; } else skipped++;
         d.setDate(d.getDate() + 1);
     }
     saveToLocal(true);
@@ -8013,6 +8059,7 @@ function renderTimeAccount() {
                 </div>
                 <span class="tt-head-cta">
                     <button class="secondary" onclick="ttOpenAbsenceRange('vacation')" style="font-size:13px;"><i class="fas fa-plus"></i> ${t('tt_add_absence')}</button>
+                    <button class="secondary" onclick="ttOpenPartialComp()" style="font-size:13px;"><i class="fas fa-user-clock"></i> ${_t('tt_partial_comp')}</button>
                     <button onclick="ttJumpToManual()" style="font-size:13px;"><i class="fas fa-plus"></i> ${t('tt_add_time')}</button>
                 </span>
             </div>
@@ -8024,8 +8071,8 @@ function renderTimeAccount() {
     html += `<div class="tt-kpis">
         ${ttKpi(t('tt_soll_todate'), ttNum(stats.sollToDate) + ' h', `${t('tt_month_total')}: ${ttNum(stats.sollTotal)} h`)}
         ${ttKpi(t('tt_booked_h'), ttNum(stats.booked) + ' h', t('tt_from_tasks'))}
-        ${ttKpi(t('tt_absence_h'), ttNum(stats.absHours) + ' h', t('tt_absence_sub'))}
-        ${ttKpi(t('tt_saldo'), (stats.saldo > 0 ? '+' : '') + ttNum(stats.saldo) + ' h', t('tt_saldo_sub'), saldoColor)}
+        ${ttKpi(t('tt_absence_h'), ttNum(stats.absHours) + ' h', stats.compHours > 0 ? _tf('tt_comp_part', { n: ttNum(stats.compHours) }) : t('tt_absence_sub'))}
+        ${ttKpi(t('tt_saldo'), (stats.saldo > 0 ? '+' : '') + ttNum(stats.saldo) + ' h', stats.compHours > 0 ? _t('tt_saldo_sub2') : t('tt_saldo_sub'), saldoColor)}
         ${ttKpi(t('tt_open_days'), String(stats.openDays.length), t('tt_open_days_sub'), openColor)}
     </div>`;
 
@@ -8057,7 +8104,8 @@ function renderTimeAccount() {
         const isToday = iso === todayIso ? ' today' : '';
         const abs = info.absences[0];
         let cls = info.status, inner = '', style = '';
-        if (abs) {
+        const partIcon = abs && !info.fullAbsence ? `<i class="fas ${ttAbsIcon(abs.type)} tt-day-part" style="--tt-abs:${ttAbsColor(abs.type)}"></i>` : '';
+        if (abs && info.fullAbsence) {
             cls = 'abs';
             style = `--tt-abs:${ttAbsColor(abs.type)};`;
             inner = `<i class="fas ${ttAbsIcon(abs.type)} tt-day-icon"></i><span class="tt-day-h">${info.booked > 0 ? ttNum(info.total) : ttNum(info.absHours)}h</span>`;
@@ -8070,9 +8118,9 @@ function renderTimeAccount() {
         } else {
             inner = `<span class="tt-day-h">${ttNum(info.total)}/${ttNum(info.target || info.booked)}h</span>`;
         }
-        const title = `${ttFmtDate(iso)} — ${t('tt_booked_h')}: ${ttNum(info.booked)}h${info.absHours ? ` / ${ttAbsLabel(abs ? abs.type : 'other')}: ${ttNum(info.absHours)}h` : ''}${info.target ? ` / ${t('target')}: ${ttNum(info.target)}h` : ` (${t('tt_nonworkday')})`}`;
+        const title = `${ttFmtDate(iso)} — ${t('tt_booked_h')}: ${ttNum(info.booked)}h${info.absences.map(a => ` / ${ttAbsLabel(a.type)}: ${ttNum(a.hours)}h${a.from ? ` (${a.from}–${a.to})` : ''}`).join('')}${info.target ? ` / ${t('target')}: ${ttNum(info.target)}h` : ` (${t('tt_nonworkday')})`}`;
         html += `<div class="tt-day ${cls}${sel}${isToday}" style="${style}" title="${title}" onclick="ttToggleDay('${iso}', event)">
-            <span class="tt-day-num">${d.getDate()}</span>${inner}
+            ${partIcon}<span class="tt-day-num">${d.getDate()}</span>${inner}
         </div>`;
     }
     html += `</div></div>`;
@@ -8091,7 +8139,10 @@ function renderTimeAccount() {
     if (ttSelectedDays.length > 0) {
         html += `<div class="tt-actionbar">
             <div class="tt-actionbar-info"><i class="fas fa-check-circle"></i> <b>${ttSelectedDays.length}</b> ${t('tt_selected')}</div>
-            <label class="tt-half"><input type="checkbox" ${ttHalfDay ? 'checked' : ''} onchange="ttToggleHalfDay(this)"> ${t('tt_half_day')}</label>
+            <span class="tt-scope" role="group" aria-label="${_t('tt_scope')}">
+                ${['full','half','hours'].map(v => `<button type="button" class="secondary tt-scope-btn" aria-pressed="${ttAbsScope === v}" onclick="ttSetAbsScope('${v}')">${({full:_t('tt_scope_full'),half:_t('tt_scope_half'),hours:_t('tt_scope_hours')})[v]}</button>`).join('')}
+                ${ttAbsScope === 'hours' ? `<input type="number" id="tt_scope_hours" class="tt-scope-hours" min="0.25" step="0.25" placeholder="h" value="${ttEsc(ttAbsScopeHours)}" oninput="ttSetAbsScopeHours(this.value)" aria-label="${_t('tt_abs_hours_lbl')}"><span class="tt-scope-unit">${_t('tt_hours_per_day_short')}</span>` : ''}
+            </span>
             ${Object.keys(ABSENCE_TYPES).map(k => `<button class="tt-abs-btn" style="--tt-abs:${ABSENCE_TYPES[k].color}" onclick="ttApplySelection('${k}')"><i class="fas ${ABSENCE_TYPES[k].icon}"></i> ${t(ABSENCE_TYPES[k].key)}</button>`).join('')}
             <button class="secondary" style="font-size:12px;" onclick="ttRemoveSelection()"><i class="fas fa-eraser"></i> ${t('tt_remove_abs')}</button>
             <button class="secondary" style="font-size:12px;" onclick="ttClearSelection()"><i class="fas fa-times"></i> ${t('cancel')}</button>
@@ -8114,7 +8165,7 @@ function renderTimeAccount() {
             abs.forEach(a => {
                 detailHtml += `<div class="tt-detail-row abs" style="--tt-abs:${ttAbsColor(a.type)}">
                     <i class="fas ${ttAbsIcon(a.type)}"></i>
-                    <span class="tt-detail-main"><b>${ttAbsLabel(a.type)}</b>${a.note ? `<u>${ttEsc(a.note)}</u>` : ''}</span>
+                    <span class="tt-detail-main"><b>${ttAbsLabel(a.type)}${ttAbsRange(a)}</b>${a.note ? `<u>${ttEsc(a.note)}</u>` : ''}</span>
                     <span class="tt-detail-h">${ttNum(a.hours)} h</span>
                 </div>`;
             });
@@ -8160,7 +8211,7 @@ function renderTimeAccount() {
         html += `<div class="tt-abslist"><h4><i class="fas fa-plane-departure"></i> ${t('tt_abs_in_month')} (${stats.absList.length})</h4><div class="tt-abschips">`;
         stats.absList.sort((a, b) => a.date.localeCompare(b.date)).forEach(a => {
             html += `<span class="tt-chip" style="--tt-abs:${ttAbsColor(a.type)}" title="${ttEsc(a.note)}">
-                <i class="fas ${ttAbsIcon(a.type)}"></i> ${ttFmtShort(a.date)} · ${ttNum(a.hours)}h · ${ttAbsLabel(a.type)}
+                <i class="fas ${ttAbsIcon(a.type)}"></i> ${ttFmtShort(a.date)} · ${ttNum(a.hours)}h${ttAbsRange(a)} · ${ttAbsLabel(a.type)}
                 <button onclick="ttDeleteAbsence('${a.id}')" title="${t('delete')}"><i class="fas fa-times"></i></button>
             </span>`;
         });
@@ -8674,7 +8725,7 @@ function xlsxAddBrandHeader(worksheet, title) {
 function xlLocalize(rows) {
     const M = { Projekt_Stack: 'x_stack', Aufgabenname: 'x_task_name', Stakeholder: 'x_stakeholder', Kategorie: 'x_category', Status: 'x_status',
         'Priorität': 'x_priority', Start: 'x_start', 'Fälligkeit': 'x_due', 'Aufwand_Geschätzt': 'x_effort_est', Aufwand_Bisher: 'x_effort_spent',
-        Notizen: 'x_notes', Notiz: 'x_note', Datum: 'x_date', Aufgabe: 'x_task', Stunden: 'x_hours', Art: 'x_kind', Historie: 'x_history' };
+        Notizen: 'x_notes', Notiz: 'x_note', Uhrzeit: 'x_time_range', Datum: 'x_date', Aufgabe: 'x_task', Stunden: 'x_hours', Art: 'x_kind', Historie: 'x_history' };
     const prio = { high: _t('prio_high'), medium: _t('prio_med'), low: _t('prio_low') };
     return rows.map(r => { const o = {}; for (const k in r) { let v = r[k]; if (k === 'Priorität' && prio[v]) v = prio[v]; o[M[k] ? _t(M[k]) : k] = v; } return o; });
 }
@@ -8721,7 +8772,7 @@ function exportTimeExcel() {
         return { Datum: log.date, Aufgabe: tName, Stunden: log.hours, Notiz: log.note };
     });
     const worksheet = XLSX.utils.json_to_sheet(xlLocalize(wsData)); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, _t('x_sheet_time'));
-    const absData = (appData.absences || []).filter(a => ttInRange(a.date)).slice().sort((a,b) => a.date.localeCompare(b.date)).map(a => ({ Datum: a.date, Art: ttAbsLabel(a.type), Stunden: a.hours, Notiz: a.note || '' }));
+    const absData = (appData.absences || []).filter(a => ttInRange(a.date)).slice().sort((a,b) => a.date.localeCompare(b.date)).map(a => ({ Datum: a.date, Art: ttAbsLabel(a.type), Stunden: a.hours, Uhrzeit: a.from ? `${a.from}–${a.to}` : '', Notiz: a.note || '' }));
     if(absData.length > 0) { const wsAbs = XLSX.utils.json_to_sheet(xlLocalize(absData)); XLSX.utils.book_append_sheet(workbook, wsAbs, _t('x_sheet_abs')); }
     const _rb = ttRangeBounds();
     XLSX.writeFile(workbook, (_rb.from || _rb.to) ? `${_t('x_sheet_time')}_${_rb.from || 'start'}_${_rb.to || _t('x_today')}.xlsx` : _t('x_sheet_time') + '.xlsx');
