@@ -10230,6 +10230,1023 @@ if (typeof aiAutoInit === 'function') aiAutoInit();
    Wiederverwendung vorhandener Bausteine (createTaskCard,
    ttDayInfo, startTimer). Keine neue Datenlogik.
    ══════════════════════════════════════════════════════════════ */
+/* ============================================================
+   HUB-WIDGETS — individuell konfigurierbare Auswertungen
+   Jeder Nutzer legt fest, welche Widgets an welcher Position, mit
+   welchen Inhalten (Zeitraum, Stack, Person, Kennzahl …) und in
+   welcher Darstellungsart erscheinen. Gespeichert pro Nutzer in
+   appData.settings.hubWidgets[userId].
+   ============================================================ */
+const HW_PALETTE = ['#cca300', '#0F5FDC', '#1F9463', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#B96A2B', '#C2185B', '#5E7CE2', '#8D99A6', '#7CB342'];
+const HW_OTHER_COLOR = '#9AA3AD';
+const HW_RANGES = ['this_week', 'last_7', 'this_month', 'last_month', 'last_30', 'this_quarter', 'this_year', 'last_year', 'all'];
+
+const HW_VIEWS = {
+    bar:     { icon: 'fa-chart-column',        key: 'hw_v_bar' },
+    hbar:    { icon: 'fa-chart-bar',           key: 'hw_v_hbar' },
+    stacked: { icon: 'fa-bars-progress',       key: 'hw_v_stacked' },
+    pie:     { icon: 'fa-chart-pie',           key: 'hw_v_pie' },
+    donut:   { icon: 'fa-circle-notch',        key: 'hw_v_donut' },
+    line:    { icon: 'fa-chart-line',          key: 'hw_v_line' },
+    area:    { icon: 'fa-chart-area',          key: 'hw_v_area' },
+    scatter: { icon: 'fa-braille',             key: 'hw_v_scatter' },
+    radar:   { icon: 'fa-circle-nodes',        key: 'hw_v_radar' },
+    box:     { icon: 'fa-grip-lines-vertical', key: 'hw_v_box' },
+    treemap: { icon: 'fa-table-cells-large',   key: 'hw_v_treemap' },
+    heatmap: { icon: 'fa-border-all',          key: 'hw_v_heatmap' },
+    gauge:   { icon: 'fa-gauge-high',          key: 'hw_v_gauge' },
+    kpi:     { icon: 'fa-hashtag',             key: 'hw_v_kpi' },
+    table:   { icon: 'fa-table-list',          key: 'hw_v_table' }
+};
+
+/* Widget-Katalog: Titel, erlaubte Darstellungen, Standard-Optionen und Datenquelle */
+const HW_TYPES = {
+    hours_bucket:   { icon: 'fa-layer-group',     key: 'today_trend',        desc: 'hw_d_hours_bucket', view: 'bar',     views: ['bar', 'hbar', 'stacked', 'pie', 'donut', 'treemap', 'radar', 'box', 'scatter', 'table', 'kpi'], opts: { range: 'this_week', metric: 'hours', stack: '', user: '', limit: 8 }, data: (c) => hwDataHours('bucket', c) },
+    status_dist:    { icon: 'fa-table-columns',   key: 'today_status_dist',  desc: 'hw_d_status',       view: 'stacked', views: ['stacked', 'bar', 'hbar', 'pie', 'donut', 'treemap', 'radar', 'table', 'kpi'], opts: { stack: '', user: '' }, data: (c) => hwDataStatus(c) },
+    prio_open:      { icon: 'fa-flag',            key: 'today_prio_dist',    desc: 'hw_d_prio',         view: 'hbar',    views: ['hbar', 'bar', 'stacked', 'pie', 'donut', 'radar', 'table', 'kpi'], opts: { stack: '', user: '' }, data: (c) => hwDataPrio(c) },
+    hours_stack:    { icon: 'fa-folder-tree',     key: 'hw_w_hours_stack',   desc: 'hw_d_hours_stack',  view: 'hbar',    views: ['hbar', 'bar', 'stacked', 'pie', 'donut', 'treemap', 'radar', 'box', 'scatter', 'table', 'kpi'], opts: { range: 'this_month', metric: 'hours', user: '', limit: 8 }, data: (c) => hwDataHours('stack', c) },
+    hours_person:   { icon: 'fa-users',           key: 'hw_w_hours_person',  desc: 'hw_d_hours_person', view: 'donut',   views: ['donut', 'pie', 'bar', 'hbar', 'stacked', 'treemap', 'radar', 'box', 'scatter', 'table', 'kpi'], opts: { range: 'this_month', metric: 'hours', stack: '', limit: 8 }, data: (c) => hwDataHours('person', c) },
+    workload:       { icon: 'fa-user-clock',      key: 'hw_w_workload',      desc: 'hw_d_workload',     view: 'hbar',    views: ['hbar', 'bar', 'stacked', 'pie', 'donut', 'treemap', 'radar', 'table', 'kpi'], opts: { load: 'count', stack: '', limit: 8 }, data: (c) => hwDataWorkload(c) },
+    deadlines:      { icon: 'fa-hourglass-half',  key: 'hw_w_deadlines',     desc: 'hw_d_deadlines',    view: 'bar',     views: ['bar', 'hbar', 'stacked', 'pie', 'donut', 'treemap', 'table', 'kpi'], opts: { stack: '', user: '' }, data: (c) => hwDataDeadlines(c) },
+    budget_stack:   { icon: 'fa-coins',           key: 'hw_w_budget',        desc: 'hw_d_budget',       view: 'hbar',    views: ['hbar', 'bar', 'gauge', 'radar', 'scatter', 'table', 'kpi'], opts: { limit: 8 }, data: (c) => hwDataBudget(c) },
+    stack_progress: { icon: 'fa-list-check',      key: 'hw_w_progress',      desc: 'hw_d_progress',     view: 'hbar',    views: ['hbar', 'bar', 'gauge', 'radar', 'scatter', 'table', 'kpi'], opts: { user: '', limit: 8 }, data: (c) => hwDataProgress(c) },
+    hours_trend:    { icon: 'fa-chart-line',      key: 'hw_w_hours_trend',   desc: 'hw_d_hours_trend',  view: 'area',    views: ['area', 'line', 'bar', 'heatmap', 'scatter', 'table', 'kpi'], opts: { range: 'last_30', stack: '', user: '' }, data: (c) => hwDataHoursTrend(c) },
+    saldo_trend:    { icon: 'fa-scale-balanced',  key: 'hw_w_saldo',         desc: 'hw_d_saldo',        view: 'line',    views: ['line', 'area', 'bar', 'table', 'kpi'], opts: { range: 'this_month' }, data: (c) => hwDataSaldo(c) },
+    throughput:     { icon: 'fa-circle-check',    key: 'hw_w_throughput',    desc: 'hw_d_throughput',   view: 'bar',     views: ['bar', 'line', 'area', 'heatmap', 'scatter', 'table', 'kpi'], opts: { range: 'this_quarter', stack: '', user: '' }, data: (c) => hwDataThroughput(c) },
+    cycle_time:     { icon: 'fa-stopwatch',       key: 'hw_w_cycle',         desc: 'hw_d_cycle',        view: 'box',     views: ['box', 'scatter', 'bar', 'hbar', 'radar', 'table', 'kpi'], opts: { range: 'all', group: 'priority', stack: '', user: '' }, data: (c) => hwDataCycle(c) },
+    effort_plan:    { icon: 'fa-bullseye',        key: 'hw_w_effort',        desc: 'hw_d_effort',       view: 'scatter', views: ['scatter', 'bar', 'table', 'kpi'], opts: { stack: '', user: '', limit: 12 }, data: (c) => hwDataEffort(c) },
+    weekday_hours:  { icon: 'fa-calendar-week',   key: 'hw_w_weekday',       desc: 'hw_d_weekday',      view: 'radar',   views: ['radar', 'bar', 'hbar', 'box', 'scatter', 'heatmap', 'table', 'kpi'], opts: { range: 'last_30', agg: 'avg', stack: '', user: '' }, data: (c) => hwDataWeekday(c) },
+    absences:       { icon: 'fa-umbrella-beach',  key: 'hw_w_absences',      desc: 'hw_d_absences',     view: 'donut',   views: ['donut', 'pie', 'bar', 'hbar', 'stacked', 'treemap', 'table', 'kpi'], opts: { range: 'this_year' }, data: (c) => hwDataAbsences(c) }
+};
+
+/* Optionen, die im Konfigurationsdialog als Auswahlfeld erscheinen */
+const HW_OPT_ORDER = ['range', 'metric', 'load', 'agg', 'group', 'stack', 'user', 'limit'];
+function hwOptDef(name) {
+    switch (name) {
+        case 'range':  return { label: _t('tr_title'), values: HW_RANGES.map(v => [v, hwRangeName(v)]) };
+        case 'metric': return { label: _t('hw_o_metric'), values: [['hours', _t('hw_m_hours')], ['cost', _t('hw_m_cost') + ' (' + getGlobalCurrency() + ')']] };
+        case 'load':   return { label: _t('hw_o_metric'), values: [['count', _t('hw_m_count')], ['remaining', _t('hw_m_remaining')]] };
+        case 'agg':    return { label: _t('hw_o_agg'), values: [['avg', _t('hw_m_avg')], ['sum', _t('hw_m_sum')]] };
+        case 'group':  return { label: _t('hw_o_group'), values: [['priority', _t('hw_g_priority')], ['bucket', _t('bucket')], ['stack', _t('hw_g_stack')], ['person', _t('hw_g_person')]] };
+        case 'stack':  return { label: _t('hw_g_stack'), values: [['', _t('hw_all_stacks')]].concat((appData.projectStacks || []).map(s => [s.id, s.name || _t('unnamed')])) };
+        case 'user':   return { label: _t('hw_g_person'), values: [['', _t('hw_all_people')], ['me', _t('hw_me')]].concat((appData.users || []).map(u => [u.id, u.name || _t('unnamed')])) };
+        case 'limit':  return { label: _t('hw_o_limit'), values: [[5, _tf('hw_top_n', { n: 5 })], [8, _tf('hw_top_n', { n: 8 })], [12, _tf('hw_top_n', { n: 12 })], [0, _t('hw_all_items')]] };
+    }
+    return null;
+}
+
+/* ---------- Zeitraum & Filter ---------- */
+function hwRangeName(r) {
+    const m = { this_week: _t('today_this_week'), last_7: _t('hw_r_last_7'), this_month: _t('tr_this_month'), last_month: _t('tr_last_month'),
+        last_30: _t('tr_last_30'), this_quarter: _t('tr_this_quarter'), this_year: _t('tr_this_year'), last_year: _t('tr_last_year'), all: _t('tr_all_time') };
+    return m[r] || m.all;
+}
+function hwRangeBounds(r) {
+    const now = new Date(); const y = now.getFullYear(), m = now.getMonth(); const today = ttTodayIso();
+    const R = (a, b) => ({ from: ttIso(a), to: ttIso(b) });
+    switch (r) {
+        case 'this_week': { const s = ttShiftIso(today, -((now.getDay() + 6) % 7)); return { from: s, to: ttShiftIso(s, 6) }; }
+        case 'last_7': return { from: ttShiftIso(today, -6), to: today };
+        case 'this_month': return R(new Date(y, m, 1), new Date(y, m + 1, 0));
+        case 'last_month': return R(new Date(y, m - 1, 1), new Date(y, m, 0));
+        case 'last_30': return { from: ttShiftIso(today, -29), to: today };
+        case 'this_quarter': { const q = Math.floor(m / 3) * 3; return R(new Date(y, q, 1), new Date(y, q + 3, 0)); }
+        case 'this_year': return R(new Date(y, 0, 1), new Date(y, 11, 31));
+        case 'last_year': return R(new Date(y - 1, 0, 1), new Date(y - 1, 11, 31));
+        default: return { from: null, to: null };
+    }
+}
+function hwIn(b, iso) {
+    if (!b.from && !b.to) return true;
+    if (!iso) return false;
+    const d = String(iso).slice(0, 10);
+    return !(b.from && d < b.from) && !(b.to && d > b.to);
+}
+function hwUserId(c) { return c.user === 'me' ? (appData.settings.currentUserId || '') : (c.user || ''); }
+function hwTaskPass(task, c) {
+    if (!task) return !c.stack && !hwUserId(c);
+    if (c.stack && (task.projectStackId || '') !== c.stack) return false;
+    const u = hwUserId(c);
+    if (u && (task.assigneeId || '') !== u) return false;
+    return true;
+}
+/* Zeitbuchungen im Zeitraum inkl. zugehöriger Aufgabe (auch gelöschte) */
+function hwLogs(c) {
+    const b = hwRangeBounds(c.range);
+    return (appData.timeLogs || []).filter(l => l && hwIn(b, l.date)).map(l => ({ l, task: ttTaskOrDeleted(l.taskId).task, h: parseFloat(l.hours) || 0, date: String(l.date || '').slice(0, 10) }))
+        .filter(x => x.h > 0 && hwTaskPass(x.task, c));
+}
+function hwLogValue(x, metric) {
+    if (metric !== 'cost') return x.h;
+    const st = x.task && x.task.projectStackId ? ttStackOrDeleted(x.task.projectStackId) : null;
+    return x.h * getEffectiveHourlyRate(null, x.task, st);
+}
+function hwUserName(id) { const u = (appData.users || []).find(x => x.id === id); return u ? (u.name || _t('unnamed')) : _t('hw_unassigned'); }
+
+/* ---------- Formatierung ---------- */
+function hwFmt(v, unit) {
+    v = parseFloat(v) || 0;
+    switch (unit) {
+        case 'h': return ttNum(v) + ' h';
+        case 'cur': return Math.round(v).toLocaleString(ttLocale()) + ' ' + getGlobalCurrency();
+        case '%': return Math.round(v) + ' %';
+        case 'd': return ttNum(Math.round(v * 10) / 10) + ' ' + _t('hw_u_days');
+        case 'sh': return (v > 0.005 ? '+' : '') + ttNum(v) + ' h';
+        default: return String(Math.round(v * 10) / 10).replace('.', ttLang() === 'en' ? '.' : ',');
+    }
+}
+function hwFmtAxis(v, unit) {
+    const a = Math.abs(v);
+    let s = a >= 10000 ? (Math.round(v / 100) / 10) + 'k' : (a >= 100 ? String(Math.round(v)) : (a >= 10 ? String(Math.round(v * 10) / 10) : String(Math.round(v * 100) / 100)));
+    if (ttLang() !== 'en') s = s.replace('.', ',');
+    return unit === '%' ? s + '%' : s;
+}
+function hwShort(s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, Math.max(1, n - 1)) + '…' : s; }
+const hwEsc = (s) => escapeHtmlToday(s);
+
+/* Kategorien sortieren, einfärben, auf Top-N begrenzen (Rest = „Weitere") */
+function hwFinishCat(items, c, extra) {
+    items = items.slice();
+    if (!extra.keepOrder) items.sort((a, b) => b.value - a.value);
+    let pi = 0;
+    items.forEach(it => { if (!it.color) it.color = HW_PALETTE[pi++ % HW_PALETTE.length]; });
+    const lim = parseInt(c.limit, 10) || 0;
+    if (lim > 0 && items.length > lim && !extra.noOthers) {
+        const rest = items.slice(lim);
+        items = items.slice(0, lim);
+        if (extra.unit !== '%') {
+            items.push({ key: '_other', label: _t('hw_others') + ' (' + rest.length + ')', color: HW_OTHER_COLOR, value: rest.reduce((s, r) => s + r.value, 0), raw: rest.reduce((a, r) => a.concat(r.raw || []), []) });
+        }
+    }
+    const total = items.reduce((s, r) => s + (r.value || 0), 0);
+    return Object.assign({ kind: 'cat', items, total }, extra);
+}
+
+/* ---------- Zeit-Raster für Verläufe ---------- */
+function hwBins(c, earliestIso) {
+    const today = ttTodayIso();
+    let b = hwRangeBounds(c.range);
+    let from = b.from || earliestIso || ttShiftIso(today, -29);
+    let to = b.to || today;
+    if (from > to) from = to;
+    const days = Math.round((ttParse(to) - ttParse(from)) / 864e5) + 1;
+    const gran = days <= 35 ? 'day' : (days <= 200 ? 'week' : 'month');
+    const bins = [];
+    const multiYear = from.slice(0, 4) !== to.slice(0, 4);
+    if (gran === 'day') {
+        for (let i = 0; i < days; i++) { const iso = ttShiftIso(from, i); bins.push({ from: iso, to: iso, label: String(ttParse(iso).getDate()), full: ttFmtDate(iso) }); }
+    } else if (gran === 'week') {
+        let s = ttShiftIso(from, -((ttParse(from).getDay() + 6) % 7));
+        while (s <= to) {
+            const e = ttShiftIso(s, 6);
+            const f = s < from ? from : s, tt = e > to ? to : e;
+            bins.push({ from: f, to: tt, label: _t('hw_week_short') + ' ' + hwIsoWeek(s), full: ttFmtDate(f) + ' – ' + ttFmtDate(tt) });
+            s = ttShiftIso(s, 7);
+        }
+    } else {
+        let d = ttParse(from); d = new Date(d.getFullYear(), d.getMonth(), 1);
+        while (ttIso(d) <= to) {
+            const e = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+            const f = ttIso(d) < from ? from : ttIso(d), tt = ttIso(e) > to ? to : ttIso(e);
+            const lbl = d.toLocaleDateString(ttLocale(), { month: 'short' }) + (multiYear ? ' ' + String(d.getFullYear()).slice(2) : '');
+            bins.push({ from: f, to: tt, label: lbl, full: d.toLocaleDateString(ttLocale(), { month: 'long', year: 'numeric' }) });
+            d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        }
+    }
+    return { gran, bins, from, to };
+}
+function hwIsoWeek(iso) {
+    const d = ttParse(iso); const t0 = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dn = t0.getUTCDay() || 7; t0.setUTCDate(t0.getUTCDate() + 4 - dn);
+    const y0 = new Date(Date.UTC(t0.getUTCFullYear(), 0, 1));
+    return Math.ceil(((t0 - y0) / 864e5 + 1) / 7);
+}
+function hwBinIndex(bins, iso) { for (let i = 0; i < bins.length; i++) if (iso >= bins[i].from && iso <= bins[i].to) return i; return -1; }
+function hwEarliest(isos) { const v = isos.filter(Boolean).sort(); return v.length ? v[0] : null; }
+
+/* ---------- Datenquellen ---------- */
+function hwDataHours(dim, c) {
+    const metric = c.metric || 'hours';
+    const map = {};
+    hwLogs(c).forEach(x => {
+        let k, label, color = null;
+        if (dim === 'bucket') { k = (x.task && x.task.bucket) || ''; label = k || _t('no_bucket'); color = k ? getBucketColor(k) : HW_OTHER_COLOR; }
+        else if (dim === 'stack') { k = (x.task && x.task.projectStackId) || ''; const s = k ? ttStackOrDeleted(k) : null; label = s ? (s.name || _t('unnamed')) : _t('hw_no_stack'); }
+        else { k = (x.task && x.task.assigneeId) || ''; label = k ? hwUserName(k) : _t('hw_unassigned'); }
+        const v = hwLogValue(x, metric);
+        if (!map[k]) map[k] = { key: k, label, color, value: 0, raw: [] };
+        map[k].value += v; map[k].raw.push(v);
+    });
+    const items = Object.values(map).filter(i => i.value > 0);
+    return hwFinishCat(items, c, { unit: metric === 'cost' ? 'cur' : 'h', sub: hwRangeName(c.range), hasRaw: true });
+}
+
+function hwDataStatus(c) {
+    const cols = (appData.statuses || []).filter(col => col.id !== 'done');
+    const list = getFilteredTasks().filter(tk => hwTaskPass(tk, c));
+    /* Spalten ohne eigene Farbe bekommen für die Auswertung unterscheidbare Palettenfarben */
+    const items = cols.map((col, i) => ({ key: col.id, label: col.title, color: col.color || HW_PALETTE[i % HW_PALETTE.length], value: list.filter(tk => tk.status === col.id).length }));
+    const total = items.reduce((s, i) => s + i.value, 0);
+    /* Zusatzzeile wie bisher: offene Stacks und sichtbare Checkpunkte/Meilensteine */
+    const visStacks = getFilteredStacks().filter(s => !c.stack || s.id === c.stack);
+    const hideDone = appData.settings.globalHideCompleted;
+    let openCl = 0;
+    const clCount = (owner, cl) => {
+        if (hideDone) cl = cl.filter(ci => !ci.done);
+        if (activeFilters.users.length > 0 && !activeFilters.users.includes(owner.assigneeId || '')) cl = cl.filter(ci => activeFilters.users.includes(ci.assigneeId || ''));
+        return cl.length;
+    };
+    list.forEach(tk => { openCl += clCount(tk, tk.checklist || []); });
+    visStacks.forEach(s => { openCl += clCount(s, s.checklist || []); });
+    const parts = [];
+    if (visStacks.length > 0) parts.push(_t('today_open_stacks_extra').replace('{n}', visStacks.length));
+    if (openCl > 0) parts.push(_t('today_open_checklist_extra').replace('{n}', openCl));
+    return { kind: 'cat', items, total, unit: 'n', keepOrder: true, sub: total + ' ' + _t('today_open'), foot: parts.length ? '<i class="fas fa-layer-group"></i> ' + parts.join(' · ') : '' };
+}
+
+function hwDataPrio(c) {
+    const by = { high: 0, medium: 0, low: 0 };
+    (appData.tasks || []).forEach(tk => { if (!isTaskDone(tk) && hwTaskPass(tk, c) && by[tk.priority] !== undefined) by[tk.priority]++; });
+    const items = [
+        { key: 'high', label: _t('prio_high'), color: 'var(--danger)', value: by.high },
+        { key: 'medium', label: _t('prio_med'), color: 'var(--warning)', value: by.medium },
+        { key: 'low', label: _t('prio_low'), color: 'var(--success)', value: by.low }
+    ];
+    const total = by.high + by.medium + by.low;
+    return { kind: 'cat', items, total, unit: 'n', keepOrder: true, sub: total + ' ' + _t('today_open') };
+}
+
+function hwDataWorkload(c) {
+    const map = {};
+    (appData.tasks || []).forEach(tk => {
+        if (isTaskDone(tk) || !hwTaskPass(tk, c)) return;
+        const k = tk.assigneeId || '';
+        if (!map[k]) map[k] = { key: k, label: k ? hwUserName(k) : _t('hw_unassigned'), color: null, value: 0 };
+        if (c.load === 'remaining') map[k].value += Math.max(0, (parseFloat(tk.estimatedTime) || 0) - getTaskTrackedHours(tk));
+        else map[k].value += 1;
+    });
+    const items = Object.values(map).filter(i => i.value > 0);
+    const ds = hwFinishCat(items, c, { unit: c.load === 'remaining' ? 'h' : 'n' });
+    ds.sub = c.load === 'remaining' ? hwFmt(ds.total, 'h') : ds.total + ' ' + _t('today_open');
+    return ds;
+}
+
+function hwDataDeadlines(c) {
+    const today = ttTodayIso(); const dow = (ttParse(today).getDay() + 6) % 7;
+    const endW = ttShiftIso(today, 6 - dow), endN = ttShiftIso(endW, 7);
+    const defs = [
+        ['overdue', _t('wf_f_overdue'), 'var(--danger)'], ['today', _t('gantt_today'), 'var(--warning)'], ['week', _t('today_this_week'), '#cca300'],
+        ['next', _t('today_next_week'), '#0F5FDC'], ['later', _t('today_later'), '#64748B'], ['none', _t('hw_no_date'), HW_OTHER_COLOR]
+    ];
+    const cnt = {}; defs.forEach(d => { cnt[d[0]] = 0; });
+    (appData.tasks || []).forEach(tk => {
+        if (isTaskDone(tk) || !hwTaskPass(tk, c)) return;
+        const d = String(tk.dueDate || '').slice(0, 10);
+        const k = !d ? 'none' : d < today ? 'overdue' : d === today ? 'today' : d <= endW ? 'week' : d <= endN ? 'next' : 'later';
+        cnt[k]++;
+    });
+    const items = defs.map(d => ({ key: d[0], label: d[1], color: d[2], value: cnt[d[0]] }));
+    const total = items.reduce((s, i) => s + i.value, 0);
+    return { kind: 'cat', items, total, unit: 'n', keepOrder: true, sub: total + ' ' + _t('today_open'), kpi: { value: cnt.overdue + cnt.today, unit: 'n', label: _t('wf_f_overdue') + ' / ' + _t('gantt_today') } };
+}
+
+function hwBudgetColor(p) { return p > 100 ? 'var(--danger)' : (p >= 80 ? 'var(--warning)' : 'var(--success)'); }
+function hwDataBudget(c) {
+    const rows = [];
+    (appData.projectStacks || []).forEach(s => { const tg = parseFloat(s.targetBudget) || 0; if (tg > 0) rows.push({ name: s.name || _t('unnamed'), target: tg, used: getStackConsumedBudget(s) }); });
+    (appData.tasks || []).forEach(tk => { const tg = parseFloat(tk.targetBudget) || 0; if (tg > 0 && !tk.projectStackId) rows.push({ name: tk.projectName || _t('unnamed'), target: tg, used: getTaskConsumedBudget(tk) }); });
+    const items = rows.map((r, i) => { const p = r.used / r.target * 100; return { key: 'b' + i, label: r.name, value: p, color: hwBudgetColor(p), detail: hwFmt(r.used, 'cur') + ' / ' + hwFmt(r.target, 'cur') }; });
+    const sumT = rows.reduce((s, r) => s + r.target, 0), sumU = rows.reduce((s, r) => s + r.used, 0);
+    const pct = sumT ? sumU / sumT * 100 : 0;
+    const over = items.filter(i => i.value > 100).length;
+    const ds = hwFinishCat(items, c, { unit: '%', ref: 100 });
+    ds.sub = over ? _tf('hw_over_n', { n: over }) : rows.length + ' ' + (rows.length === 1 ? _t('budgets_item') : _t('budgets_items'));
+    ds.gauge = { value: pct, max: 100, label: _t('hw_used_total'), detail: hwFmt(sumU, 'cur') + ' / ' + hwFmt(sumT, 'cur') };
+    ds.kpi = { value: pct, unit: '%', label: _t('hw_used_total'), detail: ds.gauge.detail };
+    return ds;
+}
+
+function hwDataProgress(c) {
+    const u = hwUserId(c);
+    const items = [];
+    (appData.projectStacks || []).forEach(s => {
+        if (s.status === 'completed') return;
+        if (u && (s.assigneeId || '') !== u) return;
+        const tasks = (appData.tasks || []).filter(tk => tk.projectStackId === s.id);
+        let done, tot;
+        if (tasks.length) { tot = tasks.length; done = tasks.filter(isTaskDone).length; }
+        else { const cl = s.checklist || []; tot = cl.length; done = cl.filter(x => x.done).length; }
+        if (!tot) return;
+        items.push({ key: s.id, label: s.name || _t('unnamed'), value: done / tot * 100, color: s.bucket ? getBucketColor(s.bucket) : null, detail: done + ' / ' + tot });
+    });
+    const avg = items.length ? items.reduce((a, i) => a + i.value, 0) / items.length : 0;
+    const ds = hwFinishCat(items, c, { unit: '%', ref: 100, fixedMax: 100 });
+    ds.sub = items.length + ' ' + _t('budgets_open_stacks');
+    ds.gauge = { value: avg, max: 100, label: _t('hw_avg_progress') };
+    ds.kpi = { value: avg, unit: '%', label: _t('hw_avg_progress') };
+    return ds;
+}
+
+function hwDataHoursTrend(c) {
+    const logs = hwLogs(Object.assign({}, c, { range: 'all' }));
+    const grid = hwBins(c, hwEarliest(logs.map(x => x.date)));
+    const ist = grid.bins.map(() => 0), soll = grid.bins.map(() => 0);
+    logs.forEach(x => { const i = hwBinIndex(grid.bins, x.date); if (i >= 0) ist[i] += x.h; });
+    const withSoll = !c.stack && !hwUserId(c);
+    if (withSoll) grid.bins.forEach((b, i) => { for (let d = b.from; d <= b.to; d = ttShiftIso(d, 1)) soll[i] += ttDayInfo(d).target || 0; });
+    const series = [{ name: _t('hw_ist'), values: ist, color: 'var(--hw-main)' }];
+    if (withSoll) series.push({ name: _t('hw_soll'), values: soll, color: 'var(--text-muted)', dashed: true, ghost: true });
+    const sumI = ist.reduce((a, b) => a + b, 0), sumS = soll.reduce((a, b) => a + b, 0);
+    return { kind: 'series', labels: grid.bins.map(b => b.label), full: grid.bins.map(b => b.full), bins: grid.bins, gran: grid.gran, series, unit: 'h', sub: hwRangeName(c.range),
+        kpi: { value: sumI, unit: 'h', label: _t('tr_hours'), detail: withSoll && sumS ? _t('hw_soll') + ': ' + hwFmt(sumS, 'h') + ' · ' + Math.round(sumI / sumS * 100) + ' %' : '' } };
+}
+
+function hwDataSaldo(c) {
+    const today = ttTodayIso();
+    const grid = hwBins(c, hwEarliest((appData.timeLogs || []).map(l => String(l.date || '').slice(0, 10)).concat((appData.absences || []).map(a => a.date))));
+    const vals = [];
+    let cum = 0;
+    let d = grid.from;
+    grid.bins.forEach(b => {
+        for (; d <= b.to; d = ttShiftIso(d, 1)) {
+            if (d > today) continue;
+            const info = ttDayInfo(d);
+            cum += (info.total || 0) - (info.compHours || 0) - (info.target || 0);
+        }
+        vals.push(b.from > today ? null : Math.round(cum * 100) / 100);
+    });
+    const last = vals.filter(v => v !== null);
+    const fin = last.length ? last[last.length - 1] : 0;
+    return { kind: 'series', labels: grid.bins.map(b => b.label), full: grid.bins.map(b => b.full), bins: grid.bins, gran: grid.gran, unit: 'sh', signed: true,
+        series: [{ name: _t('hw_saldo'), values: vals, color: 'var(--hw-main)', signColors: true }], sub: hwRangeName(c.range),
+        kpi: { value: fin, unit: 'sh', label: _t('hw_saldo'), tone: fin < -0.01 ? 'neg' : (fin > 0.01 ? 'pos' : '') } };
+}
+
+function hwDataThroughput(c) {
+    const u = hwUserId(c);
+    const tDates = (appData.tasks || []).filter(tk => isTaskDone(tk) && tk.completedAt && hwTaskPass(tk, c)).map(tk => ttIso(new Date(tk.completedAt)));
+    const sDates = (appData.projectStacks || []).filter(s => s.status === 'completed' && s.completedAt && (!c.stack || s.id === c.stack) && (!u || (s.assigneeId || '') === u)).map(s => ttIso(new Date(s.completedAt)));
+    const grid = hwBins(c, hwEarliest(tDates.concat(sDates)));
+    const tv = grid.bins.map(() => 0), sv = grid.bins.map(() => 0);
+    tDates.forEach(d => { const i = hwBinIndex(grid.bins, d); if (i >= 0) tv[i]++; });
+    sDates.forEach(d => { const i = hwBinIndex(grid.bins, d); if (i >= 0) sv[i]++; });
+    const series = [{ name: _t('hw_tasks_done'), values: tv, color: 'var(--hw-main)' }];
+    if (sv.some(v => v > 0)) series.push({ name: _t('hw_stacks_done'), values: sv, color: 'var(--success)' });
+    const sum = tv.reduce((a, b) => a + b, 0);
+    return { kind: 'series', labels: grid.bins.map(b => b.label), full: grid.bins.map(b => b.full), bins: grid.bins, gran: grid.gran, series, unit: 'n', sub: hwRangeName(c.range),
+        kpi: { value: sum, unit: 'n', label: _t('hw_tasks_done'), detail: grid.bins.length > 1 ? '⌀ ' + hwFmt(sum / grid.bins.length, 'n') + ' / ' + _t(grid.gran === 'day' ? 'hw_per_day' : grid.gran === 'week' ? 'hw_per_week' : 'hw_per_month') : '' } };
+}
+
+function hwMedian(arr) { const a = arr.slice().sort((x, y) => x - y); if (!a.length) return 0; const m = Math.floor(a.length / 2); return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; }
+function hwQuant(a, q) { if (!a.length) return 0; const p = (a.length - 1) * q, lo = Math.floor(p), hi = Math.ceil(p); return a[lo] + (a[hi] - a[lo]) * (p - lo); }
+
+function hwDataCycle(c) {
+    const b = hwRangeBounds(c.range);
+    const map = {};
+    const order = c.group === 'priority' ? ['high', 'medium', 'low'] : null;
+    const all = [];
+    (appData.tasks || []).forEach(tk => {
+        if (!isTaskDone(tk) || !tk.completedAt || !tk.startDate || !hwTaskPass(tk, c)) return;
+        const endIso = ttIso(new Date(tk.completedAt));
+        if (!hwIn(b, endIso)) return;
+        const days = Math.max(0, Math.round((ttParse(endIso) - ttParse(String(tk.startDate).slice(0, 10))) / 864e5) + 1);
+        let k, label, color = null;
+        if (c.group === 'priority') { k = tk.priority || 'medium'; label = _t({ high: 'prio_high', medium: 'prio_med', low: 'prio_low' }[k] || 'prio_med'); color = { high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--success)' }[k]; }
+        else if (c.group === 'bucket') { k = tk.bucket || ''; label = k || _t('no_bucket'); color = k ? getBucketColor(k) : HW_OTHER_COLOR; }
+        else if (c.group === 'stack') { k = tk.projectStackId || ''; const s = k ? ttStackOrDeleted(k) : null; label = s ? (s.name || _t('unnamed')) : _t('hw_no_stack'); }
+        else { k = tk.assigneeId || ''; label = k ? hwUserName(k) : _t('hw_unassigned'); }
+        if (!map[k]) map[k] = { key: k, label, color, raw: [], value: 0 };
+        map[k].raw.push(days); all.push(days);
+    });
+    let items = Object.values(map);
+    items.forEach(i => { i.value = hwMedian(i.raw); i.detail = _tf('hw_tasks_n', { n: i.raw.length }); });
+    if (order) items.sort((x, y) => order.indexOf(x.key) - order.indexOf(y.key));
+    const ds = hwFinishCat(items, c, { unit: 'd', keepOrder: !!order, hasRaw: true, noOthers: true, nonAdditive: true, valueLabel: _t('hw_median') });
+    ds.sub = _tf('hw_tasks_n', { n: all.length });
+    ds.kpi = { value: hwMedian(all), unit: 'd', label: _t('hw_median'), detail: all.length ? '⌀ ' + hwFmt(all.reduce((a, x) => a + x, 0) / all.length, 'd') : '' };
+    return ds;
+}
+
+function hwDataEffort(c) {
+    let rows = (appData.tasks || []).filter(tk => hwTaskPass(tk, c) && (parseFloat(tk.estimatedTime) || 0) > 0)
+        .map(tk => ({ id: tk.id, name: tk.projectName || _t('unnamed'), plan: parseFloat(tk.estimatedTime) || 0, ist: getTaskTrackedHours(tk), done: isTaskDone(tk) }));
+    rows.sort((a, b) => b.plan - a.plan);
+    const lim = parseInt(c.limit, 10) || 0;
+    if (lim > 0) rows = rows.slice(0, lim);
+    const sumP = rows.reduce((s, r) => s + r.plan, 0), sumI = rows.reduce((s, r) => s + r.ist, 0);
+    const over = rows.filter(r => r.ist > r.plan + 0.01).length;
+    return {
+        kind: 'xy', unit: 'h', diag: true, xLabel: _t('hw_plan') + ' (h)', yLabel: _t('hw_actual') + ' (h)',
+        points: rows.map(r => ({ x: r.plan, y: r.ist, label: r.name, color: r.ist > r.plan + 0.01 ? 'var(--danger)' : 'var(--success)' })),
+        labels: rows.map(r => r.name), full: rows.map(r => r.name),
+        series: [{ name: _t('hw_plan'), values: rows.map(r => r.plan), color: 'var(--text-muted)', ghost: true }, { name: _t('hw_actual'), values: rows.map(r => r.ist), color: 'var(--hw-main)' }],
+        sub: over ? _tf('hw_over_plan_n', { n: over }) : _tf('hw_tasks_n', { n: rows.length }),
+        kpi: { value: sumP ? sumI / sumP * 100 : 0, unit: '%', label: _t('hw_of_plan'), detail: hwFmt(sumI, 'h') + ' / ' + hwFmt(sumP, 'h') }
+    };
+}
+
+function hwDataWeekday(c) {
+    const perDate = {};
+    hwLogs(c).forEach(x => { perDate[x.date] = (perDate[x.date] || 0) + x.h; });
+    const wd = appData.settings.workDays || [1, 2, 3, 4, 5];
+    const ref = ttParse('2024-01-01'); /* ein Montag */
+    const items = [];
+    for (let i = 0; i < 7; i++) {
+        const jsDay = (i + 1) % 7;
+        const raw = Object.keys(perDate).filter(d => ttParse(d).getDay() === jsDay).map(d => perDate[d]);
+        if (!raw.length && !wd.includes(jsDay)) continue;
+        const sum = raw.reduce((a, b) => a + b, 0);
+        const dd = new Date(ref); dd.setDate(ref.getDate() + i);
+        items.push({ key: 'd' + i, label: dd.toLocaleDateString(ttLocale(), { weekday: 'short' }), color: null, raw, value: c.agg === 'sum' ? sum : (raw.length ? sum / raw.length : 0), detail: _tf('hw_days_n', { n: raw.length }) });
+    }
+    items.forEach(it => { it.color = 'var(--hw-main)'; });
+    const ds = hwFinishCat(items, c, { unit: 'h', keepOrder: true, hasRaw: true, noOthers: true, nonAdditive: c.agg !== 'sum', valueLabel: c.agg === 'sum' ? _t('hw_m_sum') : _t('hw_m_avg') });
+    ds.sub = hwRangeName(c.range) + ' · ' + (c.agg === 'sum' ? _t('hw_m_sum') : '⌀');
+    ds.heat = true;
+    return ds;
+}
+
+function hwDataAbsences(c) {
+    const b = hwRangeBounds(c.range); const me = appData.settings.currentUserId;
+    const tgt = ttTargetHours();
+    const by = {};
+    (appData.absences || []).forEach(a => {
+        if (!a || !hwIn(b, a.date)) return;
+        if (a.userId && me && a.userId !== me) return;
+        by[a.type] = (by[a.type] || 0) + (parseFloat(a.hours) || tgt) / tgt;
+    });
+    const items = Object.keys(ABSENCE_TYPES).map(k => ({ key: k, label: _t(ABSENCE_TYPES[k].key), color: ABSENCE_TYPES[k].color, value: by[k] || 0 }));
+    const total = items.reduce((s, i) => s + i.value, 0);
+    return { kind: 'cat', items, total, unit: 'd', keepOrder: true, sub: hwRangeName(c.range) };
+}
+
+/* ============================================================
+   DARSTELLUNGEN
+   ============================================================ */
+let HW_W = 320; const HW_H = 150; /* Breite des Diagramm-Koordinatensystems – passt sich der Widget-Breite an */
+function hwNice(min, max, n) {
+    if (min === max) { max = min + 1; }
+    const span = max - min;
+    const raw = span / (n || 4);
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw) || raw;
+    const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+    const ticks = []; for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+    return { lo, hi, ticks };
+}
+function hwSvg(w, h, body, cls) { return `<svg class="hw-svg ${cls || ''}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img">${body}</svg>`; }
+function hwTitle(s) { return `<title>${hwEsc(s)}</title>`; }
+
+/* Gemeinsames Achsensystem für kategoriale X-Achse */
+function hwAxes(n, minV, maxV, unit, labels, opts) {
+    opts = opts || {};
+    const L = 34, R = 6, T = 8, B = labels ? 22 : 8;
+    const pw = HW_W - L - R, ph = HW_H - T - B;
+    const sc = hwNice(Math.min(0, minV), Math.max(0, maxV), 4);
+    const y = v => T + ph - (v - sc.lo) / (sc.hi - sc.lo) * ph;
+    const bw = pw / Math.max(1, n);
+    const x = i => L + bw * i + bw / 2;
+    let g = '';
+    sc.ticks.forEach(tv => { const yy = y(tv); g += `<line x1="${L}" x2="${HW_W - R}" y1="${yy}" y2="${yy}" class="hw-grid${tv === 0 ? ' zero' : ''}"/><text x="${L - 5}" y="${yy + 3}" class="hw-ax" text-anchor="end">${hwFmtAxis(tv, unit)}</text>`; });
+    if (labels) {
+        const every = Math.max(1, Math.ceil(n / (opts.maxLabels || 8)));
+        labels.forEach((lb, i) => { if (i % every === 0 || (n <= 12)) g += `<text x="${x(i)}" y="${HW_H - 7}" class="hw-ax" text-anchor="middle">${hwEsc(hwShort(lb, n > 8 ? 6 : 9))}</text>`; });
+    }
+    return { g, x, y, bw, L, R, T, B, pw, ph, sc };
+}
+
+function hwEmpty() { return `<div class="wk-tr-empty hw-empty">${_t('hw_no_data')}</div>`; }
+function hwCatItems(ds) { return (ds.items || []).filter(i => (i.value || 0) > 0); }
+function hwLegend(items, ds, pct) {
+    const tot = ds.total || 1;
+    return `<div class="wk-dist-legend hw-legend">${items.map(i => `<span title="${hwEsc(i.label)}${i.detail ? ' · ' + hwEsc(i.detail) : ''}"><i style="background:${i.color}"></i>${hwEsc(hwShort(i.label, 22))}: <b>${hwFmt(i.value, ds.unit)}</b>${pct && ds.unit !== '%' ? ` <em>${Math.round(i.value / tot * 100)}%</em>` : ''}</span>`).join('')}</div>`;
+}
+function hwSeriesLegend(ds) {
+    if ((ds.series || []).length < 2) return '';
+    return `<div class="wk-dist-legend hw-legend">${ds.series.map(s => `<span><i class="${s.dashed ? 'dash' : ''}" style="background:${s.color}"></i>${hwEsc(s.name)}: <b>${hwFmt(s.values.reduce((a, b) => a + (b || 0), 0), ds.unit)}</b></span>`).join('')}</div>`;
+}
+/* Kategorien → Serie, Serie → Kategorien (damit jede passende Darstellung beide Datenformen versteht) */
+function hwAsSeries(ds) {
+    if (ds.kind === 'series' || ds.kind === 'xy') return ds;
+    const items = ds.items || [];
+    return { kind: 'series', labels: items.map(i => i.label), full: items.map(i => i.label + (i.detail ? ' · ' + i.detail : '')), unit: ds.unit, colors: items.map(i => i.color), ref: ds.ref, fixedMax: ds.fixedMax,
+        series: [{ name: ds.valueLabel || _t('hw_value'), values: items.map(i => i.value), color: 'var(--hw-main)' }] };
+}
+
+/* Säulen: Kategorien wie bisher als Säulen (HTML), Verläufe als SVG mit Achsen */
+function hwViewBar(ds) {
+    if (ds.kind === 'cat') {
+        const items = ds.keepOrder ? ds.items : hwCatItems(ds);
+        if (!items.length || !items.some(i => i.value > 0)) return hwEmpty();
+        const max = Math.max(ds.fixedMax || 0, ds.ref || 0, ...items.map(i => i.value), 1e-9);
+        const cols = items.map(i => `<div class="wk-tr-col" title="${hwEsc(i.label)}: ${hwFmt(i.value, ds.unit)}${i.detail ? ' · ' + hwEsc(i.detail) : ''}"><div class="wk-tr-bar">${ds.ref ? `<span class="hw-ref" style="bottom:${ds.ref / max * 100}%"></span>` : ''}<span class="wk-tr-fill${i.value > 0 ? '' : ' zero'}" style="height:${Math.min(100, i.value / max * 100)}%;background:${i.color}"></span></div><u>${hwEsc(hwShort(i.label, items.length > 6 ? 6 : 9))}</u></div>`).join('');
+        return `<div class="wk-trend hw-cols">${cols}</div>` + hwLegend(items.filter(i => ds.keepOrder || i.value > 0), ds, false);
+    }
+    const s = hwAsSeries(ds);
+    const n = s.labels.length; if (!n) return hwEmpty();
+    const vals = [].concat(...s.series.map(se => se.values.filter(v => v !== null)));
+    if (!vals.length || (!vals.some(v => v) && !ds.signed)) return hwEmpty();
+    const ax = hwAxes(n, Math.min(0, ...vals), Math.max(...vals, ds.ref || 0), ds.unit, s.labels);
+    const k = s.series.length; const gw = Math.min(26, ax.bw * 0.78); const w = gw / k;
+    let body = ax.g;
+    s.series.forEach((se, si) => se.values.forEach((v, i) => {
+        if (v === null || v === undefined) return;
+        const y0 = ax.y(0), y1 = ax.y(v);
+        const col = se.signColors ? (v < 0 ? 'var(--danger)' : 'var(--success)') : (s.colors && k === 1 ? s.colors[i] : se.color);
+        body += `<rect x="${ax.x(i) - gw / 2 + si * w}" y="${Math.min(y0, y1)}" width="${Math.max(1, w - (k > 1 ? 1 : 0))}" height="${Math.max(0.5, Math.abs(y1 - y0))}" rx="${Math.min(3, w / 3)}" style="fill:${col}${se.ghost ? ';opacity:.35' : ''}">${hwTitle((s.full || s.labels)[i] + ' — ' + se.name + ': ' + hwFmt(v, ds.unit))}</rect>`;
+    }));
+    return hwSvg(HW_W, HW_H, body) + hwSeriesLegend(ds);
+}
+
+/* Horizontale Balken (wie „Prioritäten offen") */
+function hwViewHbar(ds) {
+    let items;
+    if (ds.kind === 'cat') items = ds.keepOrder ? ds.items : hwCatItems(ds);
+    else { const s = hwAsSeries(ds); const se = s.series[s.series.length - 1]; items = s.labels.map((l, i) => ({ label: l, value: se.values[i] || 0, color: se.color, detail: '' })); }
+    if (!items.length || !items.some(i => i.value)) return hwEmpty();
+    const max = Math.max(ds.fixedMax || 0, ds.ref || 0, ...items.map(i => i.value), 1e-9);
+    const many = items.length > 6;
+    return `<div class="wk-prio hw-hbars${many ? ' dense' : ''}">${items.map(i => `<div class="wk-prio-row" title="${hwEsc(i.label)}: ${hwFmt(i.value, ds.unit)}${i.detail ? ' · ' + hwEsc(i.detail) : ''}"><span class="wk-prio-lbl hw-hlbl" style="${ds.keepOrder && String(i.color).startsWith('var(') ? 'color:' + i.color : ''}">${hwEsc(i.label)}</span><div class="wk-prio-track">${ds.ref ? `<span class="hw-ref v" style="left:${ds.ref / max * 100}%"></span>` : ''}<i style="width:${Math.min(100, i.value / max * 100)}%;background:${i.color}"></i></div><b class="hw-hval">${hwFmt(i.value, ds.unit)}</b></div>`).join('')}</div>`;
+}
+
+/* 100%-Balken (wie „Statusverteilung") */
+function hwViewStacked(ds) {
+    const items = hwCatItems(ds);
+    if (!items.length) return hwEmpty();
+    const tot = items.reduce((s, i) => s + i.value, 0) || 1;
+    return `<div class="wk-dist">${items.map(i => `<span class="wk-dist-seg" style="width:${i.value / tot * 100}%;background:${i.color}" title="${hwEsc(i.label)}: ${hwFmt(i.value, ds.unit)} (${Math.round(i.value / tot * 100)}%)"></span>`).join('')}</div>` + hwLegend(ds.keepOrder ? ds.items : items, ds, true);
+}
+
+/* Kuchen / Ring */
+function hwArc(cx, cy, r, a0, a1) {
+    const p = (a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+    const [x0, y0] = p(a0), [x1, y1] = p(a1);
+    return `M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
+}
+function hwViewPie(ds, donut) {
+    const items = hwCatItems(ds);
+    if (!items.length) return hwEmpty();
+    const tot = items.reduce((s, i) => s + i.value, 0);
+    const S = 120, c = S / 2, r = 56;
+    let a = 0, body = '';
+    items.forEach(i => {
+        const da = i.value / tot * Math.PI * 2;
+        const tip = hwTitle(`${i.label}: ${hwFmt(i.value, ds.unit)} (${Math.round(i.value / tot * 100)}%)`);
+        body += da >= Math.PI * 2 - 1e-6 ? `<circle cx="${c}" cy="${c}" r="${r}" style="fill:${i.color}">${tip}</circle>` : `<path d="${hwArc(c, c, r, a, a + da)}" style="fill:${i.color};stroke:var(--surface-color);stroke-width:1.2">${tip}</path>`;
+        a += da;
+    });
+    if (donut) body += `<circle cx="${c}" cy="${c}" r="${r * 0.6}" style="fill:var(--surface-color)"/><text x="${c}" y="${c + 2}" text-anchor="middle" class="hw-donut-num">${hwFmt(tot, ds.unit).replace(/ (h|%)$/, '')}</text><text x="${c}" y="${c + 15}" text-anchor="middle" class="hw-ax">${hwEsc(ds.unit === 'h' ? 'h' : ds.unit === 'd' ? _t('hw_u_days') : ds.unit === 'cur' ? getGlobalCurrency() : _t('tr_total'))}</text>`;
+    return `<div class="hw-pie">${hwSvg(S, S, body, 'hw-pie-svg')}${hwLegend(items, ds, true).replace('hw-legend', 'hw-legend col')}</div>`;
+}
+
+/* Linie / Fläche */
+function hwViewLine(ds, area) {
+    const s = hwAsSeries(ds);
+    const n = s.labels.length; if (!n) return hwEmpty();
+    const vals = [].concat(...s.series.map(se => se.values.filter(v => v !== null && v !== undefined)));
+    if (!vals.length || (!vals.some(v => v) && !ds.signed)) return hwEmpty();
+    const ax = hwAxes(n, Math.min(0, ...vals), Math.max(0, ...vals, ds.ref || 0), ds.unit, s.labels);
+    let body = ax.g;
+    s.series.slice().reverse().forEach(se => {
+        const pts = se.values.map((v, i) => (v === null || v === undefined) ? null : [ax.x(i), ax.y(v), v, i]).filter(Boolean);
+        if (!pts.length) return;
+        const d = pts.map((p, j) => (j ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+        if (area && !se.ghost) body += `<path d="${d} L${pts[pts.length - 1][0].toFixed(1)},${ax.y(0)} L${pts[0][0].toFixed(1)},${ax.y(0)} Z" style="fill:${se.color};opacity:.16"/>`;
+        body += `<path d="${d}" style="fill:none;stroke:${se.color};stroke-width:${se.ghost ? 1.3 : 2};stroke-linejoin:round;stroke-linecap:round${se.dashed ? ';stroke-dasharray:4 3' : ''}"/>`;
+        if (!se.ghost) pts.forEach(p => { body += `<circle cx="${p[0]}" cy="${p[1]}" r="${n > 20 ? 1.8 : 2.6}" style="fill:${se.signColors ? (p[2] < 0 ? 'var(--danger)' : 'var(--success)') : se.color}">${hwTitle((s.full || s.labels)[p[3]] + ' — ' + se.name + ': ' + hwFmt(p[2], ds.unit))}</circle>`; });
+    });
+    return hwSvg(HW_W, HW_H, body) + hwSeriesLegend(ds);
+}
+
+/* Punktdiagramm: x/y-Wertepaare, Streuung je Kategorie oder Punkte je Zeitabschnitt */
+function hwJitter(i, j) { const v = Math.sin((i + 1) * 12.9898 + (j + 1) * 78.233) * 43758.5453; return v - Math.floor(v) - 0.5; }
+function hwViewScatter(ds) {
+    if (ds.kind === 'xy') {
+        const pts = ds.points || []; if (!pts.length) return hwEmpty();
+        const L = 34, R = 8, T = 8, B = 26;
+        const pw = HW_W - L - R, ph = HW_H - T - B;
+        const mx = Math.max(...pts.map(p => p.x), ...pts.map(p => ds.diag ? p.y : 0), 1);
+        const my = Math.max(...pts.map(p => p.y), ds.diag ? mx : 0, 1);
+        const sx = hwNice(0, ds.diag ? Math.max(mx, my) : mx, 4), sy = ds.diag ? sx : hwNice(0, my, 4);
+        const X = v => L + (v - sx.lo) / (sx.hi - sx.lo) * pw, Y = v => T + ph - (v - sy.lo) / (sy.hi - sy.lo) * ph;
+        let body = '';
+        sy.ticks.forEach(tv => { body += `<line x1="${L}" x2="${HW_W - R}" y1="${Y(tv)}" y2="${Y(tv)}" class="hw-grid"/><text x="${L - 5}" y="${Y(tv) + 3}" class="hw-ax" text-anchor="end">${hwFmtAxis(tv, ds.unit)}</text>`; });
+        sx.ticks.forEach(tv => { body += `<text x="${X(tv)}" y="${HW_H - 13}" class="hw-ax" text-anchor="middle">${hwFmtAxis(tv, ds.unit)}</text>`; });
+        body += `<text x="${L + pw / 2}" y="${HW_H - 2}" class="hw-ax lbl" text-anchor="middle">${hwEsc(ds.xLabel || '')}</text>`;
+        if (ds.diag) body += `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(sx.hi)}" y2="${Y(sx.hi)}" class="hw-diag"/>`;
+        pts.forEach(p => { body += `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" class="hw-dot" style="fill:${p.color}">${hwTitle(`${p.label} — ${_t('hw_plan')}: ${hwFmt(p.x, ds.unit)} · ${_t('hw_actual')}: ${hwFmt(p.y, ds.unit)}`)}</circle>`; });
+        return hwSvg(HW_W, HW_H, body) + `<div class="hw-note"><span class="hw-yl">↑ ${hwEsc(ds.yLabel || '')}</span>${ds.diag ? `<span><i class="hw-diag-ic"></i>${_t('hw_diag')}</span>` : ''}</div>`;
+    }
+    if (ds.kind === 'cat') {
+        const items = hwCatItems(ds); if (!items.length) return hwEmpty();
+        const raws = items.map(i => (ds.hasRaw && i.raw && i.raw.length) ? i.raw : [i.value]);
+        const all = [].concat(...raws);
+        const ax = hwAxes(items.length, 0, Math.max(...all, ds.ref || 0), ds.unit, items.map(i => i.label));
+        let body = ax.g;
+        if (ds.ref) body += `<line x1="${ax.L}" x2="${HW_W - ax.R}" y1="${ax.y(ds.ref)}" y2="${ax.y(ds.ref)}" class="hw-diag"/>`;
+        items.forEach((it, i) => {
+            const r = raws[i]; const spread = r.length > 1 ? ax.bw * 0.55 : 0;
+            if (r.length === 1) body += `<line x1="${ax.x(i)}" x2="${ax.x(i)}" y1="${ax.y(0)}" y2="${ax.y(r[0])}" style="stroke:${it.color};stroke-width:1.5;opacity:.45"/>`;
+            r.forEach((v, j) => { body += `<circle cx="${(ax.x(i) + hwJitter(i, j) * spread).toFixed(1)}" cy="${ax.y(v).toFixed(1)}" r="${r.length > 40 ? 2.2 : 3.2}" class="hw-dot" style="fill:${it.color}">${hwTitle(it.label + ': ' + hwFmt(v, ds.unit))}</circle>`; });
+        });
+        return hwSvg(HW_W, HW_H, body);
+    }
+    const n = ds.labels.length; if (!n) return hwEmpty();
+    const vals = [].concat(...ds.series.map(se => se.values.filter(v => v !== null)));
+    if (!vals.some(v => v)) return hwEmpty();
+    const ax = hwAxes(n, Math.min(0, ...vals), Math.max(...vals), ds.unit, ds.labels);
+    let body = ax.g;
+    ds.series.forEach(se => se.values.forEach((v, i) => { if (v === null || (!v && se.ghost)) return; body += `<circle cx="${ax.x(i)}" cy="${ax.y(v)}" r="${se.ghost ? 2 : 3}" class="hw-dot" style="fill:${se.color}${se.ghost ? ';opacity:.45' : ''}">${hwTitle((ds.full || ds.labels)[i] + ' — ' + se.name + ': ' + hwFmt(v, ds.unit))}</circle>`; }));
+    return hwSvg(HW_W, HW_H, body) + hwSeriesLegend(ds);
+}
+
+/* Netzdiagramm */
+function hwViewRadar(ds) {
+    const s = hwAsSeries(ds);
+    let labels = s.labels, series = s.series;
+    if (labels.length > 12) { const step = Math.ceil(labels.length / 12); const idx = labels.map((_, i) => i).filter(i => i % step === 0); labels = idx.map(i => labels[i]); series = series.map(se => Object.assign({}, se, { values: idx.map(i => se.values[i]) })); }
+    const n = labels.length;
+    if (n < 3) return `<div class="wk-tr-empty hw-empty">${_t('hw_radar_min')}</div>`;
+    const vals = [].concat(...series.map(se => se.values.map(v => Math.max(0, v || 0))));
+    if (!vals.some(v => v)) return hwEmpty();
+    const W = 300, H = 190, cx = W / 2, cy = H / 2 + 2, R = 66;
+    const max = ds.fixedMax || Math.max(...vals, ds.ref || 0) || 1;
+    const pt = (i, v) => { const a = Math.PI * 2 * i / n - Math.PI / 2; return [cx + Math.cos(a) * R * v / max, cy + Math.sin(a) * R * v / max]; };
+    let body = '';
+    [0.25, 0.5, 0.75, 1].forEach(f => { body += `<polygon points="${labels.map((_, i) => pt(i, max * f).map(z => z.toFixed(1)).join(',')).join(' ')}" class="hw-web"/>`; });
+    labels.forEach((lb, i) => {
+        const [x, y] = pt(i, max); const [lx, ly] = pt(i, max * 1.17);
+        const anchor = Math.abs(lx - cx) < 6 ? 'middle' : (lx > cx ? 'start' : 'end');
+        body += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" class="hw-web"/><text x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="${anchor}" class="hw-ax">${hwEsc(hwShort(lb, 11))}</text>`;
+    });
+    body += `<text x="${cx + 4}" y="${cy - R + 9}" class="hw-ax" style="font-size:7px;opacity:.8">${hwFmtAxis(max, ds.unit)}</text>`;
+    series.slice().reverse().forEach(se => {
+        const pts = labels.map((_, i) => pt(i, Math.max(0, se.values[i] || 0)));
+        body += `<polygon points="${pts.map(p => p.map(z => z.toFixed(1)).join(',')).join(' ')}" style="fill:${se.color};fill-opacity:${se.ghost ? 0.05 : 0.18};stroke:${se.color};stroke-width:${se.ghost ? 1.2 : 2}${se.dashed ? ';stroke-dasharray:4 3' : ''};stroke-linejoin:round"/>`;
+        if (!se.ghost) pts.forEach((p, i) => { body += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" style="fill:${s.colors && series.length === 1 ? s.colors[i] : se.color}">${hwTitle(labels[i] + ' — ' + se.name + ': ' + hwFmt(se.values[i] || 0, ds.unit))}</circle>`; });
+    });
+    return hwSvg(W, H, body) + hwSeriesLegend(ds);
+}
+
+/* Boxplot: Median, Quartile, Whisker (1,5 × IQR) und Ausreisser */
+function hwViewBox(ds) {
+    const items = (ds.items || []).filter(i => i.raw && i.raw.length);
+    if (!items.length) return hwEmpty();
+    const all = [].concat(...items.map(i => i.raw));
+    const ax = hwAxes(items.length, 0, Math.max(...all), ds.unit, items.map(i => i.label));
+    let body = ax.g;
+    items.forEach((it, i) => {
+        const a = it.raw.slice().sort((x, y) => x - y);
+        const q1 = hwQuant(a, 0.25), md = hwQuant(a, 0.5), q3 = hwQuant(a, 0.75), iqr = q3 - q1;
+        const lo = a.find(v => v >= q1 - 1.5 * iqr), hi = a.slice().reverse().find(v => v <= q3 + 1.5 * iqr);
+        const cx = ax.x(i), bw = Math.min(28, ax.bw * 0.55);
+        const tip = hwTitle(`${it.label}: Min ${hwFmt(a[0], ds.unit)} · Q1 ${hwFmt(q1, ds.unit)} · ${_t('hw_median')} ${hwFmt(md, ds.unit)} · Q3 ${hwFmt(q3, ds.unit)} · Max ${hwFmt(a[a.length - 1], ds.unit)} · n=${a.length}`);
+        body += `<g class="hw-boxg">${tip}<line x1="${cx}" x2="${cx}" y1="${ax.y(hi)}" y2="${ax.y(lo)}" style="stroke:${it.color};stroke-width:1.3"/>`;
+        body += `<line x1="${cx - bw / 4}" x2="${cx + bw / 4}" y1="${ax.y(hi)}" y2="${ax.y(hi)}" style="stroke:${it.color};stroke-width:1.3"/><line x1="${cx - bw / 4}" x2="${cx + bw / 4}" y1="${ax.y(lo)}" y2="${ax.y(lo)}" style="stroke:${it.color};stroke-width:1.3"/>`;
+        body += `<rect x="${cx - bw / 2}" y="${ax.y(q3)}" width="${bw}" height="${Math.max(1.5, ax.y(q1) - ax.y(q3))}" rx="3" style="fill:${it.color};fill-opacity:.22;stroke:${it.color};stroke-width:1.4"/>`;
+        body += `<line x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${ax.y(md)}" y2="${ax.y(md)}" style="stroke:${it.color};stroke-width:2.4"/>`;
+        a.filter(v => v < lo || v > hi).forEach((v, j) => { body += `<circle cx="${cx + hwJitter(i, j) * 4}" cy="${ax.y(v)}" r="2.2" style="fill:none;stroke:${it.color};stroke-width:1.2"/>`; });
+        body += `</g>`;
+    });
+    return hwSvg(HW_W, HW_H, body) + `<div class="hw-note"><span>${_t('hw_box_hint')}</span></div>`;
+}
+
+/* Kacheldiagramm (Treemap, squarified) */
+function hwSquarify(items, x, y, w, h) {
+    const out = []; let rest = items.slice();
+    const total = rest.reduce((s, i) => s + i.value, 0); if (!total) return out;
+    const scale = (w * h) / total;
+    const worst = (row, side) => { const s = row.reduce((a, r) => a + r.value * scale, 0); const mx = Math.max(...row.map(r => r.value * scale)), mn = Math.min(...row.map(r => r.value * scale)); return Math.max(side * side * mx / (s * s), (s * s) / (side * side * mn)); };
+    while (rest.length) {
+        const side = Math.min(w, h); let row = [rest[0]]; let i = 1;
+        while (i < rest.length && worst(row.concat([rest[i]]), side) <= worst(row, side)) { row.push(rest[i]); i++; }
+        rest = rest.slice(i);
+        const s = row.reduce((a, r) => a + r.value * scale, 0);
+        if (w >= h) { const cw = s / h; let cy = y; row.forEach(r => { const rh = r.value * scale / cw; out.push({ it: r, x, y: cy, w: cw, h: rh }); cy += rh; }); x += cw; w -= cw; }
+        else { const ch = s / w; let cx = x; row.forEach(r => { const rw = r.value * scale / ch; out.push({ it: r, x: cx, y, w: rw, h: ch }); cx += rw; }); y += ch; h -= ch; }
+    }
+    return out;
+}
+function hwViewTreemap(ds) {
+    const items = hwCatItems(ds).slice().sort((a, b) => b.value - a.value);
+    if (!items.length) return hwEmpty();
+    const tot = items.reduce((s, i) => s + i.value, 0);
+    const cells = hwSquarify(items, 0, 0, 100, 100);
+    return `<div class="hw-tree">${cells.map(c => `<div class="hw-tile" style="left:${c.x}%;top:${c.y}%;width:${c.w}%;height:${c.h}%;background:${c.it.color}" title="${hwEsc(c.it.label)}: ${hwFmt(c.it.value, ds.unit)} (${Math.round(c.it.value / tot * 100)}%)">${c.w > 14 && c.h > 18 ? `<span>${hwEsc(c.it.label)}</span><b>${hwFmt(c.it.value, ds.unit)}</b>` : ''}</div>`).join('')}</div>`;
+}
+
+/* Heatmap: Tage als Kalenderraster, sonst Kacheln je Abschnitt bzw. Kategorie */
+function hwViewHeatmap(ds) {
+    const cell = (v, max, tip, lbl) => `<span class="hw-hc${v > 0 ? '' : ' z'}${max && v / max > 0.55 ? ' hi' : ''}" style="--a:${max ? (0.18 + 0.82 * Math.max(0, v) / max).toFixed(2) : 0}" title="${hwEsc(tip)}">${lbl ? `<u>${hwEsc(lbl)}</u>` : ''}</span>`;
+    if (ds.kind === 'cat') {
+        const items = ds.items || []; if (!items.some(i => i.value > 0)) return hwEmpty();
+        const max = Math.max(...items.map(i => i.value));
+        return `<div class="hw-heat row">${items.map(i => `<div class="hw-hcol">${cell(i.value, max, i.label + ': ' + hwFmt(i.value, ds.unit))}<em>${hwEsc(hwShort(i.label, 5))}</em><b>${hwFmt(i.value, ds.unit)}</b></div>`).join('')}</div>`;
+    }
+    const se = ds.series[0]; if (!se || !se.values.some(v => v)) return hwEmpty();
+    const max = Math.max(...se.values.map(v => v || 0));
+    if (ds.gran === 'day' && ds.bins) {
+        const first = ttParse(ds.bins[0].from); const off = (first.getDay() + 6) % 7;
+        const cells = []; for (let i = 0; i < off; i++) cells.push('<span class="hw-hc pad"></span>');
+        ds.bins.forEach((b, i) => cells.push(cell(se.values[i] || 0, max, b.full + ': ' + hwFmt(se.values[i] || 0, ds.unit), ttParse(b.from).getDate())));
+        const ref = ttParse('2024-01-01');
+        const wd = Array.from({ length: 7 }, (_, i) => { const d = new Date(ref); d.setDate(ref.getDate() + i); return `<em>${hwEsc(d.toLocaleDateString(ttLocale(), { weekday: 'narrow' }))}</em>`; }).join('');
+        return `<div class="hw-cal"><div class="hw-cal-wd">${wd}</div><div class="hw-cal-grid">${cells.join('')}</div></div>${hwHeatScale(max, ds.unit)}`;
+    }
+    return `<div class="hw-heat">${ds.bins.map((b, i) => cell(se.values[i] || 0, max, b.full + ': ' + hwFmt(se.values[i] || 0, ds.unit), b.label)).join('')}</div>${hwHeatScale(max, ds.unit)}`;
+}
+function hwHeatScale(max, unit) { return `<div class="hw-note"><span class="hw-scale"><i style="--a:.18"></i><i style="--a:.5"></i><i style="--a:.8"></i><i style="--a:1"></i></span><span>0 – ${hwFmt(max, unit)}</span></div>`; }
+
+/* Tacho */
+function hwViewGauge(ds) {
+    const g = ds.gauge; if (!g) return hwEmpty();
+    const W = 200, H = 116, cx = W / 2, cy = 100, r = 78;
+    const f = Math.max(0, Math.min(1, g.value / (g.max || 100)));
+    const p = a => [cx - r * Math.cos(a), cy - r * Math.sin(a)];
+    const [x0, y0] = p(0), [x1, y1] = p(Math.PI), [xv, yv] = p(Math.PI * f);
+    const col = ds.unit === '%' && ds.ref ? hwBudgetColor(g.value) : 'var(--hw-main)';
+    const colUse = ds.fixedMax ? 'var(--hw-main)' : col;
+    let body = `<path d="M${x0},${y0} A${r},${r} 0 0 1 ${x1},${y1}" class="hw-gauge-bg"/>`;
+    if (f > 0) body += `<path d="M${x0},${y0} A${r},${r} 0 0 1 ${xv.toFixed(2)},${yv.toFixed(2)}" style="fill:none;stroke:${colUse};stroke-width:14;stroke-linecap:round"/>`;
+    body += `<text x="${cx}" y="${cy - 12}" text-anchor="middle" class="hw-gauge-num">${Math.round(g.value)}%</text><text x="${cx}" y="${cy + 6}" text-anchor="middle" class="hw-ax">${hwEsc(hwShort(g.label, 34))}</text>`;
+    body += `<text x="${x0}" y="${cy + 14}" text-anchor="middle" class="hw-ax">0</text><text x="${x1}" y="${cy + 14}" text-anchor="middle" class="hw-ax">${g.max || 100}</text>`;
+    return `<div class="hw-gauge">${hwSvg(W, H + 8, body)}</div>${g.detail ? `<div class="hw-note center"><span>${hwEsc(g.detail)}</span></div>` : ''}` + (ds.kind === 'cat' ? hwLegend(hwCatItems(ds).slice(0, 4), ds, false) : '');
+}
+
+/* Kennzahl */
+function hwSpark(values) {
+    const v = values.map(x => x || 0); if (v.length < 2) return '';
+    const mx = Math.max(...v), mn = Math.min(0, ...v); const W = 160, H = 34;
+    const d = v.map((x, i) => (i ? 'L' : 'M') + (i / (v.length - 1) * W).toFixed(1) + ',' + (H - 2 - (x - mn) / ((mx - mn) || 1) * (H - 4)).toFixed(1)).join(' ');
+    return `<svg class="hw-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${d}" style="fill:none;stroke:var(--hw-main);stroke-width:2;vector-effect:non-scaling-stroke"/></svg>`;
+}
+function hwViewKpi(ds) {
+    let k = ds.kpi;
+    if (!k) {
+        if (ds.kind === 'cat') k = { value: ds.total || 0, unit: ds.unit, label: _t('tr_total') };
+        else { const se = ds.series[0]; k = { value: se.values.reduce((a, b) => a + (b || 0), 0), unit: ds.unit, label: se.name }; }
+    }
+    let extra = '';
+    if (ds.kind === 'cat') { const top = hwCatItems(ds).slice(0, 3); extra = top.length ? `<ul class="hw-kpi-top">${top.map(i => `<li><i style="background:${i.color}"></i><span>${hwEsc(i.label)}</span><b>${hwFmt(i.value, ds.unit)}</b></li>`).join('')}</ul>` : ''; }
+    else if (ds.series && ds.series[0]) extra = hwSpark(ds.series[ds.kind === 'xy' ? 1 : 0].values);
+    return `<div class="hw-kpi${k.tone ? ' ' + k.tone : ''}"><div class="hw-kpi-num">${hwFmt(k.value, k.unit)}</div><div class="hw-kpi-lbl">${hwEsc(k.label)}${k.detail ? ` · ${hwEsc(k.detail)}` : ''}</div>${extra}</div>`;
+}
+
+/* Tabelle */
+function hwViewTable(ds) {
+    if (ds.kind === 'cat') {
+        const items = ds.keepOrder ? ds.items : hwCatItems(ds); if (!items.length) return hwEmpty();
+        const tot = ds.total || 1;
+        const add = ds.unit !== '%' && !ds.nonAdditive;
+        return `<div class="hw-tablewrap"><table class="hw-table"><thead><tr><th>${_t('hw_entry')}</th><th>${hwEsc(ds.valueLabel || _t('hw_value'))}</th><th>${add ? _t('hw_share') : ''}</th></tr></thead><tbody>${items.map(i => `<tr><td><i style="background:${i.color}"></i>${hwEsc(i.label)}</td><td>${hwFmt(i.value, ds.unit)}</td><td>${add ? Math.round(i.value / tot * 100) + ' %' : hwEsc(i.detail || '')}</td></tr>`).join('')}</tbody>${add ? `<tfoot><tr><td>${_t('tr_total')}</td><td>${hwFmt(ds.total, ds.unit)}</td><td></td></tr></tfoot>` : ''}</table></div>`;
+    }
+    const n = ds.labels.length; if (!n) return hwEmpty();
+    const rows = ds.labels.map((l, i) => ({ l: (ds.full || ds.labels)[i], v: ds.series.map(se => se.values[i]) })).filter(r => ds.kind === 'xy' || (ds.signed ? r.v.some(v => v !== null && v !== undefined) : r.v.some(v => v)));
+    if (!rows.length) return hwEmpty();
+    const delta = ds.kind === 'xy';
+    return `<div class="hw-tablewrap"><table class="hw-table"><thead><tr><th>${delta ? _t('tasks') : _t('tr_title')}</th>${ds.series.map(se => `<th>${hwEsc(se.name)}</th>`).join('')}${delta ? '<th>Δ</th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr><td>${hwEsc(r.l)}</td>${r.v.map(v => `<td>${v === null || v === undefined ? '–' : hwFmt(v, ds.unit)}</td>`).join('')}${delta ? `<td class="${r.v[1] > r.v[0] + 0.01 ? 'neg' : 'pos'}">${hwFmt(r.v[1] - r.v[0], 'sh')}</td>` : ''}</tr>`).join('')}</tbody></table></div>`;
+}
+
+function hwRenderView(view, ds) {
+    switch (view) {
+        case 'bar': return hwViewBar(ds);
+        case 'hbar': return hwViewHbar(ds);
+        case 'stacked': return hwViewStacked(ds);
+        case 'pie': return hwViewPie(ds, false);
+        case 'donut': return hwViewPie(ds, true);
+        case 'line': return hwViewLine(ds, false);
+        case 'area': return hwViewLine(ds, true);
+        case 'scatter': return hwViewScatter(ds);
+        case 'radar': return hwViewRadar(ds);
+        case 'box': return hwViewBox(ds);
+        case 'treemap': return hwViewTreemap(ds);
+        case 'heatmap': return hwViewHeatmap(ds);
+        case 'gauge': return hwViewGauge(ds);
+        case 'kpi': return hwViewKpi(ds);
+        case 'table': return hwViewTable(ds);
+    }
+    return hwEmpty();
+}
+
+/* ============================================================
+   LAYOUT, BEARBEITEN-MODUS, KONFIGURATION
+   ============================================================ */
+let hwEdit = false;
+let hwDraft = null;
+
+function hwDefaultLayout() {
+    return [
+        { id: 'hw_d1', type: 'hours_bucket', view: 'bar', size: 1, opts: {} },
+        { id: 'hw_d2', type: 'status_dist', view: 'stacked', size: 1, opts: {} },
+        { id: 'hw_d3', type: 'prio_open', view: 'hbar', size: 1, opts: {} }
+    ];
+}
+function hwStoreKey() { return (appData.settings && appData.settings.currentUserId) || '_'; }
+function hwGetLayout() {
+    const m = appData.settings.hubWidgets;
+    const arr = (m && typeof m === 'object' && !Array.isArray(m)) ? m[hwStoreKey()] : null;
+    if (!Array.isArray(arr)) return hwDefaultLayout();
+    return arr.filter(w => w && HW_TYPES[w.type]).map(w => Object.assign({}, w, { opts: Object.assign({}, w.opts || {}) }));
+}
+function hwSetLayout(arr) {
+    if (!appData.settings.hubWidgets || typeof appData.settings.hubWidgets !== 'object' || Array.isArray(appData.settings.hubWidgets)) appData.settings.hubWidgets = {};
+    appData.settings.hubWidgets[hwStoreKey()] = arr.map(w => ({ id: w.id, type: w.type, view: w.view, size: w.size || 1, title: w.title || '', opts: w.opts || {} }));
+    saveToLocal(true);
+    if (currentView === 'today') renderView();
+}
+function hwCfg(w) {
+    const def = HW_TYPES[w.type];
+    const c = Object.assign({}, def.opts, w.opts || {});
+    Object.keys(c).forEach(k => { if (!(k in def.opts)) delete c[k]; });
+    if (c.stack && !(appData.projectStacks || []).some(s => s.id === c.stack)) c.stack = '';
+    if (c.user && c.user !== 'me' && !(appData.users || []).some(u => u.id === c.user)) c.user = '';
+    return c;
+}
+function hwViewOf(w) { const def = HW_TYPES[w.type]; return def.views.includes(w.view) ? w.view : def.view; }
+function hwTitleOf(w) { return (w.title && String(w.title).trim()) || _t(HW_TYPES[w.type].key); }
+/* Zusatzhinweis im Kopf: aktive Filter (Stack/Person) */
+function hwFilterHint(c) {
+    const p = [];
+    if (c.stack) { const s = (appData.projectStacks || []).find(x => x.id === c.stack); if (s) p.push(s.name || _t('unnamed')); }
+    const u = c.user === 'me' ? _t('hw_me') : (c.user ? hwUserName(c.user) : '');
+    if (u) p.push(u);
+    return p.join(' · ');
+}
+
+function hwCardHtml(w, mode) {
+    const def = HW_TYPES[w.type];
+    const c = hwCfg(w);
+    const view = hwViewOf(w);
+    let ds, body;
+    const size = Math.min(3, Math.max(1, parseInt(w.size, 10) || 1));
+    const vw = window.innerWidth || 1200;
+    HW_W = (mode === 'preview' || vw < 600) ? 320 : (vw < 1024 ? (size > 1 ? 640 : 320) : [320, 320, 660, 1000][size]);
+    try { ds = def.data(c); body = hwRenderView(view, ds); }
+    catch (e) { console.error('[Hub-Widget]', w.type, view, e); ds = {}; body = hwEmpty(); }
+    const hint = hwFilterHint(c);
+    const edit = mode === 'edit';
+    const tools = edit ? `<div class="hw-tools">
+            <button type="button" class="secondary hw-tool hw-drag" title="${_t('hw_move')}" aria-label="${_t('hw_move')}" onpointerdown="hwDragStart(event,'${w.id}')"><i class="fas fa-grip-vertical"></i></button>
+            <button type="button" class="secondary hw-tool" title="${_t('hw_move_left')}" aria-label="${_t('hw_move_left')}" onclick="hwMove('${w.id}',-1)"><i class="fas fa-arrow-left"></i></button>
+            <button type="button" class="secondary hw-tool" title="${_t('hw_move_right')}" aria-label="${_t('hw_move_right')}" onclick="hwMove('${w.id}',1)"><i class="fas fa-arrow-right"></i></button>
+            <span class="hw-tools-sp"></span>
+            <button type="button" class="secondary hw-tool" title="${_t('hw_configure')}" aria-label="${_t('hw_configure')}" onclick="hwOpenConfig('${w.id}')"><i class="fas fa-gear"></i></button>
+            <button type="button" class="secondary hw-tool danger" title="${_t('hw_remove')}" aria-label="${_t('hw_remove')}" onclick="hwRemove('${w.id}')"><i class="fas fa-trash"></i></button>
+        </div>` : '';
+    return `<div class="wk-graph-card hw-card s${size}${edit ? ' editing' : ''}" data-hw="${w.id}" data-view="${view}">
+        ${tools}
+        <div class="wk-graph-h"><b title="${hwEsc(_t(def.desc))}">${hwEsc(hwTitleOf(w))}</b><u>${hwEsc(ds.sub || '')}${hint ? ' · ' + hwEsc(hint) : ''}</u></div>
+        <div class="hw-body">${body}</div>
+        ${ds.foot ? `<div class="hw-foot">${ds.foot}</div>` : ''}
+    </div>`;
+}
+
+function hwRenderSection() {
+    const list = hwGetLayout();
+    let html = `<div class="wk-strip-h hw-head"><b>${_t('hw_title')}</b>${list.length ? `<span class="wk-count">${list.length}</span>` : ''}<span class="wk-rule"></span>`;
+    if (hwEdit) {
+        html += `<button type="button" class="wk-linkbtn hw-hbtn" onclick="hwReset()"><i class="fas fa-rotate-left"></i> ${_t('hw_reset')}</button>
+            <button type="button" class="wk-linkbtn hw-hbtn" onclick="hwOpenConfig()"><i class="fas fa-plus"></i> ${_t('new')}</button>
+            <button type="button" class="secondary hw-done-btn" onclick="hwToggleEdit()"><i class="fas fa-check"></i> ${_t('hw_done')}</button>`;
+    } else {
+        html += `<button type="button" class="wk-linkbtn hw-hbtn" onclick="hwToggleEdit()"><i class="fas fa-sliders"></i> ${_t('hw_customize')}</button>`;
+    }
+    html += `</div><section class="wk-graphs hw-grid${hwEdit ? ' editing' : ''}" id="hwGrid">`;
+    list.forEach(w => { html += hwCardHtml(w, hwEdit ? 'edit' : ''); });
+    if (hwEdit || !list.length) html += `<button type="button" class="secondary hw-add-tile" onclick="hwOpenConfig()"><i class="fas fa-plus"></i><span>${_t('hw_new_widget')}</span>${!list.length && !hwEdit ? `<u>${_t('hw_empty')}</u>` : ''}</button>`;
+    html += `</section>`;
+    return html;
+}
+
+function hwToggleEdit() { hwEdit = !hwEdit; renderView(); }
+function hwMove(id, dir) {
+    const arr = hwGetLayout(); const i = arr.findIndex(w => w.id === id); const j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return;
+    const x = arr[i]; arr[i] = arr[j]; arr[j] = x;
+    hwSetLayout(arr);
+}
+function hwRemove(id) {
+    const arr = hwGetLayout(); const i = arr.findIndex(w => w.id === id); if (i < 0) return;
+    arr.splice(i, 1);
+    hwSetLayout(arr);
+    showToast(_t('hw_removed'));
+}
+function hwReset() { hwSetLayout(hwDefaultLayout()); showToast(_t('hw_reset_done')); }
+
+/* Verschieben per Ziehen (Maus und Touch über den Griff) */
+let hwDrag = null;
+function hwDragStart(ev, id) {
+    const card = ev.target.closest('.hw-card'); const grid = document.getElementById('hwGrid');
+    if (!card || !grid) return;
+    ev.preventDefault();
+    hwDrag = { id, card, grid, pid: ev.pointerId, moved: false };
+    card.classList.add('hw-dragging');
+    try { ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
+    document.addEventListener('pointermove', hwDragMove);
+    document.addEventListener('pointerup', hwDragEnd);
+    document.addEventListener('pointercancel', hwDragEnd);
+}
+function hwDragMove(ev) {
+    if (!hwDrag) return;
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const over = el && el.closest ? el.closest('.hw-card') : null;
+    if (!over || over === hwDrag.card || over.parentNode !== hwDrag.grid) return;
+    const r = over.getBoundingClientRect();
+    const sameRow = Math.abs(r.top - hwDrag.card.getBoundingClientRect().top) < 8;
+    const after = sameRow ? (ev.clientX > r.left + r.width / 2) : (ev.clientY > r.top + r.height / 2);
+    hwDrag.grid.insertBefore(hwDrag.card, after ? over.nextSibling : over);
+    hwDrag.moved = true;
+}
+function hwDragEnd() {
+    document.removeEventListener('pointermove', hwDragMove);
+    document.removeEventListener('pointerup', hwDragEnd);
+    document.removeEventListener('pointercancel', hwDragEnd);
+    if (!hwDrag) return;
+    const d = hwDrag; hwDrag = null;
+    d.card.classList.remove('hw-dragging');
+    if (!d.moved) return;
+    const order = [...d.grid.querySelectorAll('.hw-card')].map(c => c.dataset.hw);
+    const arr = hwGetLayout();
+    arr.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    hwSetLayout(arr);
+}
+
+/* ---------- Konfigurationsdialog ---------- */
+function hwOpenConfig(id) {
+    const arr = hwGetLayout();
+    const w = id ? arr.find(x => x.id === id) : null;
+    if (w) hwDraft = { id: w.id, type: w.type, view: hwViewOf(w), size: w.size || 1, title: w.title || '', opts: hwCfg(w), pos: arr.indexOf(w), isNew: false };
+    else hwDraft = { id: 'hw_' + generateId(), type: 'hours_stack', view: HW_TYPES.hours_stack.view, size: 1, title: '', opts: Object.assign({}, HW_TYPES.hours_stack.opts), pos: arr.length, isNew: true };
+    hwRenderConfig();
+    const m = document.getElementById('hwModal');
+    m.classList.add('active');
+    const body = m.querySelector('.hw-cfg'); if (body) body.scrollTop = 0;
+}
+function hwCloseConfig() { const m = document.getElementById('hwModal'); if (m) m.classList.remove('active'); hwDraft = null; }
+function hwSetType(type) {
+    if (!hwDraft || !HW_TYPES[type]) return;
+    const def = HW_TYPES[type];
+    const keep = {};
+    ['stack', 'user', 'range', 'limit'].forEach(k => { if (k in def.opts && hwDraft.opts[k] !== undefined && k !== 'range') keep[k] = hwDraft.opts[k]; });
+    hwDraft.type = type;
+    hwDraft.opts = Object.assign({}, def.opts, keep);
+    if (!def.views.includes(hwDraft.view)) hwDraft.view = def.view;
+    hwRenderConfig();
+}
+function hwSetView(v) { if (!hwDraft) return; hwDraft.view = v; hwRenderConfig(); }
+function hwSetOpt(k, v) { if (!hwDraft) return; hwDraft.opts[k] = (k === 'limit') ? (parseInt(v, 10) || 0) : v; hwRenderConfig(); }
+function hwSetSize(n) { if (!hwDraft) return; hwDraft.size = n; hwRenderConfig(); }
+function hwSetPos(n) { if (!hwDraft) return; hwDraft.pos = parseInt(n, 10) || 0; }
+function hwSetTitle(v) { if (!hwDraft) return; hwDraft.title = v; hwRenderPreview(); }
+function hwRenderPreview() {
+    const box = document.getElementById('hwPreview'); if (!box || !hwDraft) return;
+    box.innerHTML = hwCardHtml(hwDraft, 'preview');
+    box.dataset.size = hwDraft.size;
+}
+function hwRenderConfig() {
+    const m = document.getElementById('hwModal'); if (!m || !hwDraft) return;
+    const d = hwDraft; const def = HW_TYPES[d.type];
+    m.querySelector('.hw-modal-title').textContent = d.isNew ? _t('hw_new_widget') : _t('hw_edit_widget');
+    const typeTiles = Object.keys(HW_TYPES).map(k => { const td = HW_TYPES[k]; return `<button type="button" class="secondary hw-type${k === d.type ? ' on' : ''}" aria-pressed="${k === d.type}" onclick="hwSetType('${k}')"><i class="fas ${td.icon}"></i><span><b>${hwEsc(_t(td.key))}</b><u>${hwEsc(_t(td.desc))}</u></span></button>`; }).join('');
+    const viewTiles = def.views.map(v => `<button type="button" class="secondary hw-viewbtn${v === d.view ? ' on' : ''}" aria-pressed="${v === d.view}" onclick="hwSetView('${v}')" title="${hwEsc(_t(HW_VIEWS[v].key))}"><i class="fas ${HW_VIEWS[v].icon}"></i><span>${hwEsc(_t(HW_VIEWS[v].key))}</span></button>`).join('');
+    const opts = HW_OPT_ORDER.filter(k => k in def.opts).map(k => {
+        const od = hwOptDef(k);
+        const cur = d.opts[k] !== undefined ? d.opts[k] : def.opts[k];
+        return `<label class="hw-opt"><span>${hwEsc(od.label)}</span><select onchange="hwSetOpt('${k}', this.value)">${od.values.map(([v, l]) => `<option value="${hwEsc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${hwEsc(l)}</option>`).join('')}</select></label>`;
+    }).join('');
+    const count = hwGetLayout().length + (d.isNew ? 1 : 0);
+    const posOpts = Array.from({ length: count }, (_, i) => `<option value="${i}"${i === d.pos ? ' selected' : ''}>${_tf('hw_pos_n', { n: i + 1 })}</option>`).join('');
+    m.querySelector('.hw-cfg').innerHTML = `
+        <div class="hw-cfg-main">
+            <section class="hw-sec"><h4>${_t('hw_sec_widget')}</h4><div class="hw-types">${typeTiles}</div></section>
+            <section class="hw-sec"><h4>${_t('hw_sec_view')}</h4><div class="hw-views">${viewTiles}</div></section>
+            ${opts ? `<section class="hw-sec"><h4>${_t('hw_sec_opts')}</h4><div class="hw-opts">${opts}</div></section>` : ''}
+            <section class="hw-sec"><h4>${_t('hw_sec_layout')}</h4>
+                <div class="hw-opts">
+                    <label class="hw-opt wide"><span>${_t('hw_o_title')}</span><input type="text" value="${hwEsc(d.title)}" placeholder="${hwEsc(_t(def.key))}" oninput="hwSetTitle(this.value)"></label>
+                    <div class="hw-opt"><span>${_t('hw_o_size')}</span><div class="tt-scope hw-size" role="group">${[1, 2, 3].map(n => `<button type="button" class="secondary tt-scope-btn" aria-pressed="${d.size === n}" onclick="hwSetSize(${n})">${({ 1: _t('hw_size_1'), 2: _t('hw_size_2'), 3: _t('hw_size_3') })[n]}</button>`).join('')}</div></div>
+                    <label class="hw-opt"><span>${_t('hw_o_pos')}</span><select onchange="hwSetPos(this.value)">${posOpts}</select></label>
+                </div>
+            </section>
+        </div>
+        <aside class="hw-cfg-side"><h4>${_t('hw_preview')}</h4><div class="hw-preview" id="hwPreview"></div><p class="hw-prev-hint">${hwEsc(_t(def.desc))}</p></aside>`;
+    m.querySelector('.hw-del-btn').style.display = d.isNew ? 'none' : '';
+    m.querySelector('.hw-save-btn').textContent = d.isNew ? _t('new') : _t('save');
+    hwRenderPreview();
+}
+function hwSaveConfig() {
+    if (!hwDraft) return;
+    const d = hwDraft; const def = HW_TYPES[d.type];
+    const opts = {}; Object.keys(def.opts).forEach(k => { if (d.opts[k] !== undefined && d.opts[k] !== def.opts[k]) opts[k] = d.opts[k]; });
+    const w = { id: d.id, type: d.type, view: d.view, size: d.size, title: (d.title || '').trim(), opts };
+    const arr = hwGetLayout().filter(x => x.id !== d.id);
+    arr.splice(Math.max(0, Math.min(arr.length, d.pos)), 0, w);
+    hwCloseConfig();
+    hwSetLayout(arr);
+    showToast(_t('hw_saved'));
+}
+function hwDeleteFromConfig() { if (!hwDraft) return; const id = hwDraft.id; hwCloseConfig(); hwRemove(id); }
+
 function renderToday(c) {
     const todayIso = ttTodayIso();
     const info = ttDayInfo(todayIso);
@@ -10360,84 +11377,8 @@ function renderToday(c) {
         </div>
     </section>`;
 
-    /* ── Buchungen der AKTUELLEN WOCHE nach Bucket (farblich) ── */
-    const _bkWeekStart = weekStartIso;                        /* Montag dieser Woche (bereits berechnet) */
-    const _bkWeekEnd = ttShiftIso(_bkWeekStart, 6);           /* Sonntag dieser Woche */
-    const bucketHours = {};
-    (appData.timeLogs || []).forEach(l => {
-        if (!l.date) return;
-        const di = (l.date || '').split('T')[0];
-        if (di < _bkWeekStart || di > _bkWeekEnd) return;
-        const task = appData.tasks.find(x => x.id === l.taskId);
-        const bk = (task && task.bucket) ? task.bucket : t('no_bucket');
-        bucketHours[bk] = (bucketHours[bk] || 0) + (parseFloat(l.hours) || 0);
-    });
-    const bucketRows = Object.keys(bucketHours).map((bk) => ({ name: bk, hours: bucketHours[bk], col: getBucketColor(bk) }))
-        .filter(r => r.hours > 0).sort((a, b) => b.hours - a.hours);
-    const maxBk = Math.max(1, ...bucketRows.map(r => r.hours));
-    const bucketTotal = bucketRows.reduce((s, r) => s + r.hours, 0);
-    const trendBars = bucketRows.length
-        ? bucketRows.map(r => `<div class="wk-tr-col" title="${escapeHtmlToday(r.name)}: ${ttNum(r.hours)} h"><div class="wk-tr-bar"><span class="wk-tr-fill" style="height:${Math.round(r.hours / maxBk * 100)}%;background:${r.col}"></span></div><u title="${escapeHtmlToday(r.name)}">${escapeHtmlToday(r.name.length > 6 ? r.name.slice(0,6)+'…' : r.name)}</u></div>`).join('')
-        : `<div class="wk-tr-empty">${t('today_no_bookings')}</div>`;
-    const trendLegend = bucketRows.length
-        ? `<div class="wk-trend-legend">${bucketRows.map(r => `<span><i style="background:${r.col}"></i>${escapeHtmlToday(r.name)}: <b>${ttNum(r.hours)} h</b></span>`).join('')}</div>`
-        : '';
-
-    /* Statusverteilung: PRIMÄR 1:1 die echten, sichtbaren Kanban-Board-Spalten (appData.statuses, ohne "Abgeschlossen") — Benennung, Reihenfolge und Farbe dynamisch aus den Spalten übernommen, Aufgaben dynamisch pro Spalte gezählt (exakt wie im Kanban Board, inkl. aktiver Filter via getFilteredTasks()). */
-    const kanbanCols = appData.statuses.filter(col => col.id !== 'done');
-    const byStatus = {}; kanbanCols.forEach(col => { byStatus[col.id] = 0; });
-    getFilteredTasks().forEach(t => { if (byStatus[t.status] !== undefined) byStatus[t.status]++; });
-    const stTot = Math.max(1, kanbanCols.reduce((sum, col) => sum + byStatus[col.id], 0));
-    const stSeg = (col) => byStatus[col.id] ? `<span class="wk-dist-seg" style="width:${byStatus[col.id]/stTot*100}%;background:${getStatusColor(col)}" title="${escapeHtmlToday(col.title)}: ${byStatus[col.id]}"></span>` : '';
-
-    /* Sekundär: offene Stacks sowie genau die Checkpunkte/Meilensteine, die auch unter Wissen/Checklisten bzw. Wissen/Milestones sichtbar sind (gleiche Basis- und Sub-Item-Filterung: getFilteredTasks()/getFilteredStacks(), „Abgeschlossene ausblenden" und Nutzer-Filter). */
-    const _visStacksForSecondary = getFilteredStacks();
-    const openStacksCount = _visStacksForSecondary.length;
-    const _hideDoneCl = appData.settings.globalHideCompleted;
-    let openChecklistItems = 0;
-    getFilteredTasks().forEach(t_obj => {
-        let cl = t_obj.checklist || [];
-        if (_hideDoneCl) cl = cl.filter(ci => !ci.done);
-        if (activeFilters.users.length > 0 && !activeFilters.users.includes(t_obj.assigneeId || '')) { cl = cl.filter(ci => activeFilters.users.includes(ci.assigneeId || '')); }
-        openChecklistItems += cl.length;
-    });
-    _visStacksForSecondary.forEach(s => {
-        let cl = s.checklist || [];
-        if (_hideDoneCl) cl = cl.filter(ms => !ms.done);
-        if (activeFilters.users.length > 0 && !activeFilters.users.includes(s.assigneeId || '')) { cl = cl.filter(ms => activeFilters.users.includes(ms.assigneeId || '')); }
-        openChecklistItems += cl.length;
-    });
-    const secondaryParts = [];
-    if (openStacksCount > 0) secondaryParts.push(t('today_open_stacks_extra').replace('{n}', openStacksCount));
-    if (openChecklistItems > 0) secondaryParts.push(t('today_open_checklist_extra').replace('{n}', openChecklistItems));
-    const secondaryLine = secondaryParts.join(' · ');
-
-    /* Prioritätenverteilung offener Aufgaben */
-    const byPrio = { high:0, medium:0, low:0 };
-    appData.tasks.forEach(t => { if (!isTaskDone(t) && byPrio[t.priority] !== undefined) byPrio[t.priority]++; });
-    const prTot = Math.max(1, byPrio.high + byPrio.medium + byPrio.low);
-
-    html += `<section class="wk-graphs">
-        <div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('today_trend')}</b><u>${t('today_this_week')}</u></div>
-            <div class="wk-trend">${trendBars}</div>
-            ${trendLegend}
-        </div>
-        <div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('today_status_dist')}</b><u>${stTot} ${t('today_open')}</u></div>
-            <div class="wk-dist">${kanbanCols.map(col => stSeg(col)).join('')}</div>
-            <div class="wk-dist-legend">${kanbanCols.map(col => `<span><i style="background:${getStatusColor(col)}"></i>${escapeHtmlToday(col.title)}: ${byStatus[col.id]}</span>`).join('')}</div>
-            ${secondaryLine ? `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border-color); font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:5px;"><i class="fas fa-layer-group"></i> ${secondaryLine}</div>` : ''}
-        </div>
-        <div class="wk-graph-card">
-            <div class="wk-graph-h"><b>${t('today_prio_dist')}</b><u>${prTot} ${t('today_open')}</u></div>
-            <div class="wk-prio">
-                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--danger)">${t('prio_high')}</span><div class="wk-prio-track"><i style="width:${byPrio.high/prTot*100}%;background:var(--danger)"></i></div><b>${byPrio.high}</b></div>
-                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--warning)">${t('prio_med')}</span><div class="wk-prio-track"><i style="width:${byPrio.medium/prTot*100}%;background:var(--warning)"></i></div><b>${byPrio.medium}</b></div>
-                <div class="wk-prio-row"><span class="wk-prio-lbl" style="color:var(--success)">${t('prio_low')}</span><div class="wk-prio-track"><i style="width:${byPrio.low/prTot*100}%;background:var(--success)"></i></div><b>${byPrio.low}</b></div>
-            </div>
-        </div>
-    </section>`;
+    /* Individuell konfigurierbare Widgets (siehe HUB-WIDGETS) */
+    html += hwRenderSection();
 
     /* Zwei Spalten: Hauptspalte (Aufgaben), Seitenspalte (Timer + Zeitkonto) */
     html += `<div class="wk-today-grid">`;

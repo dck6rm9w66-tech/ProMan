@@ -23,7 +23,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261020-36">
+    <link rel="stylesheet" href="styles.css?v=20261020-37">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -433,6 +433,23 @@
             <div class="modal-footer" style="justify-content: flex-end;">
                 <button class="secondary" onclick="ttCloseAbsenceRange()" data-i18n="cancel">Abbrechen</button>
                 <button onclick="ttSaveAbsenceRange()" data-i18n="save">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HUB-WIDGET KONFIGURATION -->
+    <div class="modal-overlay" id="hwModal" onclick="if(event.target===this) hwCloseConfig()">
+        <div class="modal-content bottom-sheet-mobile hw-modal" role="dialog" aria-modal="true" aria-labelledby="hwModalTitle">
+            <div class="modal-header">
+                <h3 class="hw-modal-title" id="hwModalTitle" data-i18n="hw_new_widget">Neues Widget</h3>
+                <button class="secondary icon-btn modal-close-btn" onclick="hwCloseConfig()" data-i18n-aria="close" aria-label="Schliessen"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body-simple hw-cfg"></div>
+            <div class="modal-footer hw-modal-foot">
+                <button class="secondary danger-text hw-del-btn" onclick="hwDeleteFromConfig()"><i class="fas fa-trash"></i> <span data-i18n="hw_remove">Entfernen</span></button>
+                <span class="hw-foot-sp"></span>
+                <button class="secondary" onclick="hwCloseConfig()" data-i18n="cancel">Abbrechen</button>
+                <button class="hw-save-btn" onclick="hwSaveConfig()" data-i18n="save">Speichern</button>
             </div>
         </div>
     </div>
@@ -1267,8 +1284,8 @@
     </div>
 
     <!-- Eigenes JavaScript -->
-    <script src="i18n.js?v=20261020-36"></script>
-    <script src="app.js?v=20261020-36"></script>
+    <script src="i18n.js?v=20261020-37"></script>
+    <script src="app.js?v=20261020-37"></script>
 
 </body>
 </html>
