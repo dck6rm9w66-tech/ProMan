@@ -3553,3 +3553,18 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 .hw-pie-svg{transform-origin:50% 50%}
 /* „Aus": auch die bisherigen CSS-Animationen abschalten */
 .pm-off *, .pm-off *::before, .pm-off *::after{animation:none !important;transition:none !important}
+/* Motion übernimmt das Einblenden beim Ansichtswechsel. Die älteren CSS-Einblendungen
+   liefen bei JEDEM Neuzeichnen erneut (also nach jeder Interaktion) und liessen
+   Karten aufblitzen – sie werden deshalb abgeschaltet, sobald Motion aktiv ist. */
+.pm-on #mainContainer,
+.pm-on .wk-today-list .task-card, .pm-on .wk-quickrow, .pm-on .wk-run-card,
+.pm-on .wk-hero-num, .pm-on .wk-hero-fill, .pm-on .tt-detail{animation:none !important}
+/* Workflow-Bedingungen auf dem Telefon: Feld und Operator je eine volle Zeile,
+   damit lange Texte wie „ist länger her als … Stunden" lesbar bleiben */
+@media (max-width:599px){
+  #wf_edit_conditions_list .wf-rule-row{flex-wrap:wrap}
+  #wf_edit_conditions_list .wf-rule-row > div:nth-child(1),
+  #wf_edit_conditions_list .wf-rule-row > div:nth-child(2){flex:1 1 100% !important;min-width:0}
+  #wf_edit_conditions_list .wf-rule-row select{width:100%;height:38px}
+  #wf_edit_conditions_list .wf-cond-val-container{flex:1 1 auto;min-width:0}
+}

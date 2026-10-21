@@ -2344,6 +2344,8 @@ function getWfFieldOptionsHtml(selected = '') {
         { v: 'isOverdue',      l: t('wf_f_overdue'),       grp: 'wf_grp_status' },
         { v: 'dueDate',        l: t('wf_f_due'),          grp: 'wf_grp_date' },
         { v: 'startDate',      l: t('wf_f_start'),        grp: 'wf_grp_date' },
+        { v: 'lastBooking',    l: _t('wf_f_last_booking'), grp: 'wf_grp_date' },
+        { v: 'nextBooking',    l: _t('wf_f_next_booking'), grp: 'wf_grp_date' },
         { v: 'estimatedTime',  l: t('wf_f_est'),          grp: 'wf_grp_number' },
         { v: 'spentTime',      l: t('wf_f_spent'),        grp: 'wf_grp_number' },
         { v: 'spentTime_thisWeek', l: t('wf_f_spent_week'), grp: 'wf_grp_number' }, // NEU FÜR DIE KALENDERWOCHE
@@ -2374,6 +2376,8 @@ function getWfFieldOptionsHtml(selected = '') {
 }
 
 function getWfFieldType(field) {
+    if(field === 'lastBooking') return 'since';
+    if(field === 'nextBooking') return 'until';
     if(['dueDate','startDate'].includes(field)) return 'date';
     if(['estimatedTime','spentTime','spentTime_thisWeek','duration_days','effort_remaining','checklistDone','taskCount','checklistOpenCount','checklistDoneCount','budgetRemainingPct','budgetConsumedPct','budgetRemainingAmount','budgetConsumedAmount'].includes(field)) return 'number';
     if(['isPaused','hasChecklist','hasAttachment','isOverdue'].includes(field)) return 'boolean';
@@ -2388,6 +2392,8 @@ function getWfOpOptionsHtml(selected = '', fieldType = 'text') {
         boolean: [['is_true',t('wfo_true')],['is_false',t('wfo_false')]],
         date:    [['date_past',t('wfo_past')],['date_future',t('wfo_future')],['date_less',t('wfo_less_days')],['date_more',t('wfo_more_days')],['date_equals',t('wfo_exact_date')],['is_empty',t('wfo_unset')],['not_empty',t('wfo_set')]],
         number:  [['equals',t('wfo_eq')],['not_equals',t('wfo_neq')],['greater_than',t('wfo_gt')],['less_than',t('wfo_lt')],['is_empty',t('wfo_empty_zero')]],
+        until:   [['until_less_h',_t('wfo_until_less_h')],['until_less_d',_t('wfo_until_less_d')],['until_more_h',_t('wfo_until_more_h')],['until_more_d',_t('wfo_until_more_d')],['until_none',_t('wfo_until_none')]],
+        since:   [['since_more_h',_t('wfo_since_more_h')],['since_more_d',_t('wfo_since_more_d')],['since_less_h',_t('wfo_since_less_h')],['since_less_d',_t('wfo_since_less_d')],['since_never',_t('wfo_since_never')]],
     };
     return (ops[fieldType] || ops.text).map(([v,l]) => `<option value="${v}" ${selected===v?'selected':''}>${l}</option>`).join('');
 }
@@ -2402,6 +2408,16 @@ function renderWfConditionValueInput(rowEl) {
 
     if(['date_past','date_future','is_empty','not_empty','is_true','is_false'].includes(op)) {
         html = `<input type="hidden" class="wf-cond-val" value="1"><span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; height:100%; padding:0 8px;">${t('wfo_no_value')}</span>`;
+        container.innerHTML = html; return;
+    }
+    if(op === 'since_never' || op === 'until_none') {
+        html = `<input type="hidden" class="wf-cond-val" value="1"><span style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; height:100%; padding:0 8px;">${t('wfo_no_value')}</span>`;
+        container.innerHTML = html; return;
+    }
+    if(['since_more_h','since_more_d','since_less_h','since_less_d','until_less_h','until_less_d','until_more_h','until_more_d'].includes(op)) {
+        const unit = op.endsWith('_h') ? _t('wf_hours') : t('wf_days');
+        const hint = op.startsWith('until_') ? _t('wf_until_hint') : _t('wf_since_hint');
+        html = `<div style="display:flex; align-items:center; gap:5px; width:100%;"><input type="number" class="wf-cond-val" value="${preselect}" placeholder="X" min="0" step="${op.endsWith('_h') ? '0.5' : '1'}" style="width:64px; min-width:64px; flex:none;"> <span style="font-size:12px; white-space:nowrap;">${unit}</span> <i class="fas fa-circle-info" style="color:var(--text-muted); font-size:12px; cursor:help;" title="${escapeHtmlToday(hint)}"></i></div>`;
         container.innerHTML = html; return;
     }
     if(op === 'date_less' || op === 'date_more') {
@@ -2621,6 +2637,59 @@ function testCurrentWorkflow() {
 // --- WORKFLOW ENGINE ---
 let _wfExecutionLock = false; 
 
+/*
+ * Zeitpunkt der letzten Zeitbuchung einer Aufgabe bzw. eines Stacks (über alle seine Aufgaben).
+ * Buchungen tragen seit 10/2026 einen Zeitstempel (ts). Ältere Buchungen kennen nur das Datum –
+ * für sie gilt das Arbeitsende jenes Tages (nie später als jetzt). Ein laufender Timer zählt als
+ * „wird gerade gebucht".
+ */
+function wfLastBookingInfo(entity) {
+    const isTask = ('projectName' in entity);
+    const taskIds = isTask ? [entity.id] : (appData.tasks || []).filter(tk => tk.projectStackId === entity.id).map(tk => tk.id);
+    const now = Date.now();
+    const endHm = getWorkDayEnd();
+    let lastMs = null;
+    (appData.timeLogs || []).forEach(l => {
+        if (!l || !taskIds.includes(l.taskId)) return;
+        const d = String(l.date || '').slice(0, 10);
+        if (d && d > ttIso(new Date())) return; /* vorausgeplant – zählt erst als „nächste Zeitbuchung" */
+        let ms = null;
+        if (l.ts && (!d || ttIso(new Date(l.ts)) === d)) ms = l.ts;
+        else if (d) { const p = d.split('-').map(Number); const hm = endHm.split(':').map(Number); ms = new Date(p[0], p[1] - 1, p[2], hm[0] || 17, hm[1] || 0).getTime(); }
+        if (ms === null || isNaN(ms)) return;
+        ms = Math.min(ms, now);
+        if (lastMs === null || ms > lastMs) lastMs = ms;
+    });
+    const running = (typeof activeTimers === 'object' && activeTimers) ? taskIds.some(id => activeTimers[id] && activeTimers[id].running) : false;
+    let startMs = null;
+    if (entity.startDate) { const s = new Date(String(entity.startDate).length <= 10 ? entity.startDate + 'T00:00' : entity.startDate).getTime(); if (!isNaN(s) && s <= now) startMs = s; }
+    const closed = isTask ? isTaskDone(entity) : entity.status === 'completed';
+    return { lastMs, startMs, running, closed, never: lastMs === null && !running };
+}
+
+/*
+ * Nächste (vorausgeplante) Zeitbuchung: die früheste Buchung, deren Zeitpunkt noch bevorsteht.
+ * Buchungen haben nur ein Datum – als Zeitpunkt gilt der Arbeitsbeginn jenes Tages.
+ * Bei Stacks zählt die früheste geplante Buchung auf einer seiner Aufgaben.
+ */
+function wfNextBookingInfo(entity) {
+    const isTask = ('projectName' in entity);
+    const taskIds = isTask ? [entity.id] : (appData.tasks || []).filter(tk => tk.projectStackId === entity.id).map(tk => tk.id);
+    const now = Date.now();
+    const hm = getWorkDayStart().split(':').map(Number);
+    let nextMs = null;
+    (appData.timeLogs || []).forEach(l => {
+        if (!l || !taskIds.includes(l.taskId)) return;
+        const d = String(l.date || '').slice(0, 10); if (!d) return;
+        const p = d.split('-').map(Number);
+        const ms = new Date(p[0], p[1] - 1, p[2], hm[0] || 8, hm[1] || 0).getTime();
+        if (isNaN(ms) || ms <= now) return;
+        if (nextMs === null || ms < nextMs) nextMs = ms;
+    });
+    const closed = isTask ? isTaskDone(entity) : entity.status === 'completed';
+    return { nextMs, closed };
+}
+
 function evaluateConditions(entity, conditions, logic = 'AND') {
     if(!conditions || conditions.length === 0) return true;
 
@@ -2688,6 +2757,41 @@ function evaluateConditions(entity, conditions, logic = 'AND') {
                 if(getISOWeek(lDate) === currentKw && lDate.getFullYear() === currentYear) sum += parseFloat(l.hours);
             });
             eVal = sum;
+        }
+
+        /* Letzte Zeitbuchung: wie lange ruht die Aufgabe bzw. der Stack schon? */
+        if(cond.field === 'lastBooking') {
+            const info = wfLastBookingInfo(entity);
+            const op = cond.operator;
+            if(op === 'since_never') return info.never && !info.closed;
+            const x = parseFloat(String(cond.value).replace(',', '.'));
+            if(isNaN(x) || x < 0) return false;
+            const limitMs = x * (op.endsWith('_h') ? 3600000 : 86400000);
+            if(op === 'since_more_h' || op === 'since_more_d') {
+                /* Ruhen gilt nur für offene Arbeit; ohne jede Buchung zählt ab dem Startdatum */
+                if(info.closed || info.running) return false;
+                const ref = info.lastMs !== null ? info.lastMs : info.startMs;
+                return ref !== null && (Date.now() - ref) > limitMs;
+            }
+            if(op === 'since_less_h' || op === 'since_less_d') {
+                if(info.running) return true;
+                return info.lastMs !== null && (Date.now() - info.lastMs) <= limitMs;
+            }
+            return false;
+        }
+
+        /* Nächste Zeitbuchung: vorausgeplante Buchung mit Datum in der Zukunft */
+        if(cond.field === 'nextBooking') {
+            const info = wfNextBookingInfo(entity);
+            const op = cond.operator;
+            if(op === 'until_none') return info.nextMs === null && !info.closed;
+            const x = parseFloat(String(cond.value).replace(',', '.'));
+            if(isNaN(x) || x < 0 || info.nextMs === null) return false;
+            const dist = info.nextMs - Date.now();
+            const limitMs = x * (op.endsWith('_h') ? 3600000 : 86400000);
+            if(op === 'until_less_h' || op === 'until_less_d') return dist <= limitMs;
+            if(op === 'until_more_h' || op === 'until_more_d') return dist > limitMs;
+            return false;
         }
 
         if(eVal === undefined || eVal === null) eVal = '';
@@ -7702,7 +7806,7 @@ function stopTimer(taskId) {
     pauseTimer(taskId); let ms = activeTimers[taskId].accum; let hours = ms / 3600000; let rH = Math.max(0.25, Math.ceil(hours * 4) / 4);
     const nInput = document.getElementById(`timer_note_${taskId}`); const note = nInput ? nInput.value.trim() : activeTimers[taskId].note;
     const date = new Date().toISOString().split('T')[0];
-    appData.timeLogs.push({ id: generateId(), taskId, hours: rH, date, note });
+    appData.timeLogs.push({ id: generateId(), taskId, hours: rH, date, note, ts: Date.now() });
     { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(rH)).replace('{n}', _tk ? _tk.projectName : '')); }
     
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
@@ -8154,7 +8258,7 @@ function renderTimeAccount() {
     if (ttSelectedDays.length > 0) {
         const sortedSel = ttSelectedDays.slice().sort();
         let anyEntry = false;
-        let detailHtml = `<div class="tt-detail"><h4><i class="fas fa-list-check"></i> ${t('tt_detail_title')} (${ttSelectedDays.length})</h4>`;
+        let detailHtml = `<div class="tt-detail" data-pm-key="tt-detail"><h4><i class="fas fa-list-check"></i> ${t('tt_detail_title')} (${ttSelectedDays.length})</h4>`;
         sortedSel.forEach(iso => {
             const info = ttDayInfo(iso);
             const logs = (appData.timeLogs || []).filter(l => l.date === iso);
@@ -8568,7 +8672,7 @@ function addManualTimeLog() {
     const taskId = document.getElementById('tt_task').value; const hours = parseFloat(document.getElementById('tt_hours').value); const date = document.getElementById('tt_date').value; const note = document.getElementById('tt_note').value.trim();
     if(!taskId || !hours || !date) return showToast(_t('tt_need_fields'), 'error');
     
-    appData.timeLogs.push({ id: generateId(), taskId, hours, date, note });
+    appData.timeLogs.push({ id: generateId(), taskId, hours, date, note, ts: Date.now() });
     { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(hours)).replace('{n}', _tk ? _tk.projectName : '')); }
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
@@ -12962,8 +13066,12 @@ const PM = (function () {
     function waapi(el, kf, o) {
         const sp = o.spring ? springCurve(o.spring.bounce || 0.2, o.spring.visualDuration || 0.4) : null;
         const easing = sp ? (SUPPORTS_LINEAR ? sp.css : 'cubic-bezier(.34,1.3,.5,1)') : (o.ease ? 'cubic-bezier(' + o.ease.join(',') + ')' : 'cubic-bezier(.2,.8,.2,1)');
-        const a = el.animate(toFrames(kf), { duration: (sp ? sp.dur : (o.duration || 0.3)) * 1000, delay: (o.delay || 0) * 1000, easing, fill: 'both' });
-        return { finished: a.finished.then(() => { try { a.cancel(); } catch (e) {} }), stop: () => a.cancel() };
+        const frames = toFrames(kf);
+        const a = el.animate(frames, { duration: (sp ? sp.dur : (o.duration || 0.3)) * 1000, delay: (o.delay || 0) * 1000, easing, fill: 'both' });
+        /* Endwerte erst festschreiben, dann die Animation lösen – sonst springt das
+           Element für einen Frame auf den Startwert (unsichtbar) zurück = Aufblitzen */
+        const last = frames[frames.length - 1];
+        return { finished: a.finished.then(() => { Object.keys(last).forEach(k => { el.style[k] = String(last[k]); }); try { a.cancel(); } catch (e) {} }), stop: () => a.cancel() };
     }
     /* Ein Element animieren; danach werden die Inline-Werte wieder entfernt,
        damit die CSS-Zustände (Hover, aktive Klassen …) unverändert greifen. */
@@ -12972,11 +13080,22 @@ const PM = (function () {
         const list = els(target).filter(Boolean);
         if (!list.length) return null;
         const m = getM();
+        const kf0 = kf;
         const ctls = list.map(el => {
+            let kf = kf0;
             try {
+                /* Einblenden nur bis zur eigentlichen Deckkraft des Elements (z. B. 55 % bei
+                   pausierten/erledigten Karten) – sonst wird es kurz voll sichtbar und springt zurück */
+                if (Array.isArray(kf.opacity) && kf.opacity[kf.opacity.length - 1] === 1 && !el.style.opacity) {
+                    const co = parseFloat(getComputedStyle(el).opacity);
+                    if (co < 0.995) { kf = Object.assign({}, kf, { opacity: kf.opacity.map((v, i, a) => i === a.length - 1 ? co : Math.min(v, co)) }); }
+                }
                 saveProps(el, kf);
                 el.classList.add('pm-anim');
-                if (o.init) applyFirst(el, kf);
+                /* Motion hält den Startzustand selbst (fill: both, erster Frame vor dem Zeichnen).
+                   Eigene Inline-Startwerte nur für den Ersatz-Motor – unter Motion würden sie
+                   durchscheinen, sobald dessen Deckkraft-Animation vor der Bewegung endet. */
+                if (o.init && !m) applyFirst(el, kf);
                 let ctl;
                 if (m) {
                     const opt = {};
@@ -13002,7 +13121,10 @@ const PM = (function () {
                     }));
                 };
                 const fin = ctl && (ctl.finished || (ctl.then ? ctl : null));
-                if (fin && fin.then) fin.then(finalize, finalize);
+                /* Endwerte sofort festschreiben: Motion übernimmt sie erst einen Frame später,
+                   dazwischen würde der Startwert (z. B. Deckkraft 0) kurz aufblitzen */
+                const commit = () => { if (el.__pmEnd && performance.now() + 30 < el.__pmEnd) return; try { const lf = toFrames(kf); const f = lf[lf.length - 1]; Object.keys(f).forEach(k => { el.style[k] = String(f[k]); }); } catch (e) {} };
+                if (fin && fin.then) fin.then(() => { commit(); finalize(); }, finalize);
                 setTimeout(finalize, endAt - performance.now() + 160);
                 return ctl;
             } catch (e) { clearProps(el); return null; }
@@ -13040,19 +13162,29 @@ const PM = (function () {
     function subSig() {
         return [typeof plannerSubView !== 'undefined' ? plannerSubView : '', typeof timeSubView !== 'undefined' ? timeSubView : ''].join('|');
     }
+    /* Position im Layout – ohne die eigene laufende Transformation (Hover, Feder …).
+       null, wenn das Element oder ein Vorfahre gerade animiert wird: dann ist die
+       gemessene Lage nicht verlässlich und es wird weder verschoben noch eingeblendet. */
+    function layoutRect(el) {
+        if (el.closest('.pm-anim')) return null;
+        const r = el.getBoundingClientRect();
+        if (!r.width && !r.height) return null;
+        const tf = el.style.transform || getComputedStyle(el).transform;
+        if (!tf || tf === 'none' || typeof DOMMatrixReadOnly === 'undefined') return { left: r.left, top: r.top, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
+        let m; try { m = new DOMMatrixReadOnly(tf); } catch (e) { return null; }
+        return { left: r.left - m.e, top: r.top - m.f, width: r.width, height: r.height, right: r.right - m.e, bottom: r.bottom - m.f };
+    }
     function snap() {
-        const s = { view: typeof currentView !== 'undefined' ? currentView : '', sub: subSig(), rects: new Map(), nav: null };
+        const s = { view: typeof currentView !== 'undefined' ? currentView : '', sub: subSig(), rects: new Map(), keys: new Set(), nav: null };
         if (level() < 2) return s;
         const c = document.getElementById('mainContainer');
         if (c) {
             let n = 0;
-            c.querySelectorAll(KEY_SEL).forEach(el => { if (n++ > 500) return; const r = el.getBoundingClientRect(); if (r.width || r.height) s.rects.set(keyOf(el), r); });
+            c.querySelectorAll(KEY_SEL).forEach(el => { const k = keyOf(el); s.keys.add(k); if (n++ > 500) return; const r = layoutRect(el); if (r) s.rects.set(k, r); });
         }
         s.nav = {
             rail: rectOf('.wk-rail-item[aria-current="page"]'),
-            tab: rectOf('.wk-tab[aria-current="page"] .wk-tab-ind'),
-            wkMagnet: rectOf('#wkMagnet'),
-            ttMagnet: rectOf('#ttMagnet')
+            tab: rectOf('.wk-tab[aria-current="page"] .wk-tab-ind')
         };
         return s;
     }
@@ -13085,7 +13217,7 @@ const PM = (function () {
         el.__pmSaved = { opacity: '', transform: '', willChange: el.style.willChange };
         applyFirst(el, kf);
         let stop = null, fired = false;
-        const go = () => { if (fired) return; fired = true; if (stop) stop(); run(el, kf, { spring: SPRING_SOFT }); charts(el); };
+        const go = () => { if (fired) return; fired = true; if (stop) stop(); clearProps(el); run(el, kf, { spring: SPRING_SOFT, init: true }); charts(el); };
         const m = getM();
         try {
             if (m && m.inView) stop = m.inView(el, () => { go(); }, { amount: 0.12 });
@@ -13096,14 +13228,16 @@ const PM = (function () {
     function cleanupReveals() { const r = reveals; reveals = []; r.forEach(f => { try { f(); } catch (e) {} }); }
 
     /* ---------- Layout-Animation (FLIP) innerhalb derselben Ansicht ---------- */
-    function flip(c, rects) {
+    function flip(c, rects, keys) {
         if (!rects || !rects.size) return;
         const moves = [], fresh = [];
         c.querySelectorAll(KEY_SEL).forEach(el => {
-            const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
-            const o = rects.get(keyOf(el));
-            if (o) { const dx = o.left - r.left, dy = o.top - r.top; if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moves.push({ el, dx, dy, r }); }
-            else if (inViewport(r) && fresh.length < 30) fresh.push(el);
+            const r = layoutRect(el); if (!r) return;
+            const k = keyOf(el);
+            const o = rects.get(k);
+            if (o) { const dx = o.left - r.left, dy = o.top - r.top; if (Math.abs(dx) > 1.5 || Math.abs(dy) > 1.5) moves.push({ el, dx, dy, r }); }
+            /* nur wirklich neue Elemente einblenden – nicht solche, die vorher bloss nicht messbar waren */
+            else if (!(keys && keys.has(k)) && inViewport(r) && fresh.length < 30) fresh.push(el);
         });
         /* Hat sich alles gleich verschoben (z. B. Scroll-Position), ist das keine Layout-Änderung */
         if (moves.length > 4) {
@@ -13213,15 +13347,29 @@ const PM = (function () {
         if (!ctl) end();
         setTimeout(end, 1500);
     }
-    function slideMagnet(id, oldRect) {
-        const mag = document.getElementById(id);
-        if (!mag || !oldRect) return;
-        const nr = mag.getBoundingClientRect();
-        if (!nr.width || Math.abs(nr.left - oldRect.left) < 1) return;
-        const cur = /translateX\((-?[\d.]+)px\)/.exec(mag.style.transform || '');
-        if (!cur) return;
-        const x1 = parseFloat(cur[1]), x0 = x1 + (oldRect.left - nr.left);
-        run(mag, { x: [x0, x1], width: [oldRect.width + 'px', nr.width + 'px'] }, { spring: SPRING_POP, keep: true, init: true, onDone: () => { mag.style.width = nr.width + 'px'; mag.style.transform = 'translateX(' + x1 + 'px)'; } });
+    /* Der gelbe Magnet der Ansichtsauswahl wird bei jedem Neuzeichnen neu erzeugt und
+       rutschte dadurch jedes Mal von links herein. Das neue Element übernimmt hier sofort
+       Lage und Breite des alten; die vorhandene CSS-Federung gleitet dann nur, wenn sich
+       die Auswahl wirklich geändert hat. */
+    function watchMagnets() {
+        const last = {};
+        const scan = (n, fn) => { if (n.nodeType !== 1) return; if (n.classList.contains('wk-magnet')) fn(n); else if (n.firstElementChild) n.querySelectorAll('.wk-magnet').forEach(fn); };
+        const mo = new MutationObserver(list => {
+            const added = [];
+            list.forEach(r => {
+                r.removedNodes.forEach(n => scan(n, m => { if (m.id && m.style.transform) last[m.id] = { t: m.style.transform, w: m.style.width }; }));
+                r.addedNodes.forEach(n => scan(n, m => added.push(m)));
+            });
+            added.forEach(m => {
+                const o = m.id && last[m.id];
+                if (!o || m.style.transform) return;
+                m.classList.add('pm-anim');
+                m.style.transform = o.t; m.style.width = o.w;
+                void getComputedStyle(m).transform; /* Startwert festschreiben */
+                m.classList.remove('pm-anim');
+            });
+        });
+        mo.observe(document.body, { childList: true, subtree: true });
     }
     function navSlide(nav) {
         if (!nav) return;
@@ -13229,8 +13377,6 @@ const PM = (function () {
         slidePill(rail, rail && rail.querySelector('.wk-rail-item[aria-current="page"]'), nav.rail, '');
         const bar = document.querySelector('.wk-tabbar');
         slidePill(bar, bar && bar.querySelector('.wk-tab[aria-current="page"] .wk-tab-ind'), nav.tab, 'ind');
-        slideMagnet('wkMagnet', nav.wkMagnet);
-        slideMagnet('ttMagnet', nav.ttMagnet);
     }
 
     function after(s) {
@@ -13240,7 +13386,7 @@ const PM = (function () {
         if (!c) return;
         cleanupReveals();
         const entering = s.view !== (typeof currentView !== 'undefined' ? currentView : '') || s.sub !== subSig();
-        try { if (entering) enter(c, lv); else if (lv === 2) flip(c, s.rects); } catch (e) { console.warn('[motion]', e); }
+        try { if (entering) enter(c, lv); else if (lv === 2) flip(c, s.rects, s.keys); } catch (e) { console.warn('[motion]', e); }
         if (lv === 2 && s.nav) requestAnimationFrame(() => requestAnimationFrame(() => { try { navSlide(s.nav); } catch (e) { console.warn('[motion] nav', e); } }));
     }
 
@@ -13325,7 +13471,7 @@ const PM = (function () {
             st.setProperty('--pm-spring', a.css); st.setProperty('--pm-spring-d', a.dur.toFixed(2) + 's');
             st.setProperty('--pm-spring-soft', b.css); st.setProperty('--pm-spring-soft-d', b.dur.toFixed(2) + 's');
         }
-        const start = () => { applyRootClass(); watchModals(); if (mqReduce && mqReduce.addEventListener) mqReduce.addEventListener('change', applyRootClass); };
+        const start = () => { applyRootClass(); watchModals(); watchMagnets(); if (mqReduce && mqReduce.addEventListener) mqReduce.addEventListener('change', applyRootClass); };
         if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
     }
     init();
