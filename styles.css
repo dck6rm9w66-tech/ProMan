@@ -3524,3 +3524,32 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
   .hw-modal-foot .hw-foot-sp{display:none}
   .hw-modal-foot > button{flex:1 1 0;min-width:0;padding:10px 6px !important;font-size:14px !important}
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   UI-ANIMATIONEN (Motion) — Federkurven & Hilfsklassen
+   --pm-spring* werden per JS als linear()-Federkurven gesetzt.
+   ═══════════════════════════════════════════════════════════════ */
+.pm-anim{transition:none !important}
+.pm-on .modal-overlay.active .modal-content{animation:none}
+.pm-full button, .pm-full .task-card, .pm-full .nav-item, .pm-full .clickable-row, .pm-full .wk-tab, .pm-full .wk-rail-item,
+.pm-full .wk-lens, .pm-full .stack-card, .pm-full .note-card, .pm-full .tile, .pm-full .chip, .pm-full .wk-chip,
+.pm-full .tt-day, .pm-full .day, .pm-full .wk-quickrow, .pm-full .dep-badge, .pm-full .wk-graph-card, .pm-full .hw-type, .pm-full .hw-viewbtn{
+  transition:transform var(--pm-spring-d,.34s) var(--pm-spring,cubic-bezier(.34,1.45,.5,1)), box-shadow .22s, background-color .16s, border-color .16s, color .16s;
+}
+.pm-full .wk-graph-card:not(.editing):hover{transform:translateY(-3px);box-shadow:0 12px 26px -16px rgba(34,38,43,.38)}
+.pm-full .hw-type:hover,.pm-full .hw-viewbtn:hover{transform:translateY(-2px)}
+.pm-full .wk-magnet{transition:transform var(--pm-spring-soft-d,.42s) var(--pm-spring-soft,cubic-bezier(.34,1.42,.5,1)),width var(--pm-spring-soft-d,.42s) var(--pm-spring-soft,cubic-bezier(.34,1.42,.5,1))}
+.pm-full .wk-tab-ind{transition:opacity .2s,transform var(--pm-spring-d,.3s) var(--pm-spring,cubic-bezier(.34,1.42,.5,1))}
+/* layoutId-Markierung der Navigation */
+.pm-full .wk-rail{position:relative}
+.pm-pill{position:absolute;z-index:0;border-radius:12px;background:var(--wk-magnet);pointer-events:none;transform-origin:0 0}
+.pm-pill.ind{border-radius:3px}
+.wk-rail-item > *{position:relative;z-index:1}
+.wk-rail-item.pm-pill-host{background:transparent !important}
+.wk-tab.pm-pill-host .wk-tab-ind{opacity:0 !important}
+/* SVG-Teile wachsen aus ihrer eigenen Grundlinie bzw. Mitte */
+.hw-svg rect{transform-box:fill-box;transform-origin:50% 100%}
+.hw-svg circle,.hw-svg polygon{transform-box:fill-box;transform-origin:50% 50%}
+.hw-pie-svg{transform-origin:50% 50%}
+/* „Aus": auch die bisherigen CSS-Animationen abschalten */
+.pm-off *, .pm-off *::before, .pm-off *::after{animation:none !important;transition:none !important}

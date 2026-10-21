@@ -353,6 +353,9 @@ Object.assign(i18n.de, {
     merge_choose_stack: "Bitte Stack wählen oder neu erstellen.",
     merge_done: "Aufgaben erfolgreich gruppiert.",
     milestone: "Meilenstein",
+    motion_full: "Flüssig (Standard)",
+    motion_off: "Aus",
+    motion_reduced: "Reduziert – nur Überblendungen",
     move: "Verschieben",
     ms_all: "Alle",
     ms_none: "Keine",
@@ -510,6 +513,8 @@ Object.assign(i18n.de, {
     sched_track_time: "Zeit buchen",
     search_hint_html: "Tippe, um die Suche zu starten...<br><span style=\"font-size:11px; opacity:0.7;\">(Aufgaben, Checklisten, Notizen, Historie)</span>",
     search_ph_long: "Suchen... (Strg+K)",
+    set_motion: "Animationen",
+    set_motion_desc: "Federnde Übergänge beim Ansichtswechsel, in Dialogen, Diagrammen und beim Verschieben von Karten.",
     set_target_h: "Soll-Stunden / Arbeitstag",
     set_timeacct: "Zeitkonto (Soll-Zeiten)",
     set_timeacct_desc: "Legt fest, wie viele Stunden pro Arbeitstag gebucht sein müssen. Auf dieser Basis erkennt die Zeiterfassung unvollständig gebuchte Tage.",
@@ -924,6 +929,9 @@ Object.assign(i18n.en, {
     merge_choose_stack: "Please choose a stack or create a new one.",
     merge_done: "Tasks grouped successfully.",
     milestone: "Milestone",
+    motion_full: "Smooth (default)",
+    motion_off: "Off",
+    motion_reduced: "Reduced – fades only",
     move: "Move",
     ms_all: "All",
     ms_none: "None",
@@ -1081,6 +1089,8 @@ Object.assign(i18n.en, {
     sched_track_time: "Log time",
     search_hint_html: "Type to start searching...<br><span style=\"font-size:11px; opacity:0.7;\">(tasks, checklists, notes, history)</span>",
     search_ph_long: "Search... (Ctrl+K)",
+    set_motion: "Animations",
+    set_motion_desc: "Springy transitions when switching views, in dialogs, charts and when moving cards.",
     set_target_h: "Target hours / working day",
     set_timeacct: "Time account (target hours)",
     set_timeacct_desc: "Defines how many hours must be logged per working day. Time tracking uses this to detect incompletely logged days.",
@@ -1495,6 +1505,9 @@ Object.assign(i18n.fr, {
     merge_choose_stack: "Veuillez choisir une pile ou en créer une nouvelle.",
     merge_done: "Tâches regroupées avec succès.",
     milestone: "Jalon",
+    motion_full: "Fluide (par défaut)",
+    motion_off: "Désactivées",
+    motion_reduced: "Réduit – fondus uniquement",
     move: "Déplacer",
     ms_all: "Tous",
     ms_none: "Aucun",
@@ -1652,6 +1665,8 @@ Object.assign(i18n.fr, {
     sched_track_time: "Saisir du temps",
     search_hint_html: "Tapez pour lancer la recherche...<br><span style=\"font-size:11px; opacity:0.7;\">(tâches, listes de contrôle, notes, historique)</span>",
     search_ph_long: "Rechercher... (Ctrl+K)",
+    set_motion: "Animations",
+    set_motion_desc: "Transitions élastiques lors du changement de vue, dans les dialogues, les graphiques et lors du déplacement des cartes.",
     set_target_h: "Heures cibles / jour travaillé",
     set_timeacct: "Compte de temps (heures cibles)",
     set_timeacct_desc: "Définit combien d’heures doivent être saisies par jour travaillé. Le suivi du temps s’en sert pour repérer les jours incomplets.",
@@ -1835,6 +1850,7 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
 
 
 

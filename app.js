@@ -1926,6 +1926,7 @@ function openSettings() {
     renderLogoPreview();
     document.getElementById('set_attachment_folder').value = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\';
     document.getElementById('set_language').value = appData.settings.language || 'de';
+    { const _sm = document.getElementById('set_motion'); if (_sm) _sm.value = appData.settings.motion || 'full'; }
 
     const _ch = appData.settings.notificationChannels || {};
     ['overdue','dueToday','reminder1','reminder2','system'].forEach(ev => {
@@ -11146,15 +11147,25 @@ function hwDragStart(ev, id) {
     document.addEventListener('pointerup', hwDragEnd);
     document.addEventListener('pointercancel', hwDragEnd);
 }
+function hwLayoutRect(el) {
+    const r = el.getBoundingClientRect();
+    const tf = getComputedStyle(el).transform;
+    if (!tf || tf === 'none' || typeof DOMMatrixReadOnly === 'undefined') return r;
+    const m = new DOMMatrixReadOnly(tf);
+    return { left: r.left - m.e, top: r.top - m.f, width: r.width, height: r.height };
+}
 function hwDragMove(ev) {
     if (!hwDrag) return;
     const el = document.elementFromPoint(ev.clientX, ev.clientY);
     const over = el && el.closest ? el.closest('.hw-card') : null;
     if (!over || over === hwDrag.card || over.parentNode !== hwDrag.grid) return;
-    const r = over.getBoundingClientRect();
-    const sameRow = Math.abs(r.top - hwDrag.card.getBoundingClientRect().top) < 8;
+    /* Layout-Position ohne laufende Feder-Animation (sonst springt die Einfügestelle hin und her) */
+    const r = hwLayoutRect(over);
+    const sameRow = Math.abs(r.top - hwLayoutRect(hwDrag.card).top) < 8;
     const after = sameRow ? (ev.clientX > r.left + r.width / 2) : (ev.clientY > r.top + r.height / 2);
-    hwDrag.grid.insertBefore(hwDrag.card, after ? over.nextSibling : over);
+    const ref = after ? over.nextSibling : over;
+    if (ref === hwDrag.card || hwDrag.card.nextSibling === ref) return;
+    PM.flipChildren(hwDrag.grid, () => hwDrag.grid.insertBefore(hwDrag.card, ref), hwDrag.card);
     hwDrag.moved = true;
 }
 function hwDragEnd() {
@@ -12852,3 +12863,479 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchend', finish);
     document.addEventListener('touchcancel', cancel);
 })();
+
+/* ============================================================
+   UI-ANIMATIONEN — Motion (die Framer-Motion-Engine als Vanilla-JS)
+   ------------------------------------------------------------
+   ProMan ist kein React-Projekt; Framer Motion selbst setzt React voraus.
+   „Motion" ist der offizielle Nachfolger desselben Teams mit identischer
+   Spring-Physik (animate, spring, stagger, inView). Er wird per CDN
+   geladen (window.Motion). Fehlt er, übernimmt ein eingebauter Ersatz
+   auf Basis der Web Animations API mit einer Spring-Kurve (linear()).
+
+   Was animiert wird:
+   • Ansichtswechsel: Blöcke und Karten erscheinen gestaffelt (stagger)
+   • Layout-Animation (wie Framer `layout`): Karten/Widgets/Spalten, die
+     nach einer Änderung woanders stehen, gleiten an die neue Position
+   • Neue Elemente blenden mit Feder ein (wie AnimatePresence-Enter)
+   • Inhalte unterhalb des sichtbaren Bereichs erscheinen beim Scrollen
+     (wie `whileInView`)
+   • Diagramme wachsen ein, Linien zeichnen sich, Zahlen zählen hoch
+   • Dialoge und Toasts federn herein
+   • Navigation: die aktive Markierung gleitet zum neuen Eintrag (wie `layoutId`)
+   Einstellung: appData.settings.motion = 'full' | 'reduced' | 'off'
+   ============================================================ */
+const PM = (function () {
+    const getM = () => (window.Motion && typeof window.Motion.animate === 'function') ? window.Motion : null;
+    const mqReduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const SPRING = { visualDuration: 0.42, bounce: 0.2 };
+    const SPRING_SOFT = { visualDuration: 0.5, bounce: 0.1 };
+    const SPRING_POP = { visualDuration: 0.4, bounce: 0.32 };
+    const EASE_OUT = [0.16, 1, 0.3, 1];
+    let depth = 0;
+    let reveals = [];
+    const TRANSFORM_KEYS = ['x', 'y', 'scale', 'scaleX', 'scaleY', 'rotate'];
+    let SUPPORTS_LINEAR = false;
+    try { SUPPORTS_LINEAR = !!(window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)')); } catch (e) {}
+
+    /* 0 = aus, 1 = reduziert (nur Überblendungen), 2 = flüssig */
+    function level() {
+        const s = (typeof appData !== 'undefined' && appData.settings && appData.settings.motion) || 'full';
+        if (s === 'off') return 0;
+        if (s === 'reduced' || (mqReduce && mqReduce.matches)) return 1;
+        return 2;
+    }
+
+    /* Gedämpfte Feder → CSS linear()-Kurve (für CSS-Übergänge und den Ersatz-Motor) */
+    function springCurve(bounce, vd) {
+        const z = Math.max(0.08, 1 - bounce), w = 2 * Math.PI / vd, wd = w * Math.sqrt(Math.max(1e-6, 1 - z * z));
+        const D = Math.min(1.6, Math.log(400) / (z * w));
+        const N = 36, pts = [];
+        for (let i = 0; i <= N; i++) {
+            const t = D * i / N;
+            const v = i === N ? 1 : 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
+            pts.push(+v.toFixed(4));
+        }
+        return { css: 'linear(' + pts.join(', ') + ')', dur: D };
+    }
+
+    function els(target) { return (target instanceof Element) ? [target] : Array.from(target || []); }
+    function toFrames(kf) {
+        const len = Math.max(...Object.values(kf).map(v => Array.isArray(v) ? v.length : 1));
+        const out = [];
+        for (let i = 0; i < len; i++) {
+            const f = {}; let tr = '';
+            Object.keys(kf).forEach(k => {
+                const v = kf[k]; const val = Array.isArray(v) ? v[Math.min(i, v.length - 1)] : v;
+                const px = typeof val === 'number' ? val + 'px' : val;
+                if (k === 'x') tr += `translateX(${px}) `;
+                else if (k === 'y') tr += `translateY(${px}) `;
+                else if (k === 'scale' || k === 'scaleX' || k === 'scaleY') tr += `${k}(${val}) `;
+                else if (k === 'rotate') tr += `rotate(${typeof val === 'number' ? val + 'deg' : val}) `;
+                else f[k] = val;
+            });
+            if (tr) f.transform = tr.trim();
+            out.push(f);
+        }
+        return out;
+    }
+    function applyFirst(el, kf) {
+        const f = toFrames(kf)[0];
+        Object.keys(f).forEach(k => { el.style[k] = String(f[k]); });
+    }
+    const cssProp = p => TRANSFORM_KEYS.includes(p) ? 'transform' : p;
+    /* Inline-Werte, die die App selbst gesetzt hat, merken und danach wiederherstellen */
+    function saveProps(el, kf) {
+        const sv = el.__pmSaved || { willChange: el.style.willChange };
+        Object.keys(kf).forEach(p => { const c = cssProp(p); if (!(c in sv)) sv[c] = c.startsWith('--') ? el.style.getPropertyValue(c) : el.style[c]; });
+        el.__pmSaved = sv;
+        el.__pmRuns = (el.__pmRuns || 0) + 1;
+    }
+    function clearProps(el) {
+        const sv = el.__pmSaved || {};
+        Object.keys(sv).forEach(c => { if (c.startsWith('--')) { if (sv[c]) el.style.setProperty(c, sv[c]); else el.style.removeProperty(c); } else el.style[c] = sv[c] || ''; });
+        el.__pmSaved = null;
+        el.__pmRuns = 0;
+        el.classList.remove('pm-anim');
+    }
+    /* Ersatz-Motor (Web Animations API) */
+    function waapi(el, kf, o) {
+        const sp = o.spring ? springCurve(o.spring.bounce || 0.2, o.spring.visualDuration || 0.4) : null;
+        const easing = sp ? (SUPPORTS_LINEAR ? sp.css : 'cubic-bezier(.34,1.3,.5,1)') : (o.ease ? 'cubic-bezier(' + o.ease.join(',') + ')' : 'cubic-bezier(.2,.8,.2,1)');
+        const a = el.animate(toFrames(kf), { duration: (sp ? sp.dur : (o.duration || 0.3)) * 1000, delay: (o.delay || 0) * 1000, easing, fill: 'both' });
+        return { finished: a.finished.then(() => { try { a.cancel(); } catch (e) {} }), stop: () => a.cancel() };
+    }
+    /* Ein Element animieren; danach werden die Inline-Werte wieder entfernt,
+       damit die CSS-Zustände (Hover, aktive Klassen …) unverändert greifen. */
+    function run(target, kf, o) {
+        o = o || {};
+        const list = els(target).filter(Boolean);
+        if (!list.length) return null;
+        const m = getM();
+        const ctls = list.map(el => {
+            try {
+                saveProps(el, kf);
+                el.classList.add('pm-anim');
+                if (o.init) applyFirst(el, kf);
+                let ctl;
+                if (m) {
+                    const opt = {};
+                    if (o.spring) Object.assign(opt, { type: m.spring }, o.spring);
+                    else { opt.duration = o.duration || 0.3; opt.ease = o.ease || EASE_OUT; }
+                    if (o.delay) opt.delay = o.delay;
+                    ctl = m.animate(el, kf, opt);
+                } else ctl = waapi(el, kf, o);
+                /* Aufräumen erst nach dem spätesten Ende aller Animationen dieses Elements.
+                   Motion schreibt Endwerte einen Frame nach `finished`; unterbrochene
+                   Animationen lösen nie auf – daher zusätzlich eine Zeit-Absicherung. */
+                const est = o.spring ? (o.spring.visualDuration || 0.4) * 2.2 : (o.duration || 0.3);
+                const endAt = performance.now() + ((o.delay || 0) + est) * 1000;
+                el.__pmEnd = Math.max(el.__pmEnd || 0, endAt);
+                let own = false;
+                const finalize = () => {
+                    if (!own) { own = true; if (o.onDone) { try { o.onDone(el); } catch (e) {} } }
+                    if (performance.now() + 30 < (el.__pmEnd || 0)) return;
+                    requestAnimationFrame(() => requestAnimationFrame(() => {
+                        if (!el.__pmSaved || performance.now() + 30 < (el.__pmEnd || 0)) return;
+                        el.__pmEnd = 0;
+                        if (!o.keep) clearProps(el); else { el.__pmSaved = null; el.__pmRuns = 0; el.classList.remove('pm-anim'); }
+                    }));
+                };
+                const fin = ctl && (ctl.finished || (ctl.then ? ctl : null));
+                if (fin && fin.then) fin.then(finalize, finalize);
+                setTimeout(finalize, endAt - performance.now() + 160);
+                return ctl;
+            } catch (e) { clearProps(el); return null; }
+        });
+        return ctls[0];
+    }
+    /* Zahl von 0 bis zum Zielwert hochzählen */
+    function tween(from, to, dur, onUpdate, onDone) {
+        const m = getM();
+        try {
+            if (m) { const c = m.animate(from, to, { duration: dur, ease: EASE_OUT, onUpdate }); (c.finished || c).then(onDone, onDone); return; }
+        } catch (e) {}
+        const t0 = performance.now();
+        const step = (now) => {
+            const p = Math.min(1, (now - t0) / (dur * 1000)); const e = 1 - Math.pow(1 - p, 4);
+            onUpdate(from + (to - from) * e);
+            if (p < 1) requestAnimationFrame(step); else onDone();
+        };
+        requestAnimationFrame(step);
+    }
+
+    function inViewport(r, pad) { pad = pad || 0; return r.bottom > -pad && r.top < window.innerHeight + pad && r.right > -pad && r.left < window.innerWidth + pad; }
+    function rectOf(sel) { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return (r.width || r.height) ? r : null; }
+
+    /* ---------- Schlüssel für Layout-Animationen ---------- */
+    const KEY_SEL = '.task-card[data-id], .checklist-item[data-id], .hw-card[data-hw], .kanban-column[data-status-id], [data-pm-key]';
+    const ITEM_SEL = '.task-card, .hw-card, .wk-graph-card, .kanban-column, .stack-card, .note-card, .tile, .tt-kpi, .wk-quickrow, .wk-empty, .wk-stat, .tt-day, .hw-add-tile';
+    function keyOf(el) {
+        const d = el.dataset;
+        if (d.hw) return 'w:' + d.hw;
+        if (d.statusId) return 'c:' + d.statusId;
+        if (d.pmKey) return 'k:' + d.pmKey;
+        return (el.classList.contains('task-card') ? 't:' : 'i:') + d.id;
+    }
+    function subSig() {
+        return [typeof plannerSubView !== 'undefined' ? plannerSubView : '', typeof timeSubView !== 'undefined' ? timeSubView : ''].join('|');
+    }
+    function snap() {
+        const s = { view: typeof currentView !== 'undefined' ? currentView : '', sub: subSig(), rects: new Map(), nav: null };
+        if (level() < 2) return s;
+        const c = document.getElementById('mainContainer');
+        if (c) {
+            let n = 0;
+            c.querySelectorAll(KEY_SEL).forEach(el => { if (n++ > 500) return; const r = el.getBoundingClientRect(); if (r.width || r.height) s.rects.set(keyOf(el), r); });
+        }
+        s.nav = {
+            rail: rectOf('.wk-rail-item[aria-current="page"]'),
+            tab: rectOf('.wk-tab[aria-current="page"] .wk-tab-ind'),
+            wkMagnet: rectOf('#wkMagnet'),
+            ttMagnet: rectOf('#ttMagnet')
+        };
+        return s;
+    }
+
+    /* ---------- Einblenden beim Ansichtswechsel ---------- */
+    function blocks(c) {
+        let root = c;
+        for (let i = 0; i < 3 && root.children.length === 1; i++) root = root.children[0];
+        return Array.from(root.children).filter(e => { const r = e.getBoundingClientRect(); return (r.width || r.height) && r.top < window.innerHeight + 40; }).slice(0, 14);
+    }
+    function enter(c, lv) {
+        const bl = blocks(c);
+        bl.forEach((el, i) => run(el, lv === 2 ? { opacity: [0, 1], y: [18, 0] } : { opacity: [0, 1] },
+            lv === 2 ? { spring: SPRING_SOFT, delay: i * 0.05, init: true } : { duration: 0.22, delay: i * 0.02, init: true }));
+        if (lv < 2) return;
+        let vis = 0, rev = 0;
+        c.querySelectorAll(ITEM_SEL).forEach(el => {
+            if (bl.includes(el)) return;
+            const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
+            if (inViewport(r)) { if (vis < 40) { run(el, { opacity: [0, 1], y: [12, 0], scale: [0.97, 1] }, { spring: SPRING, delay: 0.08 + vis * 0.025, init: true }); vis++; } }
+            else if (rev < 150 && el.offsetParent !== null) { reveal(el); rev++; }
+        });
+        charts(c);
+        counts(c);
+    }
+    /* whileInView: Element erscheint, sobald es ins Bild scrollt (einmalig) */
+    function reveal(el) {
+        const kf = { opacity: [0, 1], y: [20, 0] };
+        if (el.style.transform || el.style.opacity) return;
+        el.__pmSaved = { opacity: '', transform: '', willChange: el.style.willChange };
+        applyFirst(el, kf);
+        let stop = null, fired = false;
+        const go = () => { if (fired) return; fired = true; if (stop) stop(); run(el, kf, { spring: SPRING_SOFT }); charts(el); };
+        const m = getM();
+        try {
+            if (m && m.inView) stop = m.inView(el, () => { go(); }, { amount: 0.12 });
+            else { const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) go(); }), { threshold: 0.12 }); io.observe(el); stop = () => io.disconnect(); }
+        } catch (e) { clearProps(el); return; }
+        reveals.push(() => { if (stop) stop(); if (!fired && el.isConnected) clearProps(el); });
+    }
+    function cleanupReveals() { const r = reveals; reveals = []; r.forEach(f => { try { f(); } catch (e) {} }); }
+
+    /* ---------- Layout-Animation (FLIP) innerhalb derselben Ansicht ---------- */
+    function flip(c, rects) {
+        if (!rects || !rects.size) return;
+        const moves = [], fresh = [];
+        c.querySelectorAll(KEY_SEL).forEach(el => {
+            const r = el.getBoundingClientRect(); if (!r.width && !r.height) return;
+            const o = rects.get(keyOf(el));
+            if (o) { const dx = o.left - r.left, dy = o.top - r.top; if (Math.abs(dx) > 1 || Math.abs(dy) > 1) moves.push({ el, dx, dy, r }); }
+            else if (inViewport(r) && fresh.length < 30) fresh.push(el);
+        });
+        /* Hat sich alles gleich verschoben (z. B. Scroll-Position), ist das keine Layout-Änderung */
+        if (moves.length > 4) {
+            const same = moves.filter(m => Math.abs(m.dy - moves[0].dy) < 2 && Math.abs(m.dx - moves[0].dx) < 2).length;
+            if (same / moves.length > 0.8) return;
+        }
+        const delta = new Map();
+        let n = 0;
+        moves.forEach(mv => {
+            if (n >= 80 || !inViewport(mv.r, 80)) return;
+            /* Verschachtelte Elemente (Karte in Spalte) nur relativ zum Elternteil bewegen */
+            let dx = mv.dx, dy = mv.dy;
+            const parent = mv.el.parentElement && mv.el.parentElement.closest(KEY_SEL);
+            if (parent && delta.has(parent)) { const p = delta.get(parent); dx -= p[0]; dy -= p[1]; }
+            delta.set(mv.el, [mv.dx, mv.dy]);
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+            run(mv.el, { x: [dx, 0], y: [dy, 0] }, { spring: SPRING, init: true });
+            n++;
+        });
+        fresh.forEach((el, i) => { run(el, { opacity: [0, 1], scale: [0.95, 1] }, { spring: SPRING_POP, delay: i * 0.03, init: true }); charts(el); });
+    }
+    /* FLIP für eine direkte Umsortierung im DOM (z. B. Widgets ziehen) */
+    function flipChildren(container, mutate, exclude) {
+        if (level() < 2 || !container) { mutate(); return; }
+        const kids = Array.from(container.children);
+        const before = new Map(kids.map(k => [k, k.getBoundingClientRect()]));
+        mutate();
+        kids.forEach(k => {
+            if (k === exclude) return;
+            const o = before.get(k), r = k.getBoundingClientRect();
+            const dx = o.left - r.left, dy = o.top - r.top;
+            if (Math.abs(dx) > 1 || Math.abs(dy) > 1) run(k, { x: [dx, 0], y: [dy, 0] }, { spring: SPRING, init: true });
+        });
+    }
+
+    /* ---------- Diagramme & Zahlen ---------- */
+    function charts(root) {
+        if (level() < 2 || !root || !root.querySelectorAll) return;
+        const q = (s, max) => Array.from(root.querySelectorAll(s)).slice(0, max || 200);
+        q('.wk-tr-fill, .hw-svg rect', 160).forEach((el, i) => {
+            if (!(el instanceof SVGElement)) el.style.transformOrigin = '50% 100%';
+            run(el, { scaleY: [0, 1] }, { spring: SPRING_POP, delay: 0.1 + (i % 24) * 0.025, init: true });
+        });
+        q('.wk-prio-track > i, .pb-fill, .wk-dist-seg, .hw-hbars .wk-prio-track i', 120).forEach((el, i) => {
+            el.style.transformOrigin = '0 50%';
+            run(el, { scaleX: [0, 1] }, { spring: SPRING_SOFT, delay: 0.1 + (i % 20) * 0.03, init: true });
+        });
+        q('.hw-pie-svg', 12).forEach(svg => run(svg, { opacity: [0, 1], rotate: [-75, 0], scale: [0.75, 1] }, { spring: SPRING_POP, delay: 0.08, init: true }));
+        q('.hw-svg path', 80).forEach((p, i) => {
+            if (p.closest('.hw-pie-svg') || p.classList.contains('hw-gauge-bg')) return;
+            if (p.style.fill === 'none' && !p.style.strokeDasharray) draw(p, 0.12 + i * 0.05);
+            else run(p, { opacity: [0, 1] }, { duration: 0.5, delay: 0.2, init: true });
+        });
+        q('.hw-svg circle', 160).forEach((el, i) => { if (el.closest('.hw-pie-svg')) return; run(el, { scale: [0, 1] }, { spring: SPRING_POP, delay: 0.3 + Math.min(i, 60) * 0.008, init: true }); });
+        q('.hw-svg polygon:not(.hw-web)', 12).forEach(el => run(el, { scale: [0, 1], opacity: [0, 1] }, { spring: SPRING_POP, delay: 0.15, init: true }));
+        q('.hw-tile, .hw-hc:not(.pad), .hw-kpi-top li', 90).forEach((el, i) => run(el, { opacity: [0, 1], scale: [0.85, 1] }, { spring: SPRING, delay: 0.08 + Math.min(i, 45) * 0.012, init: true }));
+        q('.wk-stat-ring', 6).forEach(ring => {
+            const p = parseFloat(ring.style.getPropertyValue('--p')) || 0;
+            if (!p) return;
+            ring.style.setProperty('--p', 0);
+            tween(0, p, 1.1, v => ring.style.setProperty('--p', v.toFixed(1)), () => ring.style.setProperty('--p', p));
+        });
+    }
+    function draw(p, delay) {
+        let len = 0; try { len = p.getTotalLength(); } catch (e) {}
+        if (!len || len > 6000) return;
+        p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+        run(p, { strokeDashoffset: [len, 0] }, { duration: 0.9, ease: [0.65, 0, 0.35, 1], delay, keep: true, onDone: () => { p.style.strokeDasharray = ''; p.style.strokeDashoffset = ''; } });
+    }
+    const COUNT_SEL = '.wk-hero-num, .hw-kpi-num, .wk-stat-ring > span, .wk-stat-nums b, .tt-kpi-value, .hw-donut-num, .hw-gauge-num';
+    function counts(root) {
+        if (level() < 2) return;
+        const lang = (typeof ttLang === 'function') ? ttLang() : 'de';
+        const dec = lang === 'en' ? '.' : ',';
+        const thou = lang === 'en' ? /\d,\d{3}(?!\d)/ : /\d[.   ']\d{3}(?!\d)/;
+        Array.from(root.querySelectorAll(COUNT_SEL)).slice(0, 24).forEach(el => {
+            if (!inViewport(el.getBoundingClientRect())) return;
+            const tn = Array.from(el.childNodes).find(n => n.nodeType === 3 && /\d/.test(n.nodeValue));
+            if (!tn) return;
+            const orig = tn.nodeValue;
+            if (thou.test(orig)) return;
+            const mm = orig.match(/[+\-−]?\d+(?:[.,]\d+)?/); if (!mm) return;
+            const tok = mm[0];
+            const decimals = tok.includes(dec) ? tok.split(dec)[1].length : 0;
+            const val = parseFloat(tok.replace('−', '-').replace(dec, '.'));
+            if (!isFinite(val) || Math.abs(val) < 1 || Math.abs(val) > 99999) return;
+            const fmt = v => { let s = v.toFixed(decimals); if (dec === ',') s = s.replace('.', ','); return (tok.startsWith('+') && v > 0 ? '+' : '') + s; };
+            tn.nodeValue = orig.replace(tok, fmt(0));
+            tween(0, val, 0.9, v => { tn.nodeValue = orig.replace(tok, fmt(v)); }, () => { tn.nodeValue = orig; });
+        });
+    }
+
+    /* ---------- Navigation: gleitende Markierung (wie layoutId) ---------- */
+    function slidePill(container, host, oldRect, cls) {
+        if (!container || !host || !oldRect) return;
+        const nr = host.getBoundingClientRect();
+        if (!nr.width || (Math.abs(nr.top - oldRect.top) < 1 && Math.abs(nr.left - oldRect.left) < 1)) return;
+        const cr = container.getBoundingClientRect();
+        const pill = document.createElement('span');
+        pill.className = 'pm-pill ' + (cls || '');
+        Object.assign(pill.style, { left: (nr.left - cr.left + container.scrollLeft) + 'px', top: (nr.top - cr.top + container.scrollTop) + 'px', width: nr.width + 'px', height: nr.height + 'px' });
+        container.appendChild(pill);
+        const owner = host.closest('.wk-rail-item, .wk-tab') || host;
+        owner.classList.add('pm-pill-host');
+        const end = () => { pill.remove(); owner.classList.remove('pm-pill-host'); };
+        const ctl = run(pill, { x: [oldRect.left - nr.left, 0], y: [oldRect.top - nr.top, 0], scaleX: [oldRect.width / nr.width, 1], scaleY: [oldRect.height / nr.height, 1] }, { spring: SPRING_POP, keep: true, init: true, onDone: end });
+        if (!ctl) end();
+        setTimeout(end, 1500);
+    }
+    function slideMagnet(id, oldRect) {
+        const mag = document.getElementById(id);
+        if (!mag || !oldRect) return;
+        const nr = mag.getBoundingClientRect();
+        if (!nr.width || Math.abs(nr.left - oldRect.left) < 1) return;
+        const cur = /translateX\((-?[\d.]+)px\)/.exec(mag.style.transform || '');
+        if (!cur) return;
+        const x1 = parseFloat(cur[1]), x0 = x1 + (oldRect.left - nr.left);
+        run(mag, { x: [x0, x1], width: [oldRect.width + 'px', nr.width + 'px'] }, { spring: SPRING_POP, keep: true, init: true, onDone: () => { mag.style.width = nr.width + 'px'; mag.style.transform = 'translateX(' + x1 + 'px)'; } });
+    }
+    function navSlide(nav) {
+        if (!nav) return;
+        const rail = document.querySelector('.wk-rail');
+        slidePill(rail, rail && rail.querySelector('.wk-rail-item[aria-current="page"]'), nav.rail, '');
+        const bar = document.querySelector('.wk-tabbar');
+        slidePill(bar, bar && bar.querySelector('.wk-tab[aria-current="page"] .wk-tab-ind'), nav.tab, 'ind');
+        slideMagnet('wkMagnet', nav.wkMagnet);
+        slideMagnet('ttMagnet', nav.ttMagnet);
+    }
+
+    function after(s) {
+        const lv = level();
+        if (!lv) return;
+        const c = document.getElementById('mainContainer');
+        if (!c) return;
+        cleanupReveals();
+        const entering = s.view !== (typeof currentView !== 'undefined' ? currentView : '') || s.sub !== subSig();
+        try { if (entering) enter(c, lv); else if (lv === 2) flip(c, s.rects); } catch (e) { console.warn('[motion]', e); }
+        if (lv === 2 && s.nav) requestAnimationFrame(() => requestAnimationFrame(() => { try { navSlide(s.nav); } catch (e) { console.warn('[motion] nav', e); } }));
+    }
+
+    /* ---------- Dialoge ---------- */
+    function modalIn(ov) {
+        const lv = level(); if (!lv) return;
+        const box = ov.querySelector('.modal-content'); if (!box) return;
+        if (lv === 1) { run(box, { opacity: [0, 1] }, { duration: 0.2, init: true }); return; }
+        const narrow = window.innerWidth <= 1088;
+        if (narrow && box.classList.contains('bottom-sheet-mobile')) run(box, { y: ['100%', '0%'] }, { spring: { visualDuration: 0.45, bounce: 0.14 }, init: true });
+        else if (narrow) run(box, { x: ['100%', '0%'] }, { spring: { visualDuration: 0.45, bounce: 0.08 }, init: true });
+        else run(box, { opacity: [0, 1], scale: [0.94, 1], y: [24, 0] }, { spring: SPRING_POP, init: true });
+        const body = box.querySelector('.modal-body-simple, .modal-body, .settings-body, .modal-scroll');
+        if (body) Array.from(body.children).slice(0, 10).forEach((ch, i) => {
+            const r = ch.getBoundingClientRect(); if (!r.height) return;
+            run(ch, { opacity: [0, 1], y: [10, 0] }, { spring: SPRING_SOFT, delay: 0.06 + i * 0.03, init: true });
+        });
+    }
+    function watchModals() {
+        const mo = new MutationObserver(list => {
+            list.forEach(r => {
+                const el = r.target;
+                if (!el.classList || !el.classList.contains('modal-overlay')) return;
+                const was = /(^|\s)active(\s|$)/.test(r.oldValue || '');
+                if (el.classList.contains('active') && !was) modalIn(el);
+            });
+        });
+        mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+    }
+
+    /* ---------- Toasts ---------- */
+    function hookToast() {
+        if (typeof window._rawToast !== 'function' || window._rawToast.__pm) return;
+        const inner = window._rawToast;
+        const wrapped = function () {
+            const r = inner.apply(this, arguments);
+            const lv = level();
+            const box = document.getElementById('toast-container');
+            const toast = box && box.lastElementChild;
+            if (lv && toast) {
+                toast.style.animation = 'none';
+                run(toast, lv === 2 ? { opacity: [0, 1], x: [56, 0], scale: [0.9, 1] } : { opacity: [0, 1] }, lv === 2 ? { spring: SPRING_POP, init: true } : { duration: 0.2, init: true });
+            }
+            return r;
+        };
+        wrapped.__pm = true;
+        window._rawToast = wrapped;
+    }
+
+    /* ---------- Einhängen ---------- */
+    function hook() {
+        const innerR = window.renderView, innerS = window.switchView;
+        if (typeof innerR !== 'function' || innerR.__pm) return;
+        const wR = function () {
+            if (depth > 0 || !level()) return innerR.apply(this, arguments);
+            const s = snap(); depth++;
+            try { return innerR.apply(this, arguments); } finally { depth--; after(s); }
+        };
+        wR.__pm = true; window.renderView = wR;
+        if (typeof innerS === 'function') {
+            const wS = function () {
+                if (depth > 0 || !level()) return innerS.apply(this, arguments);
+                const s = snap(); depth++;
+                try { return innerS.apply(this, arguments); } finally { depth--; after(s); }
+            };
+            wS.__pm = true; window.switchView = wS;
+        }
+    }
+    function applyRootClass() {
+        const lv = level(), root = document.documentElement;
+        root.classList.toggle('pm-on', lv > 0);
+        root.classList.toggle('pm-full', lv === 2);
+        root.classList.toggle('pm-off', lv === 0);
+    }
+    function init() {
+        hook();
+        hookToast();
+        /* Federkurven als CSS-Variablen für Hover/Press-Übergänge */
+        if (SUPPORTS_LINEAR) {
+            const a = springCurve(0.35, 0.32), b = springCurve(0.18, 0.4);
+            const st = document.documentElement.style;
+            st.setProperty('--pm-spring', a.css); st.setProperty('--pm-spring-d', a.dur.toFixed(2) + 's');
+            st.setProperty('--pm-spring-soft', b.css); st.setProperty('--pm-spring-soft-d', b.dur.toFixed(2) + 's');
+        }
+        const start = () => { applyRootClass(); watchModals(); if (mqReduce && mqReduce.addEventListener) mqReduce.addEventListener('change', applyRootClass); };
+        if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+    }
+    init();
+
+    return { run, flipChildren, charts, level, applyRootClass, engine: () => getM() ? 'motion' : 'waapi' };
+})();
+
+/* Einstellung „Animationen" */
+function pmSetLevel(v) {
+    appData.settings.motion = (v === 'reduced' || v === 'off') ? v : 'full';
+    saveToLocal(true);
+    PM.applyRootClass();
+}
