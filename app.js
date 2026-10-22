@@ -10805,7 +10805,8 @@ function hwCardHtml(w, mode) {
             <button type="button" class="secondary hw-tool" title="${_t('hw_configure')}" aria-label="${_t('hw_configure')}" onclick="hwOpenConfig('${w.id}')"><i class="fas fa-gear"></i></button>
             <button type="button" class="secondary hw-tool danger" title="${_t('hw_remove')}" aria-label="${_t('hw_remove')}" onclick="hwRemove('${w.id}')"><i class="fas fa-trash"></i></button>
         </div>` : '';
-    return `<div class="wk-graph-card hw-card s${size}${edit ? ' editing' : ''}" data-hw="${w.id}" data-view="${view}">
+    const dragAttr = mode === 'preview' ? '' : ` onpointerdown="hwCardPointerDown(event,'${w.id}')"`;
+    return `<div class="wk-graph-card hw-card s${size}${edit ? ' editing' : ''}" data-hw="${w.id}" data-view="${view}"${dragAttr}>
         ${tools}
         <div class="wk-graph-h"><b title="${hwEsc(_t(def.desc))}">${hwEsc(hwTitleOf(w))}</b><u>${hwEsc(ds.sub || '')}${hint ? ' · ' + hwEsc(hint) : ''}</u></div>
         <div class="hw-body">${body}</div>
@@ -10847,13 +10848,47 @@ function hwReset() { hwSetLayout(hwDefaultLayout()); showToast(_t('hw_reset_done
 
 /* Verschieben per Ziehen (Maus und Touch über den Griff) */
 let hwDrag = null;
+/* Griff im „Anpassen"-Modus (Maus und Touch) */
 function hwDragStart(ev, id) {
-    const card = ev.target.closest('.hw-card'); const grid = document.getElementById('hwGrid');
-    if (!card || !grid) return;
+    const card = ev.target.closest('.hw-card');
+    if (!card) return;
     ev.preventDefault();
-    hwDrag = { id, card, grid, pid: ev.pointerId, moved: false };
+    hwBeginDrag(card, id, ev.pointerId, ev.target);
+}
+/* Desktop: die ganze Kachel ist mit der Maus greifbar – auch ohne „Anpassen".
+   Das Ziehen beginnt erst nach 6 px Bewegung, ein einfacher Klick bleibt ein Klick.
+   Knöpfe und scrollbare Tabellen bleiben normal bedienbar. Touch nutzt weiterhin
+   den Griff im Bearbeiten-Modus, damit beim Scrollen nichts verrutscht. */
+const HW_DRAG_THRESHOLD = 6;
+function hwCardPointerDown(ev, id) {
+    if (hwDrag || ev.pointerType !== 'mouse' || ev.button !== 0) return;
+    if (ev.target.closest('button, a, input, select, textarea, label, .hw-tablewrap, .hw-drag')) return;
+    const card = ev.currentTarget, grid = document.getElementById('hwGrid');
+    if (!grid || card.parentNode !== grid) return;
+    ev.preventDefault(); /* keine Textauswahl beim Ziehen */
+    const sx = ev.clientX, sy = ev.clientY;
+    const cleanup = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', cleanup);
+        document.removeEventListener('pointercancel', cleanup);
+    };
+    const onMove = (e) => {
+        if (Math.hypot(e.clientX - sx, e.clientY - sy) < HW_DRAG_THRESHOLD) return;
+        cleanup();
+        hwBeginDrag(card, id, ev.pointerId, card);
+        hwDragMove(e);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', cleanup);
+    document.addEventListener('pointercancel', cleanup);
+}
+function hwBeginDrag(card, id, pointerId, captureEl) {
+    const grid = document.getElementById('hwGrid');
+    if (!card || !grid) return;
+    hwDrag = { id, card, grid, pid: pointerId, moved: false };
     card.classList.add('hw-dragging');
-    try { ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
+    document.body.classList.add('hw-dragging-on');
+    try { (captureEl || card).setPointerCapture(pointerId); } catch (e) {}
     document.addEventListener('pointermove', hwDragMove);
     document.addEventListener('pointerup', hwDragEnd);
     document.addEventListener('pointercancel', hwDragEnd);
@@ -10886,6 +10921,7 @@ function hwDragEnd() {
     if (!hwDrag) return;
     const d = hwDrag; hwDrag = null;
     d.card.classList.remove('hw-dragging');
+    document.body.classList.remove('hw-dragging-on');
     if (!d.moved) return;
     const order = [...d.grid.querySelectorAll('.hw-card')].map(c => c.dataset.hw);
     const arr = hwGetLayout();
@@ -11931,7 +11967,15 @@ function ttHeuteBook(iso){
 })();
 
 /* ---- Build-Kennung: erlaubt zu prüfen, ob wirklich der neue Stand geladen ist ---- */
-window.PROMAN_BUILD = '20260804-17';
+/* Die Kennung wird nicht mehr von Hand gepflegt, sondern aus dem Cache-Parameter gelesen,
+   mit dem index.html dieses Skript lädt (app.js?v=…). So stimmt sie nach jedem Update automatisch. */
+window.PROMAN_BUILD = (function () {
+    const ver = (src) => { const m = /[?&]v=([^&#]+)/.exec(src || ''); return m ? decodeURIComponent(m[1]) : ''; };
+    let v = '';
+    try { v = ver(document.currentScript && document.currentScript.src); } catch (e) {}
+    if (!v) { const s = Array.from(document.scripts).find(x => /(^|\/)app\.js(\?|$)/.test(x.getAttribute('src') || '')); if (s) v = ver(s.getAttribute('src')); }
+    return v || 'dev';
+})();
 try { console.info('ProMan Build', window.PROMAN_BUILD); } catch(e) {}
 document.addEventListener('DOMContentLoaded', () => {
     try {
@@ -11941,6 +11985,13 @@ document.addEventListener('DOMContentLoaded', () => {
             tag.id = 'wkBuildTag';
             tag.style.cssText = 'margin-top:14px;font-size:11px;color:var(--text-muted);font-family:var(--ff-data);';
             tag.textContent = 'Build ' + window.PROMAN_BUILD;
+            /* Laden Stylesheet oder Übersetzungen einen anderen Stand (z. B. aus dem Browser-Cache),
+               wird das zur Fehlersuche mit angezeigt */
+            const verOf = (el, attr) => { const m = el && /[?&]v=([^&#]+)/.exec(el.getAttribute(attr) || ''); return m ? m[1] : ''; };
+            const css = verOf(document.querySelector('link[href*="styles.css"]'), 'href');
+            const i18 = verOf(Array.from(document.scripts).find(x => /i18n\.js/.test(x.getAttribute('src') || '')), 'src');
+            const odd = [['styles.css', css], ['i18n.js', i18]].filter(([, v]) => v && v !== window.PROMAN_BUILD);
+            if (odd.length) tag.textContent += ' · ' + odd.map(([f, v]) => f + ' ' + v).join(' · ');
             tab.appendChild(tag);
         }
     } catch (e) {}
