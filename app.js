@@ -2889,9 +2889,17 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
             const eStatus = eStatusObj ? (eStatusObj.id === 'done' ? _t('col_completed') : eStatusObj.title) : (entity.status || '-');
             const eUserObj = appData.users.find(u => u.id === entity.assigneeId);
             const eUser = eUserObj ? eUserObj.name : _t('not_assigned');
-            
+            /* Stakeholder der Aufgabe bzw. des Stacks */
+            const eShObj = (appData.stakeholders || []).find(s => s.id === entity.stakeholderId);
+            const eSh = eShObj ? eShObj.name : _t('no_stakeholder');
+            /* Absender: der aktuell angemeldete Nutzer (statt „ProMan Automatisierung") */
+            const meObj = (appData.users || []).find(u => u.id === appData.settings.currentUserId);
+            const eSender = (meObj && meObj.name) ? meObj.name : 'ProMan';
+            /* Auslöser: Name des Workflows (statt des internen Codes wie „task_updated") */
+            const eTrigger = (wfName && String(wfName).trim()) || triggerNameStr;
+
             const subject = _tf('mail_wf_subject', { n: eName });
-            const body = _tf('mail_wf_body', { trigger: triggerNameStr, msg: customMsg, type: typeStr, name: eName, status: eStatus, prio: ePrio, due: eDue, user: eUser });
+            const body = _tf('mail_wf_body', { trigger: eTrigger, msg: customMsg, type: typeStr, name: eName, sh: eSh, status: eStatus, prio: ePrio, due: eDue, user: eUser, sender: eSender });
             
             triggerEmailNotif(subject, body, targetEmail);
         }
@@ -12801,7 +12809,6 @@ const PM = (function () {
     }
 
     function inViewport(r, pad) { pad = pad || 0; return r.bottom > -pad && r.top < window.innerHeight + pad && r.right > -pad && r.left < window.innerWidth + pad; }
-    function rectOf(sel) { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return (r.width || r.height) ? r : null; }
 
     /* ---------- Schlüssel für Layout-Animationen ---------- */
     const KEY_SEL = '.task-card[data-id], .checklist-item[data-id], .hw-card[data-hw], .kanban-column[data-status-id], [data-pm-key]';
@@ -12829,17 +12836,13 @@ const PM = (function () {
         return { left: r.left - m.e, top: r.top - m.f, width: r.width, height: r.height, right: r.right - m.e, bottom: r.bottom - m.f };
     }
     function snap() {
-        const s = { view: typeof currentView !== 'undefined' ? currentView : '', sub: subSig(), rects: new Map(), keys: new Set(), nav: null };
+        const s = { view: typeof currentView !== 'undefined' ? currentView : '', sub: subSig(), rects: new Map(), keys: new Set() };
         if (level() < 2) return s;
         const c = document.getElementById('mainContainer');
         if (c) {
             let n = 0;
             c.querySelectorAll(KEY_SEL).forEach(el => { const k = keyOf(el); s.keys.add(k); if (n++ > 500) return; const r = layoutRect(el); if (r) s.rects.set(k, r); });
         }
-        s.nav = {
-            rail: rectOf('.wk-rail-item[aria-current="page"]'),
-            tab: rectOf('.wk-tab[aria-current="page"] .wk-tab-ind')
-        };
         return s;
     }
 
@@ -12996,7 +12999,8 @@ const PM = (function () {
         container.appendChild(pill);
         const owner = host.closest('.wk-rail-item, .wk-tab') || host;
         let ended = false;
-        owner.classList.add('pm-pill-host');
+        owner.classList.add('pm-snap', 'pm-pill-host');
+        requestAnimationFrame(() => requestAnimationFrame(() => { if (!ended) owner.classList.remove('pm-snap'); }));
         /* Icon/Text des Ziels bleibt hell, bis der gelbe Kasten es zur Hälfte überdeckt */
         const watch = () => {
             if (ended) return;
@@ -13045,12 +13049,30 @@ const PM = (function () {
         });
         mo.observe(document.body, { childList: true, subtree: true });
     }
-    function navSlide(nav) {
-        if (!nav) return;
-        const rail = document.querySelector('.wk-rail');
-        slidePill(rail, rail && rail.querySelector('.wk-rail-item[aria-current="page"]'), nav.rail, '');
-        const bar = document.querySelector('.wk-tabbar');
-        slidePill(bar, bar && bar.querySelector('.wk-tab[aria-current="page"] .wk-tab-ind'), nav.tab, 'ind');
+    /* Wechsel des aktiven Navigationseintrags sofort erkennen – noch bevor der Browser das
+       nächste Bild zeichnet. Vorher startete die Markierung zwei Frames später; in dieser Lücke
+       blendete der angeklickte Eintrag seinen gelben Hintergrund kurz ein und wieder aus
+       (sichtbares Aufblitzen, besonders wenn der Zeiger auf dem Icon stehen bleibt). */
+    function watchNavActive() {
+        const mo = new MutationObserver(list => {
+            if (level() < 2) return;
+            const lost = new Map(), gained = new Map();
+            list.forEach(r => {
+                const el = r.target;
+                const was = r.oldValue === 'page', is = el.getAttribute('aria-current') === 'page';
+                if (was === is) return;
+                const box = el.closest('.wk-rail, .wk-tabbar'); if (!box) return;
+                (is ? gained : lost).set(box, el);
+            });
+            gained.forEach((el, box) => {
+                const old = lost.get(box); if (!old) return;
+                try {
+                    if (box.classList.contains('wk-rail')) slidePill(box, el, old.getBoundingClientRect(), '');
+                    else { const oi = old.querySelector('.wk-tab-ind'), ni = el.querySelector('.wk-tab-ind'); if (oi && ni) slidePill(box, ni, oi.getBoundingClientRect(), 'ind'); }
+                } catch (e) { console.warn('[motion] nav', e); }
+            });
+        });
+        mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-current'], attributeOldValue: true });
     }
 
     function after(s) {
@@ -13061,7 +13083,6 @@ const PM = (function () {
         cleanupReveals();
         const entering = s.view !== (typeof currentView !== 'undefined' ? currentView : '') || s.sub !== subSig();
         try { if (entering) enter(c, lv); else if (lv === 2) flip(c, s.rects, s.keys); } catch (e) { console.warn('[motion]', e); }
-        if (lv === 2 && s.nav) requestAnimationFrame(() => requestAnimationFrame(() => { try { navSlide(s.nav); } catch (e) { console.warn('[motion] nav', e); } }));
     }
 
     /* ---------- Dialoge ---------- */
@@ -13145,7 +13166,7 @@ const PM = (function () {
             st.setProperty('--pm-spring', a.css); st.setProperty('--pm-spring-d', a.dur.toFixed(2) + 's');
             st.setProperty('--pm-spring-soft', b.css); st.setProperty('--pm-spring-soft-d', b.dur.toFixed(2) + 's');
         }
-        const start = () => { applyRootClass(); watchModals(); watchMagnets(); if (mqReduce && mqReduce.addEventListener) mqReduce.addEventListener('change', applyRootClass); };
+        const start = () => { applyRootClass(); watchModals(); watchMagnets(); watchNavActive(); if (mqReduce && mqReduce.addEventListener) mqReduce.addEventListener('change', applyRootClass); };
         if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
     }
     init();
