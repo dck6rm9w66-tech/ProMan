@@ -2124,12 +2124,34 @@ function getStatusColor(s) {
     if (s && s.id === 'done') return '#1F9463';
     return '#333B44';
 }
+/* Kanban-Spalten bekommen zufällig unterschiedliche Farben. Grün bleibt „Abgeschlossen" vorbehalten;
+   das frühere Einheitsgrau (#333B44) gilt als „keine Farbe gewählt" und wird ebenfalls ersetzt.
+   Einmal vergeben, wird die Farbe gespeichert und ist über die Einstellungen änderbar. */
+const STATUS_PALETTE = ['#0F5FDC', '#E8A317', '#7C6CE0', '#0E9BAA', '#D9342B', '#C2185B', '#B96A2B', '#5E7CE2', '#cca300', '#8E24AA', '#F4511E', '#3949AB', '#00838F', '#AD1457'];
+const STATUS_DEFAULT_GREY = '#333b44';
+function pickStatusColor(usedColors) {
+    const used = (usedColors || []).map(c => String(c || '').toLowerCase());
+    const free = STATUS_PALETTE.filter(c => !used.includes(c.toLowerCase()));
+    const pool = free.length ? free : STATUS_PALETTE;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+function ensureStatusColors() {
+    let changed = false;
+    const list = appData.statuses || [];
+    const isUnset = (c) => !c || String(c).toLowerCase() === STATUS_DEFAULT_GREY;
+    const used = list.filter(s => s.id !== 'done' && !isUnset(s.color)).map(s => s.color);
+    list.forEach(s => {
+        if (s.id === 'done' || !isUnset(s.color)) return;
+        s.color = pickStatusColor(used); used.push(s.color); changed = true;
+    });
+    return changed;
+}
 function updateStatusColor(id, color) {
     const s = appData.statuses.find(x => x.id === id);
     if (s) { s.color = color; saveToLocal(true); renderView(); }
 }
 
-function addStatus() { const n = document.getElementById('new_status_name').value.trim(); if(n) { appData.statuses.push({ id: generateId(), title: n }); document.getElementById('new_status_name').value = ''; renderSettings(); } }
+function addStatus() { const n = document.getElementById('new_status_name').value.trim(); if(n) { appData.statuses.push({ id: generateId(), title: n, color: pickStatusColor(appData.statuses.map(s => s.color)) }); document.getElementById('new_status_name').value = ''; renderSettings(); } }
 function deleteStatus(id) { if(id === 'done') return showToast(_t('err_system_col'), 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
 function addStakeholder() { const n = document.getElementById('new_sh_name').value.trim();
     /* Farbe wird wie bei Status/Buckets nicht vorab abgefragt: die nächste noch freie Palettenfarbe,
@@ -3216,8 +3238,10 @@ function addModalClDragHandlers(div) {
     div.draggable = false;
 }
 
-function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null) {
+function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', startDate = '', duration = null, allDay = false) {
     let sd = '', stime = ''; if (startDate) { if (startDate.includes('T')) [sd, stime] = startDate.split('T'); else sd = startDate; }
+    /* Ganztägig = keine Uhrzeit vom User gewählt → Feld leer lassen (intern steht der Arbeitsbeginn im startDate) */
+    if (allDay) stime = '';
     /* Dauer in Minuten → Dezimalstunden (Standard 60 Min = 1 Stunde) */
     let durMin = (duration === null || duration === undefined || duration === '') ? 0 : parseInt(duration, 10);
     if (isNaN(durMin) || durMin < 0) durMin = 60;
@@ -3354,7 +3378,7 @@ function openStackModal(id = null) {
         if(s.checklist) s.checklist.forEach(c => { 
             const div = document.createElement('div'); div.className = 'checklist-item'; 
             div.setAttribute('data-id', c.id);
-            div.innerHTML = buildChecklistItemHTML(c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null)); 
+            div.innerHTML = buildChecklistItemHTML(c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null), !!c.allDay); 
             addModalClDragHandlers(div); container.appendChild(div); 
         });
         
@@ -3554,10 +3578,10 @@ function populateTaskDropdowns() {
 }
 function toggleCustomRecurrence() { document.getElementById('custom_recurrence_div').style.display = (document.getElementById('t_recurrence').value === 'custom') ? 'flex' : 'none'; }
 
-function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null) {
+function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId='', id='', startDate='', duration=null, allDay=false) {
     const div = document.createElement('div'); div.className = 'checklist-item'; 
     if(id) div.setAttribute('data-id', id);
-    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration); addModalClDragHandlers(div); container.appendChild(div);
+    div.innerHTML = buildChecklistItemHTML(title, done, dueDate, assigneeId, id, startDate, duration, allDay); addModalClDragHandlers(div); container.appendChild(div);
 }
 
 function openTaskToCheckpoint(taskId, checkpointId) { openModal(taskId, checkpointId); }
@@ -3600,7 +3624,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
         document.getElementById('t_estTime').value = (t_obj.estimatedTimeBase !== undefined ? t_obj.estimatedTimeBase : (t_obj.estimatedTime || '')); document.getElementById('t_spentTime').value = t_obj.spentTime || ''; document.getElementById('t_desc_rte').innerHTML = t_obj.description || ''; document.getElementById('t_notes').value = t_obj.notes || '';
         document.getElementById('t_target_budget').value = t_obj.targetBudget || ''; { const _tl = document.getElementById('t_currency_label'); if(_tl) _tl.textContent = getGlobalCurrency(); }
         
-        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null))); 
+        if(t_obj.checklist) t_obj.checklist.forEach(c => renderTaskChecklistItem(container, c.title, c.done, c.dueDate, c.assigneeId, c.id, c.startDate || '', (c.duration !== undefined ? c.duration : null), !!c.allDay)); 
         if(t_obj.files) { currentTempFiles = [...t_obj.files]; renderFileList(); }
         updateDepDisplay();
         clSumDuration();
@@ -5158,6 +5182,7 @@ function renderChecklists(c, mode = 'checklists') {
                 /* Wie im Modal: Datum/Uhrzeit beziehen sich auf den START; ältere Punkte ohne Start nutzen das Fälligkeitsdatum */
                 const _src = item.startDate || item.dueDate || '';
                 if(_src) { if(_src.includes('T')) [d, time] = _src.split('T'); else d = _src; }
+                if (item.allDay) time = '';
                 const _durH = (parseInt(item.duration, 10) || 0) / 60;
                 const _durVal = _durH > 0 ? (Math.round(_durH * 100) / 100) : '';
                 let userOpts = `<option value="">${_t('user_ph')}</option>` + appData.users.map(u => `<option value="${u.id}" ${u.id===item.assigneeId?'selected':''}>${u.name}</option>`).join('');
@@ -9061,6 +9086,75 @@ function exportICS() {
 }
 
 /* Wandelt einen Hex-Farbwert in ein [r,g,b]-Array (mit Fallback). */
+/*
+ * Text für die PDF-Standardschrift (Helvetica, WinAnsi/cp1252) aufbereiten.
+ * Enthält eine Zeile auch nur EIN Zeichen außerhalb dieses Zeichensatzes (z. B. „→" aus
+ * „Status geändert: A → B", das schmale Leerzeichen in Uhrzeiten, Emojis), schreibt jsPDF
+ * die ganze Zeile 16-bit-kodiert. Viele PDF-Betrachter zeigen dann zwischen allen Buchstaben
+ * Abstände – die Zeile wirkt wie im Blocksatz auf die volle Breite gezogen.
+ */
+const PDF_CHAR_MAP = {
+    '\u2192': '->', '\u2190': '<-', '\u2194': '<->', '\u21D2': '=>', '\u21D0': '<=', '\u2191': '^', '\u2193': 'v',
+    '\u2713': 'OK', '\u2714': 'OK', '\u2611': '[x]', '\u2610': '[ ]', '\u2717': 'x', '\u2718': 'x',
+    '\u2265': '>=', '\u2264': '<=', '\u2260': '!=', '\u2248': '~', '\u2212': '-', '\u2010': '-', '\u2011': '-', '\u2012': '\u2013', '\u2015': '\u2014',
+    '\u2032': "'", '\u2033': '"', '\u2300': '\u00D8', '\u2605': '*', '\u2606': '*', '\u25CF': '\u2022', '\u25E6': '-', '\u2043': '-',
+    '\u202F': ' ', '\u2009': ' ', '\u2007': ' ', '\u2002': ' ', '\u2003': ' ', '\u2004': ' ', '\u2005': ' ', '\u2006': ' ', '\u2008': ' ', '\u200A': ' ', '\u205F': ' ', '\u3000': ' ',
+    '\u200B': '', '\u200C': '', '\u200D': '', '\u2060': '', '\uFEFF': '', '\uFE0F': '', '\uFE0E': '', '\r': ''
+};
+const PDF_CP1252_EXTRA = '\u20AC\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u017D\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u017E\u0178';
+function pdfSafe(text) {
+    if (text === null || text === undefined) return text;
+    if (typeof text !== 'string') return text;
+    let s = text.normalize ? text.normalize('NFC') : text;
+    s = s.replace(/[\u2190-\u21FF\u2010-\u2012\u2015\u2032\u2033\u2043\u2212\u2248\u2260\u2264\u2265\u2300\u25CF\u25E6\u2605\u2606\u2610\u2611\u2713\u2714\u2717\u2718\u2000-\u200D\u202F\u205F\u2060\u3000\uFEFF\uFE0E\uFE0F\r]/g, ch => (ch in PDF_CHAR_MAP ? PDF_CHAR_MAP[ch] : (/[\u2000-\u200A]/.test(ch) ? ' ' : '')));
+    /* Alles, was danach noch außerhalb von cp1252 liegt (Emojis, Symbole), entfernen –
+       Leerzeichen nur dort zusammenziehen, wo tatsächlich etwas entfernt wurde */
+    let out = '';
+    for (const ch of s) {
+        const c = ch.codePointAt(0);
+        out += (c < 0x100 || PDF_CP1252_EXTRA.includes(ch)) ? ch : '\u0000';
+    }
+    if (out.indexOf('\u0000') < 0) return out;
+    return out.split('\n').map(line => line.replace(/^ *\u0000+ */, '').replace(/ *\u0000+ */g, ' ').replace(/\u0000/g, '')).join('\n');
+}
+
+/*
+ * Markierungen (Hintergrundfarbe an Inline-Elementen) für html2canvas aufbereiten:
+ * html2canvas füllt bei einem Inline-Element, das über einen Zeilenumbruch läuft, das GANZE
+ * umschließende Rechteck – dadurch wurden ganze Passagen gelb (und Text davor verdeckt).
+ * Die Markierung wird deshalb in einzelne Wort-Abschnitte zerlegt, die jeweils auf einer
+ * Zeile liegen und korrekt eingefärbt werden.
+ */
+function pdfSplitInlineHighlights(root) {
+    const INLINE = /^(SPAN|MARK|FONT|B|STRONG|I|EM|U|S|STRIKE|DEL|INS|SUB|SUP|A|CODE|SMALL|BIG|Q|ABBR)$/;
+    const bgOf = (el) => {
+        const bg = (el.style && el.style.backgroundColor) || (el.getAttribute && el.getAttribute('bgcolor')) || '';
+        if (bg && !/^(transparent|initial|inherit|unset|rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\))$/i.test(bg.trim())) return bg;
+        if (el.tagName === 'MARK') return 'yellow';
+        return '';
+    };
+    Array.from(root.querySelectorAll('*')).forEach(el => {
+        if (!INLINE.test(el.tagName)) return;
+        const color = bgOf(el);
+        if (!color) return;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const texts = []; while (walker.nextNode()) texts.push(walker.currentNode);
+        texts.forEach(tn => {
+            const parts = tn.nodeValue.match(/\s+|\S+\s*/g);
+            if (!parts || parts.length < 2) {
+                /* einzelnes Wort: trotzdem eigener Abschnitt, damit die Farbe nicht vom Elternelement abhängt */
+                if (!parts) return;
+            }
+            const frag = document.createDocumentFragment();
+            parts.forEach(part => { const s = document.createElement('span'); s.style.backgroundColor = color; s.textContent = part; frag.appendChild(s); });
+            tn.parentNode.replaceChild(frag, tn);
+        });
+        el.style.backgroundColor = 'transparent';
+        if (el.tagName === 'MARK') el.style.background = 'transparent';
+        if (el.removeAttribute) el.removeAttribute('bgcolor');
+    });
+}
+
 function pdfHexToRgb(hex, fallback = [34, 38, 43]) {
     if (!hex || typeof hex !== 'string') return fallback;
     const h = hex.replace('#', '').trim();
@@ -9164,6 +9258,12 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
     if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') { return showToast(_t('pdf_loading'), 'error'); }
     showToast(_t('pdf_generating'), 'info');
     const { jsPDF } = window.jspdf; const doc = new jsPDF('p', 'mm', 'a4');
+    {
+        const _text = doc.text.bind(doc), _split = doc.splitTextToSize.bind(doc), _width = doc.getTextWidth.bind(doc);
+        doc.text = (txt, ...rest) => _text(Array.isArray(txt) ? txt.map(pdfSafe) : pdfSafe(txt), ...rest);
+        doc.splitTextToSize = (txt, ...rest) => _split(pdfSafe(String(txt)), ...rest);
+        doc.getTextWidth = (txt) => _width(pdfSafe(String(txt)));
+    }
     const pageHeight = doc.internal.pageSize.height; const pageWidth = doc.internal.pageSize.width;
     const M = 14;                       /* Seitenrand */
     const contentWidth = pageWidth - (M * 2);
@@ -9284,7 +9384,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
 
     async function renderRTFToPDF(htmlStr, x, y, maxWidth) {
         if(!htmlStr || htmlStr.trim()==='' || htmlStr==='<br>') return y;
-        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.style.maxHeight = 'none'; tempDiv.style.height = 'auto'; tempDiv.style.overflow = 'visible'; tempDiv.innerHTML = htmlStr; document.body.appendChild(tempDiv);
+        const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.style.maxHeight = 'none'; tempDiv.style.height = 'auto'; tempDiv.style.overflow = 'visible'; tempDiv.innerHTML = htmlStr; pdfSplitInlineHighlights(tempDiv); document.body.appendChild(tempDiv);
         try {
             const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, windowWidth: 720 });
             if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
@@ -9933,6 +10033,7 @@ function applyStoredThemeOnInit() {
 }
 
 // INIT
+if (ensureStatusColors()) { try { localStorage.setItem('proman_v2_data', JSON.stringify(appData)); } catch (e) {} }
 histResetSnapshot(); recordEntityChanges();
 performAutoDelete();
 changePrimaryColor(appData.customColor);
@@ -12185,7 +12286,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /* ---------- Tour ---------- */
     function showTour() {
         const s = tour[tourIdx];
-        setProgress((tourIdx + 1) / (tour.length + 8));
+        setProgress((tourIdx + 1) / (tour.length + steps.length));
         /* Passenden Bereich im Hintergrund anwählen, damit der Nutzer sieht, wo er ihn findet */
         if (s.place && window.Shell && typeof window.Shell.goPlace === 'function') {
             try { window.Shell.goPlace(s.place); } catch (e) {}
@@ -12256,6 +12357,47 @@ document.addEventListener('DOMContentLoaded', () => {
             save: () => { const v = (document.getElementById('onb_email').value || '').trim(); if (v) collected.email = v; }
         },
         {
+            /* Währung für Budgets und Kosten */
+            key: 'currency', icon: 'fa-coins', get title() { return _t('set_currency'); }, get hint() { return _t('set_currency_desc'); },
+            render: () => {
+                const cur = collected.currency || getGlobalCurrency();
+                return `<div class="onb-week onb-cur">${['CHF', 'EUR', 'USD'].map(c => `<button type="button" class="onb-day ${c === cur ? 'on' : ''}" data-cur="${c}" onclick="this.parentNode.querySelectorAll('.onb-day').forEach(b => b.classList.toggle('on', b === this))">${c}</button>`).join('')}</div>`;
+            },
+            save: () => { const b = body.querySelector('.onb-cur .onb-day.on'); if (b) collected.currency = b.dataset.cur; }
+        },
+        {
+            /* Firmenlogo für PDF-, Word- und Excel-Exporte (gleiche Aufbereitung wie in den Einstellungen) */
+            key: 'logo', icon: 'fa-image', get title() { return _t('set_logo'); }, get hint() { return _t('set_logo_desc'); },
+            render: () => `<input type="file" id="onb_logo_file" accept="image/*" style="display:none;">
+                <button type="button" class="secondary" id="onb_logo_btn"><i class="fas fa-upload"></i> ${_t('set_logo_choose')}</button>
+                <div class="onb-logo-prev" id="onb_logo_prev"></div>`,
+            after: () => {
+                const prev = document.getElementById('onb_logo_prev'), inp = document.getElementById('onb_logo_file');
+                const current = () => (collected.logo !== undefined ? collected.logo : appData.settings.companyLogo);
+                const paint = () => {
+                    const src = current();
+                    prev.innerHTML = src
+                        ? `<img src="${src}" alt=""><button type="button" class="secondary icon-btn" id="onb_logo_del" style="color:var(--danger);"><i class="fas fa-trash"></i> ${_t('delete')}</button>`
+                        : `<span>${_t('no_file_chosen')}</span>`;
+                    const del = document.getElementById('onb_logo_del'); if (del) del.onclick = () => { collected.logo = null; paint(); };
+                };
+                document.getElementById('onb_logo_btn').onclick = () => inp.click();
+                inp.onchange = (ev) => {
+                    const file = ev.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (r) => {
+                        const isJpeg = /jpe?g/i.test(file.type || '') || /\.jpe?g$/i.test(file.name || '');
+                        normalizeLogoDataUrl(r.target.result, isJpeg).then(clean => { collected.logo = clean; paint(); })
+                            .catch(() => { try { showToast(_t('logo_invalid'), 'error'); } catch (e) {} });
+                    };
+                    reader.readAsDataURL(file);
+                    inp.value = '';
+                };
+                paint();
+            },
+            save: () => {}
+        },
+        {
             key: 'columns', icon: 'fa-table-columns', get title() { return _t('onb_s_cols_t'); }, get hint() { return _t('onb_s_cols_h'); },
             render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done').map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="${_t('onb_cols_ph')}">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> ${_t('col_completed')} <span>${_t('onb_system_default')}</span></div>`; },
             save: () => { const lines = (document.getElementById('onb_cols').value || '').split('\n').map(s => s.trim()).filter(Boolean); if (lines.length) collected.columns = lines; }
@@ -12274,7 +12416,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showStep() {
         const s = steps[stepIdx];
-        setProgress((tour.length + stepIdx + 1) / (tour.length + 8));
+        setProgress((tour.length + stepIdx + 1) / (tour.length + steps.length));
         body.innerHTML = `<div class="onb-step">
             <div class="onb-step-ic"><i class="fas ${s.icon}"></i></div>
             <h2>${s.title}</h2>
@@ -12305,7 +12447,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function finishAll() {
         applyCollected();
         appData.settings.onboardingCompleted = true;
-        saveToLocal(true);
+        try { saveToLocal(true); }
+        catch (e) { appData.settings.companyLogo = null; try { saveToLocal(true); showToast(_t('logo_too_large'), 'error'); } catch (e2) {} }
         if (ov) ov.remove();
         try { renderSidebar(); } catch (e) {}
         try { renderView(); } catch (e) {}
@@ -12323,14 +12466,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (collected.to !== undefined) st.timeTrackTo = collected.to;
         if (collected.target != null) st.targetHoursPerDay = collected.target;
         if (collected.email) st.notificationEmail = collected.email;
+        if (collected.currency) st.currency = collected.currency;
+        if (collected.logo !== undefined) st.companyLogo = collected.logo;
         if (collected.columns) {
             const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || ('col_' + Math.random().toString(36).slice(2, 6));
             const used = { done: 1 };
-            const cols = collected.columns.filter(title => slug(title) !== 'done').map(title => { let id = slug(title); while (used[id]) id += '_'; used[id] = 1; return { id, title }; });
+            const prevCols = appData.statuses || [];
+            const cols = collected.columns.filter(title => slug(title) !== 'done').map(title => { let id = slug(title); while (used[id]) id += '_'; used[id] = 1; const prev = prevCols.find(s => s.id === id || s.title === title); return prev && prev.color ? { id, title, color: prev.color } : { id, title }; });
             /* „Abgeschlossen" bleibt als fester System-Standard immer erhalten (ID 'done'). */
             const prevDone = (appData.statuses || []).find(s => s.id === 'done');
             cols.push(prevDone || { id: 'done', title: 'Abgeschlossen' });
             appData.statuses = cols;
+            ensureStatusColors();
         }
         if (collected.stakeholders) {
             appData.stakeholders = appData.stakeholders || [];
