@@ -1064,13 +1064,13 @@ input[type="range"]::-moz-range-thumb {
 }
 [data-theme="dark"]{
   --bg-color:#15181C;
-  --surface-color:#1D2126;
+  --surface-color:#2E3135;           /* Kachel-/Kartenflächen (vorher #1D2126, etwas zu dunkel) */
   --text-main:#E9EBE7;
   --text-muted:#98A1AB;
-  --border-color:#2E343A;
+  --border-color:#41464D;            /* heller als die neue Fläche, damit Ränder sichtbar bleiben */
   --wk-graphite:#0F1216;
   --wk-graphite-2:#242A31;
-  --glass-dropdown:rgba(29,33,38,.96);
+  --glass-dropdown:rgba(46,49,53,.96);
   --primary-color:#E9EBE7;              /* im Dunkeln: helles Graphitweiss statt Blau */
   --primary-hover:#FFFFFF;
   --primary-light:rgba(255,255,255,.10);
