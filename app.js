@@ -1141,14 +1141,14 @@ function updateNotificationsBadge() {
 
 function renderNotificationDropdown() {
     const notifs = getNotifications(); const container = document.getElementById('notifContainer');
-    if(notifs.length > 0) {
-        let html = '';
+    let html = '', mailHtml = '';
+    {
         notifs.forEach(n => {
             let color = n.type === 'danger' ? 'var(--danger)' : (n.type === 'warning' ? 'var(--warning)' : 'var(--primary-color)');
             let dismissBtn = `<button class="secondary icon-btn" style="color:var(--text-muted); padding:2px 6px; font-size:12px; margin-left:auto;" onclick="dismissNotification(event, '${n.notifId}')" title="${_t('n_hide')}"><i class="fas fa-times"></i></button>`;
 
             if(n.type === 'mail') {
-                html += `<div class="notif-item notif-mail" onclick="mailOutboxOpen(event, '${n.id}')" title="${_t('mail_q_open')}" style="align-items:center;">
+                mailHtml += `<div class="notif-item notif-mail" onclick="mailOutboxOpen(event, '${n.id}')" title="${_t('mail_q_open')}" style="align-items:center;">
                     <div class="notif-icon" style="color:var(--primary-color)"><i class="fas ${n.icon}"></i></div>
                     <div class="notif-content" style="flex:1; min-width:0;"><h4>${escapeHtmlToday(n.title)}</h4><p>${escapeHtmlToday(n.desc)}</p></div>
                     <div style="display:flex; gap:5px; margin-left:10px; align-items:center;">
@@ -1179,10 +1179,24 @@ function renderNotificationDropdown() {
                 html += `<div class="notif-item" ${fnAttr}><div class="notif-icon" style="color:${color}"><i class="fas ${n.icon}"></i></div><div class="notif-content" style="flex:1;"><h4>${n.title}</h4><p>${n.desc}</p></div>${dismissBtn}</div>`;
             }
         });
-        container.innerHTML = html;
-    } else {
-        container.innerHTML = `<div style="padding:20px; text-align:center; font-size:13px; color:var(--text-muted);"><i class="fas fa-check-circle" style="font-size:24px; color:var(--success); margin-bottom:10px; display:block;"></i> ${_t('n_all_clear_html')}</div>`;
     }
+    /* Eigener, immer sichtbarer Bereich „E-Mail-Ausgang" – sobald ein Workflow Mails versendet
+       oder Mails warten. Vorher erschienen wartende Mails nur als gewöhnliche Einträge und der
+       Ausgang selbst war nirgends zu sehen. */
+    const mailCount = Array.isArray(appData.mailOutbox) ? appData.mailOutbox.length : 0;
+    let section = '';
+    if (mailCount > 0 || wfHasMailWorkflows()) {
+        section = `<div class="notif-section">
+            <div class="notif-section-h"><i class="fas fa-paper-plane"></i><span>${_t('mail_q_section')}</span>${mailCount ? `<b class="notif-section-n">${mailCount}</b>` : ''}
+                ${mailCount > 1 ? `<button class="secondary notif-section-btn" onclick="mailOutboxDiscardAll(event)">${_t('mail_q_discard_all')}</button>` : ''}</div>
+            ${mailHtml || `<div class="notif-section-empty">${_t('mail_q_empty')}</div>`}
+        </div>`;
+    }
+    const allClear = `<div style="padding:20px; text-align:center; font-size:13px; color:var(--text-muted);"><i class="fas fa-check-circle" style="font-size:24px; color:var(--success); margin-bottom:10px; display:block;"></i> ${_t('n_all_clear_html')}</div>`;
+    container.innerHTML = section + (html || (mailCount ? '' : allClear));
+}
+function wfHasMailWorkflows() {
+    try { return wfAll().some(w => w.active && (w.actions || []).some(a => a.type === 'send_email')); } catch (e) { return false; }
 }
 
 function restoreDeletedItem(e, id) {
@@ -3035,6 +3049,7 @@ function runWorkflowBackgroundCheck() {
                 ...(appData.projectStacks || []).map(x => ({ e: x, type: 'stack' }))
             ];
             const liveIds = new Set(entities.map(x => x.e.id));
+            const mailCatchUp = !appData.settings.wfMailOutboxV1;
             wfs.forEach(wf => {
                 const entry = wfBgEntry(wf);
                 const prev = new Set(entry.ids.filter(id => liveIds.has(id)));
@@ -3049,7 +3064,16 @@ function runWorkflowBackgroundCheck() {
                        Dann nicht erneut. Früher wurde der allererste Lauf komplett unterdrückt – Elemente,
                        die dauerhaft passen (z. B. „Letzte Zeitbuchung länger her als 3 Tage"), lösten
                        dadurch nie eine Aktion aus. */
-                    if (prev.has(e.id)) return;
+                    if (prev.has(e.id)) {
+                        /* Einmalig nach dem Update: Elemente, die schon vorher passten, hatten ihre
+                           Mail zwar „ausgelöst", der Browser hatte sie aber blockiert. Nur die Mail-
+                           Aktionen dieser Elemente werden einmal in den E-Mail-Ausgang nachgeholt. */
+                        if (mailCatchUp) {
+                            const mailActs = (wf.actions || []).filter(a => a.type === 'send_email');
+                            if (mailActs.length) { try { executeWorkflowActions(mailActs, e, type, t('wf_bg_trigger_name'), wf.name); } catch (err) { console.error(err); } }
+                        }
+                        return;
+                    }
                     _wfExecutionLock = true;
                     try {
                         const res = executeWorkflowActions(wf.actions || [], e, type, t('wf_bg_trigger_name'), wf.name) || {};
@@ -3065,6 +3089,7 @@ function runWorkflowBackgroundCheck() {
             const wfIds = new Set(wfAll().map(w => w.id));
             Object.keys(st).forEach(k => { if (!wfIds.has(k)) delete st[k]; });
             appData.settings.wfBgInitialized = true;
+            appData.settings.wfMailOutboxV1 = true;
             appData.settings.wfBgLastRun = Date.now();
         } catch (err) {
             console.error('Workflow-Hintergrundprüfung fehlgeschlagen', err);
@@ -8551,7 +8576,11 @@ function renderTimeTracking(c) {
         const taskName = task ? task.projectName : 'Unbekannt';
         const deletedPill = deleted ? `<span class="badge" style="background:var(--danger); color:white; font-size:10px; margin-left:8px; padding: 2px 6px;">${_t('tr_deleted')}</span>` : '';
         
-        html += `<tr><td data-label="${_t('dl_datum')}">${log.date}</td><td data-label="${_t('dl_aufgabe')}"><b>${pausedIcon}${taskName}${deletedPill}</b></td><td data-label="${_t('dl_dauer')}"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="${_t('dl_notiz')}">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+        /* Klick auf den Eintrag öffnet die zugehörige Aufgabe (bzw. den Stack) */
+        const _stk = !task ? (appData.projectStacks || []).find(s => s.id === log.taskId) : null;
+        const openFn = (task && !deleted) ? `openModal('${task.id}')` : (_stk ? `openStackModal('${_stk.id}')` : '');
+        const rowName = _stk ? _stk.name : taskName;
+        html += `<tr${openFn ? ` class="tt-log-row" tabindex="0" role="button" title="${_t('tt_log_open')}" onclick="${openFn}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${openFn}}"` : ''}><td data-label="${_t('dl_datum')}">${log.date}</td><td data-label="${_t('dl_aufgabe')}"><b>${pausedIcon}${_stk ? '<i class="fas fa-layer-group" style="color:var(--text-muted); margin-right:5px;"></i>' + rowName : taskName}${_stk ? '' : deletedPill}</b></td><td data-label="${_t('dl_dauer')}"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="${_t('dl_notiz')}">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="event.stopPropagation(); openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="event.stopPropagation(); deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
     });
     html += `</tbody></table></div></div></div>`;
     c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(() => { positionTimeLensMagnet(); ttRevealActiveRangeChip(); });
@@ -9748,6 +9777,11 @@ function mailOutboxOpen(ev, id) {
     try { w = window.open(mailUri(m), '_blank'); } catch (e) { w = null; }
     if (!w) { try { const a = document.createElement('a'); a.href = mailUri(m); a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {} }
     box.splice(i, 1);
+    saveToLocal(true); updateNotificationsBadge(); renderNotificationDropdown();
+}
+function mailOutboxDiscardAll(ev) {
+    if (ev) ev.stopPropagation();
+    appData.mailOutbox = [];
     saveToLocal(true); updateNotificationsBadge(); renderNotificationDropdown();
 }
 function mailOutboxDiscard(ev, id) {
@@ -11330,7 +11364,7 @@ function renderToday(c) {
     if (openDays.length) {
         openDays.slice(-5).reverse().forEach(d => {
             html += `<div class="wk-quickrow">
-                <span class="wk-qd">${ttFmtFull(d.iso)}<u>${t('tt_missing')}: ${ttNum(d.missing)} h ${t('tt_of')} ${ttNum(d.target)} h</u></span>
+                <span class="wk-qd wk-qd-link" role="button" tabindex="0" title="${t('tt_hub_open_day')}" onclick="ttHubOpenDay('${d.iso}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ttHubOpenDay('${d.iso}')}">${ttFmtFull(d.iso)}<i class="fas fa-arrow-right wk-qd-go"></i><u>${t('tt_missing')}: ${ttNum(d.missing)} h ${t('tt_of')} ${ttNum(d.target)} h</u></span>
                 <span class="wk-qacts">
                     <button class="wk-chip v" onclick="ttHeuteAbs('${d.iso}','vacation')">${t('abs_vacation')}</button>
                     <button class="wk-chip k" onclick="ttHeuteAbs('${d.iso}','sick')">${t('abs_sick')}</button>
@@ -11466,6 +11500,26 @@ function ttHeuteAbs(iso, type){
     showToast(ttAbsLabel(type) + ' · ' + ttFmtDate(iso));
     renderView();
 }
+/* Hub „Nicht gebucht": Klick auf einen Tag öffnet „Zeitkonto & offene Tage" im passenden
+   Monat und wählt genau diesen Tag aus (wie ein Klick im Kalender). */
+function ttHubOpenDay(iso) {
+    timeSubView = 'tracking';
+    const d = ttParse(iso), now = new Date();
+    ttMonthOffset = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
+    ttSelectedDays = [iso]; ttSelectedDay = iso; ttLastClickedDay = iso;
+    switchView('time');
+    const focusDay = (tries) => {
+        const cell = document.querySelector(`#tt_account_panel .tt-day[onclick*="'${iso}'"]`);
+        if (!cell) { if (tries > 0) setTimeout(() => focusDay(tries - 1), 80); return; }
+        if (!cell.classList.contains('selected')) { refreshTimeAccount(); }
+        const c2 = document.querySelector(`#tt_account_panel .tt-day[onclick*="'${iso}'"]`) || cell;
+        c2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        c2.classList.add('tt-day-ping'); setTimeout(() => c2.classList.remove('tt-day-ping'), 1400);
+        const dt = document.getElementById('tt_date'); if (dt) dt.value = iso;
+    };
+    setTimeout(() => focusDay(10), 60);
+}
+
 function ttHeuteBook(iso){
     timeSubView = 'tracking';
     switchView('time');
