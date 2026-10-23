@@ -22,16 +22,92 @@ function getCombinedDateTime(dateId, timeId) {
     return finalDate || '';
 }
 
-function sendPushNotification(title, options) {
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") {
-        new Notification(title, options);
-    }
+/* ============================================================
+   PUSH-MITTEILUNGEN
+   Jede Mitteilung trägt das App-Icon (Logo „pm" der Navigation). Desktop-Browser zeigen
+   Mitteilungen über `new Notification()`; Android und iOS (Home-Bildschirm-App) kennen nur
+   registration.showNotification() des Service Workers – der wird dafür hier registriert.
+   Ein Klick auf eine Mitteilung holt ProMan nach vorne und öffnet das betroffene Element.
+   ============================================================ */
+const PM_NOTIF_ICON = 'icons/icon-192.png';
+const PM_NOTIF_BADGE = 'icons/badge-96.png';
+let _pmSwReg = null;
+function pmRegisterServiceWorker() {
+    try {
+        if (!('serviceWorker' in navigator)) return;
+        /* Service Worker gibt es nur über https (z. B. GitHub Pages) oder localhost – nicht bei file:// */
+        if (!(location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) return;
+        navigator.serviceWorker.register('sw.js').then(reg => { _pmSwReg = reg; }).catch(err => console.warn('[push] Service Worker', err));
+        navigator.serviceWorker.addEventListener('message', ev => {
+            if (ev.data && ev.data.type === 'pm-notif-click') pmNotifAction(ev.data.data || {}, false);
+        });
+    } catch (e) { console.warn('[push]', e); }
 }
+function pmAbsUrl(p) { try { return new URL(p, document.baseURI).href; } catch (e) { return p; } }
+/* options.data: { entity: 'task'|'stack'|'mail'|'bell', id } – bestimmt, was ein Klick öffnet */
+function sendPushNotification(title, options = {}, onClick = null) {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const opts = Object.assign({ icon: pmAbsUrl(PM_NOTIF_ICON), badge: pmAbsUrl(PM_NOTIF_BADGE), lang: ttLang ? ttLang() : 'de' }, options);
+    if (!opts.data) opts.data = {};
+    const viaWorker = () => {
+        if (!('serviceWorker' in navigator)) return;
+        const p = _pmSwReg ? Promise.resolve(_pmSwReg) : navigator.serviceWorker.getRegistration();
+        p.then(reg => { if (reg) return reg.showNotification(title, opts); }).catch(err => console.warn('[push]', err));
+    };
+    let n = null;
+    try { n = new Notification(title, opts); }
+    catch (e) { viaWorker(); return; }   /* Android/iOS: „Illegal constructor" → Service Worker */
+    n.onclick = () => {
+        try { window.focus(); } catch (e) {}
+        try { if (onClick) onClick(); else pmNotifAction(opts.data, true); } catch (e) { console.warn(e); }
+        n.close();
+    };
+}
+/* Reaktion auf einen Klick auf eine Mitteilung. direct = Klick kam direkt auf der Seite an
+   (dann darf z. B. ein Mail-Entwurf sofort geöffnet werden). */
+function pmNotifAction(data, direct) {
+    if (!data) return;
+    if (data.entity === 'task' && data.id && (appData.tasks || []).some(x => x.id === data.id)) return openModal(data.id);
+    if (data.entity === 'stack' && data.id && (appData.projectStacks || []).some(x => x.id === data.id)) return openStackModal(data.id);
+    if (data.entity === 'mail' && data.id && direct) return mailOutboxOpen(null, data.id);
+    if (data.entity === 'mail' || data.entity === 'bell') return pmOpenBell();
+}
+function pmOpenBell() {
+    const nd = document.getElementById('notifContainer'); if (!nd) return;
+    renderNotificationDropdown();
+    nd.style.display = 'block'; nd.dataset.pinned = '1';
+}
+
+/* ---------- Als App installieren (Chrome/Edge: Installations-Dialog, Safari: Hinweis) ---------- */
+let _pmInstallPrompt = null;
+function pmIsInstalled() {
+    try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; }
+}
+function pmUpdateInstallRow() {
+    const row = document.getElementById('pmInstallRow'); if (!row) return;
+    const btn = document.getElementById('pmInstallBtn'), hint = document.getElementById('pmInstallHint');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSafari = /^((?!chrome|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
+    if (pmIsInstalled() || location.protocol === 'file:') { row.style.display = 'none'; return; }
+    if (_pmInstallPrompt) { row.style.display = 'flex'; if (btn) btn.hidden = false; if (hint) hint.textContent = _t('set_install_hint'); return; }
+    if (isIOS) { row.style.display = 'flex'; if (btn) btn.hidden = true; if (hint) hint.textContent = _t('set_install_ios'); return; }
+    if (isSafari) { row.style.display = 'flex'; if (btn) btn.hidden = true; if (hint) hint.textContent = _t('set_install_mac'); return; }
+    row.style.display = 'none';
+}
+function pmInstallApp() {
+    if (!_pmInstallPrompt) return;
+    const p = _pmInstallPrompt; _pmInstallPrompt = null;
+    p.prompt();
+    Promise.resolve(p.userChoice).finally(pmUpdateInstallRow);
+}
+window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); _pmInstallPrompt = ev; pmUpdateInstallRow(); });
+window.addEventListener('appinstalled', () => { _pmInstallPrompt = null; pmUpdateInstallRow(); });
+pmRegisterServiceWorker();
 
 function testPushNotification() {
     requestPushPermission(() => {
-        sendPushNotification('ProMan Test', { body: 'Die Push-Benachrichtigungen funktionieren einwandfrei!' });
+        sendPushNotification('ProMan', { body: _t('push_test_body'), tag: 'proman-test' });
         showToast(_t('test_notif_sent'), 'success');
     });
 }
@@ -881,7 +957,7 @@ function showToast(msg, type='success') {
     const sysChannels = (appData && appData.settings && appData.settings.notificationChannels && appData.settings.notificationChannels.system) || { toast: true };
 
     if(sysChannels.toast !== false) { _rawToast(msg, type); }
-    if(sysChannels.push) { sendPushNotification('ProMan System', { body: msg }); }
+    if(sysChannels.push) { sendPushNotification('ProMan', { body: String(msg).replace(/<[^>]*>/g, '') }); }
     if(sysChannels.modal) { showNotifModal('ProMan', msg, type === 'error' ? 'danger' : type); }
     if(sysChannels.email && appData && appData.settings && appData.settings.notificationEmail) {
         triggerEmailNotif('ProMan Systemmeldung', msg);
@@ -1017,7 +1093,7 @@ function getNotifications() {
             if(!settings.firedNotifChannels.includes(nObj.notifId)) {
                 settings.firedNotifChannels.push(nObj.notifId);
 
-                if(ch.push) { sendPushNotification(nObj.title, { body: nObj.desc }); }
+                if(ch.push) { sendPushNotification(nObj.title, { body: nObj.desc, tag: nObj.notifId, data: { entity: nObj.entity, id: nObj.id } }); }
                 if(ch.toast) {
                     const tType = nObj.type === 'danger' ? 'error' : (nObj.type === 'warning' ? 'warning' : 'info');
                     _rawToast(`${nObj.title}: ${nObj.desc}`, tType);
@@ -1345,11 +1421,13 @@ function closeAllMultiSelects(e) {
     }
     
     // BUGFIX für Mobile-Benachrichtigungen (Klicks auf Items schliessen das Menü nicht mehr vorzeitig ab)
-    if(window.innerWidth <= 1089) {
+    {
         const nd = document.getElementById('notifContainer');
-        if(nd && nd.style.display === 'block') {
+        /* Mobil per Klick geöffnet – oder am Desktop per Klick auf eine Mitteilung aufgeklappt */
+        if(nd && nd.style.display === 'block' && (window.innerWidth <= 1089 || nd.dataset.pinned)) {
             if(!e.target.closest('#notifContainer') && !e.target.closest('.dropdown')) {
-                nd.style.display = 'none';
+                nd.style.display = ''; delete nd.dataset.pinned;
+                if (window.innerWidth <= 1089) nd.style.display = 'none';
             }
         }
     }
@@ -1941,7 +2019,7 @@ function renderLogoPreview() {
 
 function openSettings() { 
     document.getElementById('settingsModal').classList.add('active'); 
-    
+    try { pmUpdateInstallRow(); } catch (e) {}
     renderLogoPreview();
     document.getElementById('set_attachment_folder').value = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\';
     document.getElementById('set_language').value = appData.settings.language || 'de';
@@ -2895,7 +2973,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
         }
         if(action.type === 'notif_toast') { _rawToast(`🤖 ${wfEntityKind}: ${wfEntityName} — ${action.value}`, 'info'); }
         if(action.type === 'notif_modal') { showNotifModal(`${wfEntityKind}: ${wfEntityName}`, action.value, 'info'); }
-        if(action.type === 'notif_push') { sendPushNotification(`${wfEntityKind}: ${wfEntityName}`, { body: action.value }); }
+        if(action.type === 'notif_push') { sendPushNotification(`${wfEntityKind}: ${wfEntityName}`, { body: action.value, data: { entity: typeStr === 'stack' ? 'stack' : 'task', id: entity.id } }); }
 
         if(action.type === 'create_task') {
             const newTask = {
@@ -9761,11 +9839,9 @@ function mailOutboxAnnounce(m) {
         _rawToast(fresh.length === 1 ? _tf('mail_q_toast_one', { s: fresh[0].subject }) : _tf('mail_q_toast_n', { n: fresh.length }), 'info');
         /* Systembenachrichtigung (falls erlaubt): ein Klick darauf darf den Entwurf öffnen */
         try {
-            if ('Notification' in window && Notification.permission === 'granted') {
-                const first = fresh[0];
-                const nt = new Notification(_t('mail_q_push_title'), { body: fresh.length === 1 ? first.subject : _tf('mail_q_toast_n', { n: fresh.length }), tag: 'proman-mail' });
-                nt.onclick = () => { try { window.focus(); } catch (e) {} if (fresh.length === 1) mailOutboxOpen(null, first.id); else { const b = document.getElementById('notifBtn') || document.querySelector('[onclick*="toggleNotif"]'); if (b) b.click(); } nt.close(); };
-            }
+            const first = fresh[0];
+            sendPushNotification(_t('mail_q_push_title'), { body: fresh.length === 1 ? first.subject : _tf('mail_q_toast_n', { n: fresh.length }), tag: 'proman-mail',
+                data: fresh.length === 1 ? { entity: 'mail', id: first.id } : { entity: 'bell' } });
         } catch (e) {}
     }, 400);
 }

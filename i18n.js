@@ -471,6 +471,7 @@ Object.assign(i18n.de, {
     preset_intro_html: "Lege Vorlagen an, die beim Erstellen einer neuen Aufgabe oder eines neuen Stacks automatisch Felder, Checkpunkte und Notizen vorbelegen. Die als <b>Standard</b> markierte Vorlage wird jeweils verwendet.",
     prio_title: "Priorität",
     profile_settings: "Profil & Einstellungen",
+    push_test_body: "Die Push-Mitteilungen funktionieren einwandfrei!",
     rate_from_assignee: "Lohn/h",
     rate_from_assignee_hint: "Richtet sich nach der zuständigen Person (Einstellungen - Team & Profil).",
     rating_avg_so_far: "Bisherige Durchschnittsbewertung:",
@@ -527,6 +528,10 @@ Object.assign(i18n.de, {
     sched_track_time: "Zeit buchen",
     search_hint_html: "Tippe, um die Suche zu starten...<br><span style=\"font-size:11px; opacity:0.7;\">(Aufgaben, Checklisten, Notizen, Historie)</span>",
     search_ph_long: "Suchen... (Strg+K)",
+    set_install_btn: "Als App installieren",
+    set_install_hint: "Als App installiert zeigen Mitteilungen „ProMan“ und das App-Icon statt der Webadresse.",
+    set_install_ios: "Mitteilungen auf dem iPhone/iPad: In Safari „Teilen“ → „Zum Home-Bildschirm“ wählen und ProMan von dort öffnen.",
+    set_install_mac: "Tipp für Safari auf dem Mac: „Ablage“ → „Zum Dock hinzufügen“ – dann tragen Mitteilungen Name und Icon von ProMan.",
     set_motion: "Animationen",
     set_motion_desc: "Federnde Übergänge beim Ansichtswechsel, in Dialogen, Diagrammen und beim Verschieben von Karten.",
     set_target_h: "Soll-Stunden / Arbeitstag",
@@ -1078,6 +1083,7 @@ Object.assign(i18n.en, {
     preset_intro_html: "Create presets that pre-fill fields, checklist items and notes when a new task or stack is created. The preset marked as <b>default</b> is used.",
     prio_title: "Priority",
     profile_settings: "Profile & settings",
+    push_test_body: "Push notifications are working perfectly!",
     rate_from_assignee: "Rate/h",
     rate_from_assignee_hint: "Determined by the assigned person (Settings - Team & Profile).",
     rating_avg_so_far: "Average rating so far:",
@@ -1134,6 +1140,10 @@ Object.assign(i18n.en, {
     sched_track_time: "Log time",
     search_hint_html: "Type to start searching...<br><span style=\"font-size:11px; opacity:0.7;\">(tasks, checklists, notes, history)</span>",
     search_ph_long: "Search... (Ctrl+K)",
+    set_install_btn: "Install as app",
+    set_install_hint: "Installed as an app, notifications show “ProMan” and the app icon instead of the web address.",
+    set_install_ios: "Notifications on iPhone/iPad: in Safari choose “Share” → “Add to Home Screen” and open ProMan from there.",
+    set_install_mac: "Tip for Safari on Mac: “File” → “Add to Dock” – notifications then carry ProMan’s name and icon.",
     set_motion: "Animations",
     set_motion_desc: "Springy transitions when switching views, in dialogs, charts and when moving cards.",
     set_target_h: "Target hours / working day",
@@ -1685,6 +1695,7 @@ Object.assign(i18n.fr, {
     preset_intro_html: "Créez des modèles qui préremplissent les champs, points de contrôle et notes lors de la création d'une tâche ou d'une pile. Le modèle marqué <b>par défaut</b> est utilisé.",
     prio_title: "Priorité",
     profile_settings: "Profil et paramètres",
+    push_test_body: "Les notifications push fonctionnent parfaitement !",
     rate_from_assignee: "Taux/h",
     rate_from_assignee_hint: "Dépend de la personne responsable (Paramètres - Équipe et profil).",
     rating_avg_so_far: "Note moyenne jusqu’ici :",
@@ -1741,6 +1752,10 @@ Object.assign(i18n.fr, {
     sched_track_time: "Saisir du temps",
     search_hint_html: "Tapez pour lancer la recherche...<br><span style=\"font-size:11px; opacity:0.7;\">(tâches, listes de contrôle, notes, historique)</span>",
     search_ph_long: "Rechercher... (Ctrl+K)",
+    set_install_btn: "Installer l’application",
+    set_install_hint: "Installée comme application, les notifications affichent « ProMan » et l’icône au lieu de l’adresse web.",
+    set_install_ios: "Notifications sur iPhone/iPad : dans Safari, choisissez « Partager » → « Sur l’écran d’accueil » et ouvrez ProMan depuis là.",
+    set_install_mac: "Astuce pour Safari sur Mac : « Fichier » → « Ajouter au Dock » – les notifications portent alors le nom et l’icône de ProMan.",
     set_motion: "Animations",
     set_motion_desc: "Transitions élastiques lors du changement de vue, dans les dialogues, les graphiques et lors du déplacement des cartes.",
     set_target_h: "Heures cibles / jour travaillé",
@@ -1943,6 +1958,7 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
 
 
 
