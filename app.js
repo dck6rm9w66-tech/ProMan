@@ -1111,6 +1111,11 @@ function getNotifications() {
         });
     }
 
+    /* E-Mail-Ausgang: immer in der Glocke, bis geöffnet oder verworfen */
+    if(Array.isArray(appData.mailOutbox)) {
+        appData.mailOutbox.forEach(m => notifs.push({ type: 'mail', icon: 'fa-envelope', title: _tf('mail_q_item', { s: m.subject }), desc: `${_t('mail_q_to')} ${m.to} · ${new Date(m.date).toLocaleString(ttLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`, id: m.id, entity: 'mail', notifId: 'mail_' + m.id }));
+    }
+
     if(appData.customBellNotifs) {
         appData.customBellNotifs.forEach(cn => {
             const nid = `custom_bell_${cn.id}`;
@@ -1142,7 +1147,16 @@ function renderNotificationDropdown() {
             let color = n.type === 'danger' ? 'var(--danger)' : (n.type === 'warning' ? 'var(--warning)' : 'var(--primary-color)');
             let dismissBtn = `<button class="secondary icon-btn" style="color:var(--text-muted); padding:2px 6px; font-size:12px; margin-left:auto;" onclick="dismissNotification(event, '${n.notifId}')" title="${_t('n_hide')}"><i class="fas fa-times"></i></button>`;
 
-            if(n.type === 'trash') {
+            if(n.type === 'mail') {
+                html += `<div class="notif-item notif-mail" onclick="mailOutboxOpen(event, '${n.id}')" title="${_t('mail_q_open')}" style="align-items:center;">
+                    <div class="notif-icon" style="color:var(--primary-color)"><i class="fas ${n.icon}"></i></div>
+                    <div class="notif-content" style="flex:1; min-width:0;"><h4>${escapeHtmlToday(n.title)}</h4><p>${escapeHtmlToday(n.desc)}</p></div>
+                    <div style="display:flex; gap:5px; margin-left:10px; align-items:center;">
+                        <button class="secondary icon-btn" onclick="mailOutboxOpen(event, '${n.id}')" title="${_t('mail_q_open')}"><i class="fas fa-envelope-open-text"></i></button>
+                        <button class="secondary icon-btn" style="color:var(--text-muted); padding:2px 6px; font-size:12px;" onclick="mailOutboxDiscard(event, '${n.id}')" title="${_t('mail_q_discard')}"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>`;
+            } else if(n.type === 'trash') {
                 html += `<div class="notif-item" style="cursor:default; align-items:center;">
                     <div class="notif-icon" style="color:var(--text-muted)"><i class="fas ${n.icon}"></i></div>
                     <div class="notif-content" style="flex:1;"><h4>${n.title}</h4><p>${n.desc}</p></div>
@@ -2923,7 +2937,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
             const subject = _tf('mail_wf_subject', { n: eName });
             const body = _tf('mail_wf_body', { trigger: eTrigger, msg: customMsg, type: typeStr, name: eName, sh: eSh, status: eStatus, prio: ePrio, due: eDue, user: eUser, sender: eSender });
             
-            triggerEmailNotif(subject, body, targetEmail);
+            triggerEmailNotif(subject, body, targetEmail, true);
         }
     });
 
@@ -2975,7 +2989,7 @@ function wfBgEntry(wf) {
 }
 /* Vom ereignisgesteuerten Pfad aufgerufen, damit die Hintergrundprüfung nicht doppelt auslöst. */
 function wfBgMark(wf, entityId, matched) {
-    if (!wf || wf.trigger !== 'entity_exists' || !entityId || !appData.settings || !appData.settings.wfBgInitialized) return;
+    if (!wf || wf.trigger !== 'entity_exists' || !entityId || !appData.settings) return;
     const e = wfBgEntry(wf);
     const has = e.ids.includes(entityId);
     if (matched && !has) e.ids.push(entityId);
@@ -3014,7 +3028,6 @@ function runWorkflowBackgroundCheck() {
     /* Kurz warten, damit der Browser das Lade-Symbol zeichnen kann, bevor gerechnet wird. */
     setTimeout(() => {
         let executed = 0, viewNeedsUpdate = false, structureChanged = false;
-        const firstRun = !appData.settings.wfBgInitialized;
         try {
             const st = wfBgState();
             const entities = [
@@ -3032,10 +3045,11 @@ function runWorkflowBackgroundCheck() {
                     catch (err) { console.error('Workflow-Bedingung fehlerhaft', wf.name, err); return; }
                     if (!matches) return;
                     now.push(e.id);
-                    /* Erster Lauf überhaupt: nur merken, nicht auslösen – diese Elemente hat der
-                       ereignisgesteuerte Pfad bereits behandelt. Später neu angelegte oder geänderte
-                       Workflows greifen dagegen auch für bereits passende Elemente. */
-                    if (firstRun || prev.has(e.id)) return;
+                    /* Bereits ausgelöst (hier oder im ereignisgesteuerten Pfad, der ebenfalls markiert)?
+                       Dann nicht erneut. Früher wurde der allererste Lauf komplett unterdrückt – Elemente,
+                       die dauerhaft passen (z. B. „Letzte Zeitbuchung länger her als 3 Tage"), lösten
+                       dadurch nie eine Aktion aus. */
+                    if (prev.has(e.id)) return;
                     _wfExecutionLock = true;
                     try {
                         const res = executeWorkflowActions(wf.actions || [], e, type, t('wf_bg_trigger_name'), wf.name) || {};
@@ -9184,72 +9198,34 @@ function pdfFormatDateTime(iso) {
  * in der Webapp: Startdatum + Startzeit, Dauer und daraus errechnetes Ende.
  * (Früher wurde nur die Endzeit aus dueDate gezeigt, was nicht zur App passte.)
  */
-/*
- * Berechnet das Ende eines Checklistenpunkts aus Start + Dauer – aber auf Basis der
- * in den Einstellungen hinterlegten Arbeitsstunden pro Tag (z. B. 8.5) und der Arbeitstage.
- * Eine Dauer von 10 h bei 8,5 h Tagessoll endet also am nächsten Arbeitstag, nicht 10 echte Stunden später.
- */
-function pdfWorkEnd(startIso, durationMin) {
-    if (!startIso) return null;
-    const [dPart, tPart] = String(startIso).split('T');
-    const p = dPart.split('-');
-    if (p.length !== 3) return null;
-    const startTime = (tPart && tPart.length >= 4) ? tPart.substring(0, 5) : '09:00';
-    const [sh, sm] = startTime.split(':').map(n => parseInt(n, 10) || 0);
-    let cur = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]), sh, sm);
-    if (isNaN(cur.getTime())) return null;
-
-    let remaining = Math.max(0, parseInt(durationMin, 10) || 0);
-    const perDayMin = Math.round(((parseFloat(appData.settings && appData.settings.targetHoursPerDay) || 8)) * 60);
-    const workDays = (appData.settings && appData.settings.workDays && appData.settings.workDays.length)
-        ? appData.settings.workDays : [1, 2, 3, 4, 5];
-
-    if (remaining <= perDayMin) return new Date(cur.getTime() + remaining * 60000);
-
-    let guard = 0;
-    while (remaining > perDayMin && guard++ < 3650) {
-        remaining -= perDayMin;
-        /* nächster Arbeitstag, wieder zur Startzeit */
-        do { cur.setDate(cur.getDate() + 1); } while (!workDays.includes(cur.getDay()) && guard++ < 3650);
-        cur.setHours(sh, sm, 0, 0);
-    }
-    return new Date(cur.getTime() + remaining * 60000);
-}
 
 function pdfChecklistMeta(cl) {
+    /* Keine berechnete Zeitspanne mehr (z. B. „07:30–09:30"): Sie ging bei Punkten ohne
+       Uhrzeit vom Arbeitsbeginn aus und stimmte so oft nicht. Angezeigt wird nur, was der
+       User selbst festgelegt hat:
+         Datum + Dauer             → „12.10.2026, 2 Std"
+         Datum + Uhrzeit + Dauer   → „12.10.2026, 14:00, 2 Std"
+         Datum ohne Uhrzeit/Dauer  → „23.10.2026, ganztägig"
+       Ganztägig = keine Uhrzeit und keine eigene Dauer. Ohne Dauer füllt die App intern
+       die Länge des Arbeitstags ein – diese Dauer gilt deshalb ebenfalls als ganztägig. */
     const meta = [];
     const s = pdfSplitIso(cl.startDate);
+    const e = pdfSplitIso(cl.dueDate);
     const durMin = parseInt(cl.duration, 10) || 0;
+    const fmtDur = mins => { const h = Math.floor(mins / 60), m = mins % 60; return h > 0 ? (m > 0 ? `${h} ${_t('u_h')} ${m} ${_t('u_min')}` : `${h} ${_t('u_h')}`) : `${m} ${_t('u_min')}`; };
+    let dayMin = 0;
+    try { dayMin = Math.max(0, _hhmmToMin(getWorkDayEnd()) - _hhmmToMin(getWorkDayStart())); } catch (err) {}
+    const noTime = !!cl.allDay || !s.time;
+    const wholeDay = noTime && (durMin <= 0 || (dayMin > 0 && durMin === dayMin));
 
-    /* Ende bevorzugt aus Arbeitsstunden berechnen, sonst gespeichertes Fälligkeitsdatum.
-       Ganztägige Termine behalten ihre gespeicherte Spanne (Arbeitsbeginn–Arbeitsende). */
-    let e = pdfSplitIso(cl.dueDate);
-    if (!cl.allDay && cl.startDate && durMin > 0) {
-        const endDt = pdfWorkEnd(cl.startDate, durMin);
-        if (endDt) {
-            const _p = n => String(n).padStart(2, '0');
-            e = {
-                date: `${_p(endDt.getDate())}.${_p(endDt.getMonth() + 1)}.${endDt.getFullYear()}`,
-                time: `${_p(endDt.getHours())}:${_p(endDt.getMinutes())}`
-            };
-        }
-    }
+    const parts = [];
+    const date = s.date || e.date;
+    if (date) parts.push(date);
+    if (s.date && !cl.allDay && s.time) parts.push(s.time);
+    if (date && wholeDay) parts.push(_t('pdf_all_day'));
+    else if (durMin > 0) parts.push(fmtDur(durMin));
+    if (parts.length) meta.push(parts.join(', '));
 
-    if (s.date) {
-        let str = s.date;
-        if (s.time) {
-            str += `, ${s.time}`;
-            if (e.time && e.date === s.date) str += `–${e.time}`;
-        }
-        if (e.date && e.date !== s.date) str += ` – ${e.date}${e.time ? ', ' + e.time : ''}`;
-        meta.push(str);
-    } else if (e.date) {
-        meta.push(e.time ? `${e.date}, ${e.time}` : e.date);
-    }
-    if (durMin > 0) {
-        const h = Math.floor(durMin / 60), m = durMin % 60;
-        meta.push(h > 0 ? (m > 0 ? `${h} ${_t('u_h')} ${m} ${_t('u_min')}` : `${h} ${_t('u_h')}`) : `${m} ${_t('u_min')}`);
-    }
     if (cl.assigneeId) { const u = appData.users.find(x => x.id === cl.assigneeId); if (u) meta.push(u.name); }
     return meta.join(' · ');
 }
@@ -9714,11 +9690,70 @@ function dismissNotifModal() {
     setTimeout(_processNotifModalQueue, 200);
 }
 
-function triggerEmailNotif(subject, body, toEmail) {
+/* ============================================================
+   E-MAIL-VERSAND & E-MAIL-AUSGANG
+   ProMan hat keinen Mailserver: eine Mail ist ein vorausgefüllter Entwurf im
+   Mailprogramm (mailto:). Browser öffnen so etwas aber NUR direkt nach einem Klick
+   des Users – und auch dann nur EINEN Entwurf pro Klick. Mails aus der
+   Hintergrundprüfung (alle 5 Min.) wurden deshalb bisher stillschweigend vom
+   Popup-Blocker verschluckt, ebenso jede zweite Mail aus derselben Änderung.
+   Solche Mails landen jetzt im E-Mail-Ausgang (Glocke) und öffnen sich dort per Klick.
+   ============================================================ */
+function mailOutbox() { if (!Array.isArray(appData.mailOutbox)) appData.mailOutbox = []; return appData.mailOutbox; }
+function mailUri(m) { return `mailto:${encodeURIComponent(m.to)}?subject=${encodeURIComponent('[ProMan] ' + m.subject)}&body=${encodeURIComponent(m.body)}`; }
+/* Öffnet den Entwurf, wenn der Browser es gerade erlaubt (frischer Klick). true = geöffnet. */
+function mailTryOpen(m) {
+    const ua = navigator.userActivation;
+    if (ua && !ua.isActive) return false;           /* kein Klick → Browser würde blockieren */
+    let w = null;
+    try { w = window.open(mailUri(m), '_blank'); } catch (e) { w = null; }
+    return !!w;
+}
+function triggerEmailNotif(subject, body, toEmail, queueIfBlocked = false) {
     const email = toEmail || appData.settings.notificationEmail || '';
     if (!email) return;
-    const uri = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('[ProMan] ' + subject)}&body=${encodeURIComponent(body)}`;
-    window.open(uri, '_blank');
+    const m = { id: generateId(), to: email, subject: String(subject || ''), body: String(body || ''), date: Date.now() };
+    if (mailTryOpen(m)) return;
+    if (!queueIfBlocked) return;
+    mailOutbox().push(m);
+    if (mailOutbox().length > 50) mailOutbox().splice(0, mailOutbox().length - 50);
+    mailOutboxAnnounce(m);
+}
+/* Hinweis gebündelt: mehrere Mails derselben Prüfung ergeben EINE Meldung */
+let _mailAnnTimer = null, _mailAnnNew = [];
+function mailOutboxAnnounce(m) {
+    _mailAnnNew.push(m);
+    clearTimeout(_mailAnnTimer);
+    _mailAnnTimer = setTimeout(() => {
+        const fresh = _mailAnnNew; _mailAnnNew = [];
+        try { localStorage.setItem('proman_v2_data', JSON.stringify(appData)); } catch (e) {}
+        try { updateNotificationsBadge(); const nc = document.getElementById('notifContainer'); if (nc && nc.style.display !== 'none' && nc.innerHTML) renderNotificationDropdown(); } catch (e) {}
+        /* bewusst _rawToast: showToast könnte selbst wieder eine Mail auslösen */
+        _rawToast(fresh.length === 1 ? _tf('mail_q_toast_one', { s: fresh[0].subject }) : _tf('mail_q_toast_n', { n: fresh.length }), 'info');
+        /* Systembenachrichtigung (falls erlaubt): ein Klick darauf darf den Entwurf öffnen */
+        try {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const first = fresh[0];
+                const nt = new Notification(_t('mail_q_push_title'), { body: fresh.length === 1 ? first.subject : _tf('mail_q_toast_n', { n: fresh.length }), tag: 'proman-mail' });
+                nt.onclick = () => { try { window.focus(); } catch (e) {} if (fresh.length === 1) mailOutboxOpen(null, first.id); else { const b = document.getElementById('notifBtn') || document.querySelector('[onclick*="toggleNotif"]'); if (b) b.click(); } nt.close(); };
+            }
+        } catch (e) {}
+    }, 400);
+}
+function mailOutboxOpen(ev, id) {
+    if (ev) ev.stopPropagation();
+    const box = mailOutbox(); const i = box.findIndex(x => x.id === id); if (i < 0) return;
+    const m = box[i];
+    let w = null;
+    try { w = window.open(mailUri(m), '_blank'); } catch (e) { w = null; }
+    if (!w) { try { const a = document.createElement('a'); a.href = mailUri(m); a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); } catch (e) {} }
+    box.splice(i, 1);
+    saveToLocal(true); updateNotificationsBadge(); renderNotificationDropdown();
+}
+function mailOutboxDiscard(ev, id) {
+    if (ev) ev.stopPropagation();
+    appData.mailOutbox = mailOutbox().filter(x => x.id !== id);
+    saveToLocal(true); updateNotificationsBadge(); renderNotificationDropdown();
 }
 
 // AUTO-DELETE LOGIC
