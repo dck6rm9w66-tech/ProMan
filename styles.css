@@ -3133,6 +3133,11 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 .pm-pill{position:absolute;z-index:0;border-radius:12px;background:var(--wk-magnet);pointer-events:none;transform-origin:0 0}
 .pm-pill.ind{border-radius:3px}
 .wk-rail-item > *{position:relative;z-index:1}
+/* Der Eintrag selbst liegt immer ÜBER dem gleitenden Kasten. Sonst machte das allgemeine
+   button:hover-Anheben (transform) bzw. das Eindrücken beim Klick den Eintrag zu einer eigenen
+   Stapelebene – Icon und Text rutschten unter den gelben Kasten und waren unsichtbar, solange
+   der Zeiger auf dem Icon stehen blieb (Aufblitzen am Ende der Animation). */
+.wk-rail-item{position:relative;z-index:1}
 .wk-rail-item.pm-pill-host{background:transparent !important}
 .wk-tab.pm-pill-host .wk-tab-ind{opacity:0 !important}
 /* SVG-Teile wachsen aus ihrer eigenen Grundlinie bzw. Mitte */
@@ -3172,3 +3177,10 @@ body.cl-dragging .checklist-item{ transition:transform .15s ease; }
 }
 .hw-card.hw-dragging{box-shadow:0 18px 36px -18px rgba(34,38,43,.45) !important}
 body.hw-dragging-on, body.hw-dragging-on *{cursor:grabbing !important;user-select:none !important;-webkit-user-select:none !important}
+
+/* Onboarding: Währung und Firmenlogo */
+.onb-cur .onb-day{width:auto;min-width:72px;padding:0 14px !important}
+.onb-logo-prev{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:40px}
+.onb-logo-prev img{max-height:60px;max-width:220px;border:1px solid var(--border-color);border-radius:6px;background:#fff;padding:4px}
+.onb-logo-prev span{font-size:12px;color:var(--text-muted)}
+.onb-field #onb_logo_btn{width:auto}
