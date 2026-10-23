@@ -351,7 +351,7 @@ Object.assign(i18n.de, {
     locked: "Gesperrt",
     log_entry: "[Zeiterfassung am {d} | {h}h] {n}",
     logo_remove: "Logo entfernen",
-    mail_wf_body: "Hallo,\n\nein ProMan-Workflow wurde ausgelöst!\n\nAuslöser: {trigger}\n\nEigene Nachricht:\n{msg}\n\n---\nElement-Details:\nTyp: {type}\nName: {name}\nStatus: {status}\nPriorität: {prio}\nFälligkeit: {due}\nZuständig: {user}\n---\n\nViele Grüsse,\nProMan Automatisierung",
+    mail_wf_body: "Hallo,\n\nein ProMan-Workflow wurde ausgelöst!\n\nAuslöser: {trigger}\n\nEigene Nachricht:\n{msg}\n\n---\nElement-Details:\nTyp: {type}\nName: {name}\nStakeholder: {sh}\nStatus: {status}\nPriorität: {prio}\nFälligkeit: {due}\nZuständig: {user}\n---\n\nViele Grüsse,\n{sender}",
     mail_wf_subject: "Workflow-Aktion: {n}",
     merge_choose_stack: "Bitte Stack wählen oder neu erstellen.",
     merge_done: "Aufgaben erfolgreich gruppiert.",
@@ -945,7 +945,7 @@ Object.assign(i18n.en, {
     locked: "Locked",
     log_entry: "[Time log on {d} | {h}h] {n}",
     logo_remove: "Remove logo",
-    mail_wf_body: "Hello,\n\na ProMan workflow has been triggered!\n\nTrigger: {trigger}\n\nCustom message:\n{msg}\n\n---\nItem details:\nType: {type}\nName: {name}\nStatus: {status}\nPriority: {prio}\nDue: {due}\nAssignee: {user}\n---\n\nBest regards,\nProMan Automation",
+    mail_wf_body: "Hello,\n\na ProMan workflow has been triggered!\n\nTrigger: {trigger}\n\nCustom message:\n{msg}\n\n---\nItem details:\nType: {type}\nName: {name}\nStakeholder: {sh}\nStatus: {status}\nPriority: {prio}\nDue: {due}\nAssignee: {user}\n---\n\nBest regards,\n{sender}",
     mail_wf_subject: "Workflow action: {n}",
     merge_choose_stack: "Please choose a stack or create a new one.",
     merge_done: "Tasks grouped successfully.",
@@ -1539,7 +1539,7 @@ Object.assign(i18n.fr, {
     locked: "Bloqué",
     log_entry: "[Temps saisi le {d} | {h}h] {n}",
     logo_remove: "Supprimer le logo",
-    mail_wf_body: "Bonjour,\n\nun workflow ProMan a été déclenché !\n\nDéclencheur : {trigger}\n\nMessage personnalisé :\n{msg}\n\n---\nDétails de l’élément :\nType : {type}\nNom : {name}\nStatut : {status}\nPriorité : {prio}\nÉchéance : {due}\nResponsable : {user}\n---\n\nCordialement,\nProMan Automatisation",
+    mail_wf_body: "Bonjour,\n\nun workflow ProMan a été déclenché !\n\nDéclencheur : {trigger}\n\nMessage personnalisé :\n{msg}\n\n---\nDétails de l’élément :\nType : {type}\nNom : {name}\nPartie prenante : {sh}\nStatut : {status}\nPriorité : {prio}\nÉchéance : {due}\nResponsable : {user}\n---\n\nCordialement,\n{sender}",
     mail_wf_subject: "Action de workflow : {n}",
     merge_choose_stack: "Veuillez choisir une pile ou en créer une nouvelle.",
     merge_done: "Tâches regroupées avec succès.",
@@ -1904,6 +1904,7 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
 
 
 
