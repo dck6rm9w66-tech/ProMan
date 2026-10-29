@@ -587,10 +587,83 @@ function updateDepDisplay() {
     });
 }
 
+/* ============================================================
+   ANSICHT-MODI: Basic · Medium · Pro
+   Basic  = nur das Kanban-Board; Aufgaben mit Checkliste, Start-/Fälligkeitsdatum,
+            Stakeholder, Bucket und Notizen.
+   Medium = zusätzlich Hub, Stacks, Liste, Kalender, Notizen, Checklisten und
+            Zeiterfassung; Priorität, Zuständige, Aufwand, Wiederholung, Dateien, Vorlagen.
+   Pro    = alles (bisherige Ansicht).
+   Die Modi blenden nur aus – Daten bleiben vollständig erhalten. Elemente tragen
+   data-ui-min="medium" bzw. "pro"; die Klasse ui-basic/ui-medium/ui-pro auf <html>
+   blendet sie per CSS aus. Bestehende Installationen ohne Einstellung laufen als Pro.
+   ============================================================ */
+const UI_MODES = ['basic', 'medium', 'pro'];
+const UI_MODE_VIEWS = {
+    basic:  ['kanban'],
+    medium: ['today', 'kanban', 'stacks', 'list', 'schedule', 'notes', 'checklists', 'time']
+};
+function uiMode() { const m = appData && appData.settings && appData.settings.uiMode; return UI_MODES.includes(m) ? m : 'pro'; }
+function uiAtLeast(m) { return UI_MODES.indexOf(uiMode()) >= UI_MODES.indexOf(m); }
+function uiViewAllowed(v) { const list = UI_MODE_VIEWS[uiMode()]; return !list || list.includes(v); }
+function uiDefaultView() { return uiMode() === 'basic' ? 'kanban' : 'today'; }
+/* Nicht erlaubte Ansicht → nächstliegende erlaubte (z. B. Gantt → Kalender in Medium) */
+function uiResolveView(v) {
+    if (uiViewAllowed(v)) return v;
+    if ((v === 'planner' || v === 'timeline') && uiViewAllowed('schedule')) return 'schedule';
+    if (v === 'milestones' && uiViewAllowed('checklists')) return 'checklists';
+    return uiDefaultView();
+}
+function applyUiMode() {
+    const r = document.documentElement; const m = uiMode();
+    UI_MODES.forEach(x => r.classList.toggle('ui-' + x, x === m));
+    r.dataset.uiMode = m;
+    if (!uiAtLeast('pro') && typeof timeSubView !== 'undefined' && timeSubView === 'budgets') timeSubView = 'tracking';
+}
+function setUiMode(m, opts = {}) {
+    if (!UI_MODES.includes(m)) return;
+    appData.settings.uiMode = m;
+    if (m === 'basic' && typeof activeFilters !== 'undefined') {
+        activeFilters.users = []; activeFilters.stack = [];
+        appData.settings.globalHidePaused = false;   /* „Pausiert" gibt es in Basic nicht als Option */
+        try { initFilters(); renderFilterChips(); } catch (e) {}
+    }
+    saveToLocal(true);
+    applyUiMode();
+    try { if (window.Shell && window.Shell.rebuildNav) window.Shell.rebuildNav(); } catch (e) { console.warn('[ui-mode] nav', e); }
+    /* Offener Einstellungs-Tab, der in diesem Modus ausgeblendet ist → ersten Tab zeigen */
+    try {
+        const act = document.querySelector('#settingsModal .modal-tab-btn.active');
+        if (act && act.offsetParent === null) { const first = document.querySelector('#settingsModal .modal-tab-btn'); if (first) first.click(); }
+    } catch (e) {}
+    try { renderUiModeCards(); } catch (e) {}
+    if (!uiViewAllowed(currentView)) switchView(uiResolveView(currentView));
+    else { renderView(); try { if (window.Shell) window.Shell.sync(); } catch (e) {} }
+    if (!opts.silent) showToast(_tf('ui_mode_set', { m: _t('ui_mode_' + m) }));
+}
+/* Auswahlkarten (Einstellungen, Onboarding). onPick: Name einer globalen Funktion. */
+function uiModeCardsHtml(selected, onPick) {
+    const ic = { basic: 'fa-seedling', medium: 'fa-layer-group', pro: 'fa-rocket' };
+    return `<div class="ui-mode-cards" role="radiogroup" aria-label="${_t('ui_mode_title')}">${UI_MODES.map(m => `
+        <button type="button" class="secondary ui-mode-card${m === selected ? ' on' : ''}" role="radio" aria-checked="${m === selected}" data-uimode="${m}" onclick="${onPick}('${m}', this)">
+            <span class="ui-mode-ic"><i class="fas ${ic[m]}"></i></span>
+            <span class="ui-mode-name">${_t('ui_mode_' + m)}${m === 'basic' ? ` <em>${_t('ui_mode_default')}</em>` : ''}</span>
+            <span class="ui-mode-desc">${_t('ui_mode_' + m + '_desc')}</span>
+            <span class="ui-mode-check"><i class="fas fa-check"></i></span>
+        </button>`).join('')}</div>`;
+}
+function renderUiModeCards() {
+    const host = document.getElementById('set_ui_mode_cards');
+    if (host) host.innerHTML = uiModeCardsHtml(uiMode(), 'uiModePickSettings');
+}
+function uiModePickSettings(m) { if (m !== uiMode()) setUiMode(m); }
+
 let currentView = appData.settings.views.find(v => !v.hidden && v.id !== 'schedule' && v.id !== 'timeline')?.id || appData.settings.views[0].id;
+if (!uiViewAllowed(currentView)) currentView = uiResolveView(currentView);
 let plannerSubView = 'schedule';
 let timeSubView = 'tracking';
 let sidebarMgmtOpen = false;
+applyUiMode();
 let currentTempFiles = []; 
 
 let listSort = { key: 'dueDate', desc: false };
@@ -1001,7 +1074,7 @@ document.addEventListener('keydown', function(e) {
     }
     if(!isInput && !e.ctrlKey && !e.metaKey) {
         if(key === sc.newTask.toLowerCase()) { e.preventDefault(); openModal(); }
-        if(key === sc.newStack.toLowerCase()) { e.preventDefault(); openStackModal(); }
+        if(key === sc.newStack.toLowerCase() && uiAtLeast('medium')) { e.preventDefault(); openStackModal(); }
     }
 });
 
@@ -1455,12 +1528,12 @@ function initFilters() {
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; cursor:pointer; padding-bottom:5px;">
             <input type="checkbox" id="global_hide_comp_gen" ${appData.settings.globalHideCompleted ? 'checked' : ''} onchange="updateGlobalHideComp(this.checked)"> <span data-i18n="filter_hide_comp">${t('filter_hide_comp')}</span>
         </label>
-        <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; cursor:pointer; padding-bottom:10px; border-bottom:1px solid var(--border-color);">
+        <label data-ui-min="medium" style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:bold; cursor:pointer; padding-bottom:10px; border-bottom:1px solid var(--border-color);">
             <input type="checkbox" id="global_hide_paused_gen" ${appData.settings.globalHidePaused ? 'checked' : ''} onchange="updateGlobalHidePaused(this.checked)"> <span data-i18n="filter_hide_paused">${t('filter_hide_paused')}</span>
         </label>
         <div style="font-size:12px; font-weight:bold; color:var(--text-muted); margin-top:5px; margin-bottom:5px;" data-i18n="filter_by">${t('filter_by')}</div>
-        <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_users" onclick="toggleMS('ms_users', event)"><span data-i18n="btn_users">${t('btn_users')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_users">${buildMSHTML('users', appData.users, 'id', 'name')}</div></div>
-        <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_stack" onclick="toggleMS('ms_stack', event)"><span data-i18n="btn_stacks">${t('btn_stacks')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_stack">${buildMSHTML('stack', appData.projectStacks, 'id', 'name')}</div></div>
+        <div class="ms-wrapper" data-ui-min="medium"><div class="ms-btn" id="btn_ms_users" onclick="toggleMS('ms_users', event)"><span data-i18n="btn_users">${t('btn_users')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_users">${buildMSHTML('users', appData.users, 'id', 'name')}</div></div>
+        <div class="ms-wrapper" data-ui-min="medium"><div class="ms-btn" id="btn_ms_stack" onclick="toggleMS('ms_stack', event)"><span data-i18n="btn_stacks">${t('btn_stacks')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_stack">${buildMSHTML('stack', appData.projectStacks, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_sh" onclick="toggleMS('ms_sh', event)"><span data-i18n="btn_sh">${t('btn_sh')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_sh">${buildMSHTML('sh', appData.stakeholders, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_bucket" onclick="toggleMS('ms_bucket', event)"><span data-i18n="btn_buckets">${t('btn_buckets')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_bucket">${buildMSHTML('bucket', appData.buckets, null, null)}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_status" onclick="toggleMS('ms_status', event)"><span data-i18n="btn_status">${t('btn_status')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_status">${buildMSHTML('status', [...appData.statuses, { id: 'paused_state', title: t('status_paused') }], 'id', 'title')}</div></div>
@@ -1615,7 +1688,7 @@ function setTaskState(id, action) {
     if(action === 'complete') {
         task.status = 'done'; task.isPaused = false;
         if(!task.completedAt) task.completedAt = Date.now();
-        triggerWorkflows('task_completed', { task }); showToast(t('toast_saved')); openRatingModal('task', id);
+        triggerWorkflows('task_completed', { task }); showToast(t('toast_saved')); if (uiAtLeast('pro')) openRatingModal('task', id);
     }
     if(action === 'reopen') { task.status = appData.statuses[0].id; delete task.completedAt; }
     if(oldStatus !== task.status) { triggerWorkflows('task_status_changed', { task, oldStatus, newStatus: task.status }); }
@@ -2020,6 +2093,7 @@ function renderLogoPreview() {
 function openSettings() { 
     document.getElementById('settingsModal').classList.add('active'); 
     try { pmUpdateInstallRow(); } catch (e) {}
+    try { renderUiModeCards(); } catch (e) {}
     renderLogoPreview();
     document.getElementById('set_attachment_folder').value = appData.settings.attachmentFolder || 'C:\\ProMan_Dateien\\';
     document.getElementById('set_language').value = appData.settings.language || 'de';
@@ -3244,7 +3318,7 @@ function triggerWorkflows(eventName, context) {
 function checkTaskCompletion(taskId, newStatusId) {
     if(!appData.statuses.length) return; const lastStatusId = appData.statuses[appData.statuses.length-1].id;
     const task = appData.tasks.find(t_obj => t_obj.id === taskId); const oldStatus = task ? task.status : null;
-    if(newStatusId === lastStatusId && oldStatus !== lastStatusId) { setTimeout(() => { openRatingModal('task', taskId); }, 500); }
+    if(newStatusId === lastStatusId && oldStatus !== lastStatusId && uiAtLeast('pro')) { setTimeout(() => { openRatingModal('task', taskId); }, 500); }
 }
 function openRatingModal(type, id) { currentRatingEntity = { type, id }; currentRatings = { comm: null, time: null, qual: null, team: null, crea: null, satis: null }; document.getElementById('ratingModal').classList.add('active'); drawCompletionStars(); }
 function closeRatingModal() { document.getElementById('ratingModal').classList.remove('active'); currentRatingEntity = null; renderView(); }
@@ -3385,7 +3459,7 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
         </div>
         <div class="cl-controls">
             <input type="hidden" class="cl-assignee" value="${assigneeId}">
-            <div class="cl-assignee-pick">
+            <div class="cl-assignee-pick" data-ui-min="medium">
                 <button type="button" class="cl-assignee-btn" title="${_t('cl_assignee_title')}" onclick="event.stopPropagation(); this.parentNode.classList.toggle('open')">${curAvatar}</button>
                 <div class="cl-assignee-menu">${userMenuItems}</div>
             </div>
@@ -3393,12 +3467,12 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
                 <input type="date" class="cl-start-date" value="${sd}" title="${_t('cl_start_date')}" onchange="clStartChanged(this)">
                 <input type="time" class="cl-start-time ${sd ? '' : 'cl-hidden'}" value="${stime}" title="${_t('cl_start_time')}" onchange="clStartChanged(this)">
             </span>
-            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="clSumDuration()"><span class="cl-durunit">${_t('u_h')}</span></span>
-            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
+            <span class="cl-datespan cl-durspan" data-ui-min="medium"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="clSumDuration()"><span class="cl-durunit">${_t('u_h')}</span></span>
+            <button class="secondary icon-btn cl-dep-btn" data-ui-min="pro" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
         </div>
     </div>
-    <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>`;
+    <div class="cl-deps-display" data-ui-min="pro" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>`;
 }
 
 /* Summe der Checkpunkt-Zeiten (in Stunden) für die Anzeige des geschätzten Gesamtaufwands */
@@ -3681,7 +3755,7 @@ function setStackStatus(id, newStatus) {
         { const _sm = { paused: ['fa-pause', t('act_stack_paused')], active: ['fa-play', t('act_stack_resumed')], completed: ['fa-check', t('act_stack_done')] };
           if(_sm[newStatus]) logActivity(_sm[newStatus][0], _sm[newStatus][1].replace('{n}', stack.name || '')); }
         saveToLocal(); if(document.getElementById('stackModal').classList.contains('active')) { openStackModal(id); } renderView();
-        if(newStatus === 'completed') { showToast(_t('stack_completed_toast')); openRatingModal('stack', id); } 
+        if(newStatus === 'completed') { showToast(_t('stack_completed_toast')); if (uiAtLeast('pro')) openRatingModal('stack', id); } 
     }
 }
 
@@ -3720,7 +3794,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
         const isCompleted = isTaskDone(t_obj);
         if(!isCompleted) {
             if(t_obj.isPaused) actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-            else actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
+            else actionsHtml += `<button class="secondary icon-btn" data-ui-min="medium" onclick="setTaskState('${taskId}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
             actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'complete')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
         } else { actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
@@ -5324,12 +5398,12 @@ function renderChecklists(c, mode = 'checklists') {
                             ${getAvatarHtml(item.assigneeId, 'avatar-sm')}
                             <select class="cl-assignee" onchange="updateGlobalCl('${parentType}', '${parentId}', ${originalIdx}, 'assigneeId', this.value)">${userOpts}</select>
                             <span class="cl-datespan cl-startspan"><input type="date" class="cl-g-date cl-start-date" value="${d}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><input type="time" class="cl-g-time cl-start-time" value="${time}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"></span>
-                            <span class="cl-datespan cl-durspan"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">${_t('u_h')}</span></span>
-                            <button class="secondary icon-btn" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
+                            <span class="cl-datespan cl-durspan" data-ui-min="medium"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">${_t('u_h')}</span></span>
+                            <button class="secondary icon-btn cl-dep-btn" data-ui-min="pro" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
                             <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
-                    <div class="cl-deps-display" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                    <div class="cl-deps-display" data-ui-min="pro" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>
                 </div>`;
             });
         }
@@ -5560,23 +5634,23 @@ function createTaskCard(task) {
     const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('lock_title') + '"></i>' : '';
 
     let actionBtns = '';
-    actionBtns += `<button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
+    actionBtns += `<button class="secondary icon-btn wk-booktime" data-ui-min="medium" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
     if(!isCompleted) {
         if(isPaused) actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-        else actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
+        else actionBtns += `<button class="secondary icon-btn" data-ui-min="medium" onclick="event.stopPropagation(); setTaskState('${task.id}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
         actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'complete')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
     } else { actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
     /* Kartenaufbau (der frühere Kompaktmodus ist ohne Umschalter nicht mehr erreichbar) */
     // Standardansicht ohne Pausiert-Label
-    const timeBarHtml = (parseFloat(est) > 0 || parseFloat(spent) > 0) ? `<div class="wk-effort"><div class="wk-effort-head"><span><i class="far fa-clock"></i> ${t('actual')} <b>${spent}h</b></span><span>${t('target')} <b>${est}h</b></span></div><div class="wk-effort-bar"><i class="${isOver?'over':''}" style="width:${Math.min(100,pct)}%"></i></div></div>` : '';
+    const timeBarHtml = (parseFloat(est) > 0 || parseFloat(spent) > 0) ? `<div class="wk-effort" data-ui-min="medium"><div class="wk-effort-head"><span><i class="far fa-clock"></i> ${t('actual')} <b>${spent}h</b></span><span>${t('target')} <b>${est}h</b></span></div><div class="wk-effort-bar"><i class="${isOver?'over':''}" style="width:${Math.min(100,pct)}%"></i></div></div>` : '';
     // Abgeschlossene Aufgaben: nur der Aufgabenname
     if (isCompleted) {
         // Abgeschlossen: Name, Bucket, Stakeholder + nur zwei Aktionen (Wiedereröffnen, Zeit buchen)
         let doneSh = '';
         if (task.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === task.stakeholderId); if (sh) doneSh = `<span class="wk-c-sh" style="--shc:${sh.color}"><i class="fas fa-user-tie"></i> ${escapeHtmlToday(sh.name)}</span>`; }
         const doneBucket = task.bucket ? `<span class="wk-c-bucket"><i class="fas fa-box-open"></i> ${escapeHtmlToday(task.bucket)}</span>` : '';
-        const doneActions = `<button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`
+        const doneActions = `<button class="secondary icon-btn wk-booktime" data-ui-min="medium" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`
             + `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-rotate-left"></i></button>`;
         card.innerHTML = `<div class="wk-card done">
             <div class="wk-card-done-main">
@@ -5588,13 +5662,13 @@ function createTaskCard(task) {
     } else {
         // Einheitliche Kachel für alle offenen Spalten
         let stackBadge = '';
-        if (task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if (stack) stackBadge = `<span class="wk-c-stack" style="--sc:${stack.color || 'var(--text-muted)'}"><i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}</span>`; }
+        if (task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if (stack) stackBadge = `<span class="wk-c-stack" data-ui-min="medium" style="--sc:${stack.color || 'var(--text-muted)'}"><i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}</span>`; }
         let shBadge = '';
         if (task.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === task.stakeholderId); if (sh) shBadge = `<span class="wk-c-sh" style="--shc:${sh.color}"><i class="fas fa-user-tie"></i> ${escapeHtmlToday(sh.name)}</span>`; }
         const bucketBadge = task.bucket ? `<span class="wk-c-bucket"><i class="fas fa-box-open"></i> ${escapeHtmlToday(task.bucket)}</span>` : '';
         const clDone = (task.checklist || []).filter(x => x.done).length, clTot = (task.checklist || []).length;
         const clInfo = clTot ? `<span class="wk-c-cl"><i class="fas fa-check-square"></i> ${clDone}/${clTot}</span>` : '';
-        const filesInfo = (task.files && task.files.length) ? `<span class="wk-c-files"><i class="fas fa-paperclip"></i> ${task.files.length}</span>` : '';
+        const filesInfo = (task.files && task.files.length) ? `<span class="wk-c-files" data-ui-min="medium"><i class="fas fa-paperclip"></i> ${task.files.length}</span>` : '';
         const dueInfo = task.dueDate ? `<span class="wk-c-due"><i class="far fa-calendar-alt"></i> ${task.dueDate}</span>` : '';
 
         card.innerHTML = `<div class="wk-card">
@@ -5606,10 +5680,10 @@ function createTaskCard(task) {
             ${timeBarHtml}
             <div class="wk-card-foot">
                 <div class="wk-card-foot-l">
-                    <span class="badge ${task.priority}">${prioLabels[task.priority]}</span>
+                    <span class="badge ${task.priority}" data-ui-min="medium">${prioLabels[task.priority]}</span>
                     ${clInfo}${filesInfo}${dueInfo}
                 </div>
-                <div class="wk-card-foot-r">${avatarHtml}</div>
+                <div class="wk-card-foot-r" data-ui-min="medium">${avatarHtml}</div>
             </div>
         </div>`;
     }
@@ -8572,7 +8646,8 @@ function buildTimeSubTabsHtml() {
     const lenses = [
         { v: 'tracking', l: t('view_time'), i: 'fa-stopwatch' },
         { v: 'budgets',  l: t('time_budgets_tab'), i: 'fa-coins' }
-    ];
+    ].filter(l => l.v !== 'budgets' || uiAtLeast('pro'));
+    if (lenses.length < 2) return '';
     return `<div class="wk-lensrail" id="ttLensrail" style="margin:0 0 20px;">
         <span class="wk-magnet" id="ttMagnet"></span>
         ${lenses.map(l => `<button class="wk-lens" role="tab" data-ttlens="${l.v}" aria-selected="${timeSubView === l.v}" onclick="switchTimeSubView('${l.v}')"><i class="fas ${l.i}"></i>${l.l}</button>`).join('')}
@@ -8580,6 +8655,7 @@ function buildTimeSubTabsHtml() {
 }
 
 function renderTimeTracking(c) {
+    if (timeSubView === 'budgets' && !uiAtLeast('pro')) timeSubView = 'tracking';
     const subTabsHtml = buildTimeSubTabsHtml();
 
     if (timeSubView === 'budgets') {
@@ -11656,6 +11732,32 @@ function ttHeuteBook(iso){
     ]}
   ];
 
+  /* Ansicht-Modus (Basic/Medium/Pro): nur erlaubte Linsen, Orte ohne Linse entfallen */
+  function modePlaces() {
+    return PLACES.map(p => Object.assign({}, p, { lenses: p.lenses.filter(l => (typeof uiViewAllowed !== 'function') || uiViewAllowed(l.v)) }))
+                 .filter(p => p.lenses.length);
+  }
+  function railItemsHtml() {
+    return modePlaces().map(p => `<button class="wk-rail-item" data-wkplace="${p.k}">
+          <i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('');
+  }
+  function tabItemsHtml() {
+    return modePlaces().map(p => `<button class="wk-tab" data-wkplace="${p.k}">
+        <span class="wk-tab-ind"></span><i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('');
+  }
+  /* Nach einem Moduswechsel: Schiene und Tableiste neu bestücken */
+  function rebuildNav() {
+    const rail = $('.wk-rail');
+    if (rail) {
+      rail.querySelectorAll('.wk-rail-item').forEach(b => b.remove());
+      const logo = rail.querySelector('.wk-logo');
+      if (logo) logo.insertAdjacentHTML('afterend', railItemsHtml());
+    }
+    const tb = $('.wk-tabbar'); if (tb) tb.innerHTML = tabItemsHtml();
+    document.documentElement.classList.toggle('ui-single-place', modePlaces().length < 2);
+    sync();
+  }
+
   /* Rückweg: welche Ansicht gehört zu welchem Ort */
   const VIEW2PLACE = {};
   PLACES.forEach(p => p.lenses.forEach(l => { VIEW2PLACE[l.v] = p.k; }));
@@ -11693,8 +11795,7 @@ function ttHeuteBook(iso){
     rail.setAttribute('aria-label', 'Bereiche');
     rail.innerHTML =
       `<span class="wk-logo" aria-hidden="true">pm</span>` +
-      PLACES.map(p => `<button class="wk-rail-item" data-wkplace="${p.k}">
-          <i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('') +
+      railItemsHtml() +
       `<span class="wk-spacer"></span>
        <button class="wk-rail-new" id="wkRailNew" title="Neu anlegen" aria-label="Neu anlegen"><i class="fas fa-plus"></i></button>
        <button class="wk-rail-export" id="wkRailExport" title="Export & Backup" aria-label="Export & Backup"><i class="fas fa-file-export"></i></button>`;
@@ -11713,8 +11814,8 @@ function ttHeuteBook(iso){
     const tabbar = document.createElement('nav');
     tabbar.className = 'wk-tabbar';
     tabbar.setAttribute('aria-label', 'Bereiche');
-    tabbar.innerHTML = PLACES.map(p => `<button class="wk-tab" data-wkplace="${p.k}">
-        <span class="wk-tab-ind"></span><i class="fas ${p.icon}"></i><small>${placeLabel(p)}</small></button>`).join('');
+    tabbar.innerHTML = tabItemsHtml();
+    document.documentElement.classList.toggle('ui-single-place', modePlaces().length < 2);
     document.body.appendChild(tabbar);
 
     /* Namenskürzel in der Kopfzeile — öffnet die Einstellungen.
@@ -11764,7 +11865,12 @@ function ttHeuteBook(iso){
       if (l) { switchView(l.dataset.wklens); return; }
 
       const fab = ev.target.closest('#wkFab, .mobile-fab, #wkRailNew');
-      if (fab) { ev.preventDefault(); ev.stopPropagation(); toggleFab(); return; }
+      if (fab) {
+        ev.preventDefault(); ev.stopPropagation();
+        /* Basic kennt keine Stacks: „+" legt direkt eine Aufgabe an */
+        if (typeof uiAtLeast === 'function' && !uiAtLeast('medium')) { closeFab(); openModal(); return; }
+        toggleFab(); return;
+      }
       const opt = ev.target.closest('[data-wknew]');
       if (opt) {
         closeFab();
@@ -11816,8 +11922,11 @@ function ttHeuteBook(iso){
   }
 
   function goPlace(key) {
+    const p = modePlaces().find(x => x.k === key);
+    if (!p) return;
     state.place = key;
-    switchView(state.lastLens[key]);
+    const last = state.lastLens[key];
+    switchView(p.lenses.some(l => l.v === last) ? last : p.lenses[0].v);
   }
 
   /* ── Abgleich nach jedem Ansichtswechsel ────────────────────── */
@@ -11834,7 +11943,7 @@ function ttHeuteBook(iso){
       on ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current');
     });
 
-    const p = PLACES.find(x => x.k === place);
+    const p = modePlaces().find(x => x.k === place);
     const rail = $('#wkLensrail');
     if (rail && p) {
       /* Eine einzelne Linse braucht keine Schiene */
@@ -11940,6 +12049,11 @@ function ttHeuteBook(iso){
     if (typeof window.switchView !== 'function' || window.switchView.__wk) return false;
     const inner = window.switchView;
     const wrapped = function () {
+      /* Ansicht-Modus: ausgeblendete Ansicht → nächstliegende erlaubte */
+      if (arguments.length && typeof uiResolveView === 'function') {
+        const target = uiResolveView(arguments[0]);
+        if (target !== arguments[0]) { arguments[0] = target; }
+      }
       const r = inner.apply(this, arguments);
       try { sync(); } catch (e) { console.warn('[shell] sync', e); }
       return r;
@@ -11997,7 +12111,7 @@ function ttHeuteBook(iso){
     if (fab) fab.classList.remove('wk-fab-open');
   }
 
-  window.Shell = { sync, relabel, paintCards, goPlace, moveMagnet, PLACES };
+  window.Shell = { sync, relabel, paintCards, goPlace, moveMagnet, rebuildNav, modePlaces, PLACES };
 })();
 
 /* ============================================================
@@ -12164,7 +12278,7 @@ function ttHeuteBook(iso){
         const host = col.querySelector('.kanban-cards') || col;
         /* Stack-Erkennung: Cursor im mittleren Drittel einer echten Karte */
         const overCard = under.closest ? under.closest('.task-card') : null;
-        if (overCard && overCard !== drag.srcCard && overCard.style.display !== 'none') {
+        if (overCard && overCard !== drag.srcCard && overCard.style.display !== 'none' && uiAtLeast('medium')) {
             const rr = overCard.getBoundingClientRect();
             const rel = (p.y - rr.top) / rr.height;
             if (rel > 0.34 && rel < 0.66) {
@@ -12488,11 +12602,43 @@ document.addEventListener('DOMContentLoaded', () => {
         try { generateDemoData(); } catch (e) { console.error('Demo-Daten-Fehler', e); }
         appData.settings.onboardingCompleted = true;
         saveToLocal(true);
+        /* Auch mit Demo-Daten zuerst den Ansicht-Modus wählen lassen (Standard: Basic) */
+        if (ov) { showModeChoice(finishDemo); return; }
+        finishDemo();
+    }
+    function finishDemo() {
+        appData.settings.uiMode = collected.mode || appData.settings.uiMode || 'basic';
+        saveToLocal(true);
         if (ov) ov.remove();
-        try { renderSidebar(); } catch (e) {}
-        try { switchView('today'); } catch (e) { try { renderView(); } catch (e2) {} }
+        enterChosenMode();
         try { showToast(_t('onb_demo_done')); } catch (e) {}
     }
+    /* Gewählten Modus anwenden und in dessen Startansicht springen */
+    function enterChosenMode() {
+        try { applyUiMode(); } catch (e) {}
+        try { if (window.Shell && window.Shell.rebuildNav) window.Shell.rebuildNav(); } catch (e) {}
+        try { renderSidebar(); } catch (e) {}
+        try { switchView(uiDefaultView()); } catch (e) { try { renderView(); } catch (e2) {} }
+    }
+    /* Auswahl Basic / Medium / Pro (eigene Seite nach den Demo-Daten) */
+    function showModeChoice(done) {
+        if (!collected.mode) collected.mode = 'basic';
+        ov.classList.remove('onb-touring');
+        setProgress(1);
+        body.innerHTML = `<div class="onb-step">
+            <div class="onb-step-ic"><i class="fas fa-sliders"></i></div>
+            <h2>${_t('onb_s_mode_t')}</h2>
+            <p class="onb-hint">${_t('onb_s_mode_h')}</p>
+            <div class="onb-field">${uiModeCardsHtml(collected.mode, 'onbPickMode')}</div>
+        </div>`;
+        footer.innerHTML = `<span></span><div class="onb-nav"><button id="onbNext">${_t('onb_mode_go')}</button></div>`;
+        document.getElementById('onbNext').onclick = done;
+    }
+    window.onbPickMode = function (m, btn) {
+        collected.mode = m;
+        const box = btn && btn.closest('.ui-mode-cards');
+        if (box) box.querySelectorAll('.ui-mode-card').forEach(b => { const on = b.dataset.uimode === m; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    };
 
     /* ---------- Formular-Schritte ---------- */
     const steps = [
@@ -12576,6 +12722,12 @@ document.addEventListener('DOMContentLoaded', () => {
             key: 'buckets', icon: 'fa-layer-group', get title() { return _t('onb_s_bk_t'); }, get hint() { return _t('onb_s_bk_h'); },
             render: () => { const cur = collected.buckets || (appData.buckets || []); return `<textarea id="onb_buckets" rows="4" placeholder="${_t('onb_bk_ph')}">${cur.join('\n')}</textarea>`; },
             save: () => { const lines = (document.getElementById('onb_buckets').value || '').split('\n').map(s => s.trim()).filter(Boolean); collected.buckets = lines; }
+        },
+        {
+            /* Ansicht-Modus – Standard Basic, jederzeit in den Einstellungen änderbar */
+            key: 'mode', icon: 'fa-sliders', get title() { return _t('onb_s_mode_t'); }, get hint() { return _t('onb_s_mode_h'); },
+            render: () => uiModeCardsHtml(collected.mode || 'basic', 'onbPickMode'),
+            save: () => {}
         }
     ];
 
@@ -12615,8 +12767,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try { saveToLocal(true); }
         catch (e) { appData.settings.companyLogo = null; try { saveToLocal(true); showToast(_t('logo_too_large'), 'error'); } catch (e2) {} }
         if (ov) ov.remove();
-        try { renderSidebar(); } catch (e) {}
-        try { renderView(); } catch (e) {}
+        enterChosenMode();
         try { showToast(_t('onb_done')); } catch (e) {}
     }
 
@@ -12650,6 +12801,8 @@ document.addEventListener('DOMContentLoaded', () => {
             collected.stakeholders.forEach((name, i) => { if (!appData.stakeholders.some(s => s.name === name)) appData.stakeholders.push({ id: generateId(), name, color: palette[i % palette.length] }); });
         }
         if (collected.buckets) appData.buckets = collected.buckets.slice();
+        /* Nach dem Onboarding standardmässig Basic – ausser der User hat anders gewählt */
+        st.uiMode = collected.mode || 'basic';
     }
 
     function begin() {

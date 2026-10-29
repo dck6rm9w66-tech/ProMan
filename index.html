@@ -34,7 +34,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261023-54">
+    <link rel="stylesheet" href="styles.css?v=20261029-55">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -476,8 +476,8 @@
             <div class="modal-tabs">
                 <button class="modal-tab-btn active" onclick="switchTaskTab('tab-general', this)" data-i18n="tab_gen">Allgemein</button>
                 <button class="modal-tab-btn" onclick="switchTaskTab('tab-planning', this)" data-i18n="tab_plan">Planung & Zeiten</button>
-                <button class="modal-tab-btn" onclick="switchTaskTab('tab-detail', this)" data-i18n="tab_detail">Checkliste & Dateien</button>
-                <button class="modal-tab-btn" onclick="switchTaskTab('tab-rating', this)" data-i18n="tab_rating">Bewertung</button>
+                <button class="modal-tab-btn" onclick="switchTaskTab('tab-detail', this)"><span data-i18n="tab_detail" data-ui-min="medium">Checkliste & Dateien</span><span data-i18n="tab_detail_basic" data-ui-max="basic">Checkliste & Notizen</span></button>
+                <button class="modal-tab-btn" data-ui-min="pro" onclick="switchTaskTab('tab-rating', this)" data-i18n="tab_rating">Bewertung</button>
             </div>
             
             <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
@@ -485,7 +485,7 @@
                 
                 <!-- TAB 1: Allgemein -->
                 <div id="tab-general" class="modal-tab-content active">
-                    <div class="preset-picker" id="t_preset_row" style="margin-bottom:12px; display:none;">
+                    <div class="preset-picker" id="t_preset_row" data-ui-min="medium" style="margin-bottom:12px; display:none;">
                         <span class="form-label"><i class="fas fa-copy"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
                         <select id="t_preset_select" onchange="applyPresetToForm('task', this.value)"></select>
                     </div>
@@ -495,11 +495,11 @@
                     </div>
                     
                     <div class="form-grid-2">
-                        <div><span class="form-label" data-i18n="t_stack">Zugehöriges Projekt-Stack</span><select id="t_projectStack"></select></div>
-                        <div><span class="form-label" data-i18n="t_assignee">Verantwortlich (Benutzer)</span><select id="t_assignee"></select></div>
+                        <div data-ui-min="medium"><span class="form-label" data-i18n="t_stack">Zugehöriges Projekt-Stack</span><select id="t_projectStack"></select></div>
+                        <div data-ui-min="medium"><span class="form-label" data-i18n="t_assignee">Verantwortlich (Benutzer)</span><select id="t_assignee"></select></div>
                         
                         <div><span class="form-label" data-i18n="t_status">Status</span><select id="t_status"></select></div>
-                        <div>
+                        <div data-ui-min="medium">
                             <span class="form-label" data-i18n="t_prio">Priorität</span>
                             <select id="t_priority">
                                 <option value="low" data-i18n="prio_low">Niedrig</option>
@@ -531,11 +531,11 @@
                             </div>
                         </div>
                         
-                        <div><span class="form-label" data-i18n="t_est">Geschätzter Aufwand (Std)</span><input type="number" id="t_estTime" min="0" step="0.25"><small style="display:block; color:var(--text-muted); font-size:11px; margin-top:3px;">+ <span id="t_cl_duration_sum">0</span> <span data-i18n="ui_h_from_checkpoints">Std aus Checkpunkten</span></small></div>
-                        <div><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
+                        <div data-ui-min="medium"><span class="form-label" data-i18n="t_est">Geschätzter Aufwand (Std)</span><input type="number" id="t_estTime" min="0" step="0.25"><small style="display:block; color:var(--text-muted); font-size:11px; margin-top:3px;">+ <span id="t_cl_duration_sum">0</span> <span data-i18n="ui_h_from_checkpoints">Std aus Checkpunkten</span></small></div>
+                        <div data-ui-min="medium"><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
                     </div>
 
-                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                    <div data-ui-min="pro" style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
                         <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
                         <div class="form-grid-2" style="margin-top:10px;">
                             <div>
@@ -552,7 +552,7 @@
                         </div>
                     </div>
 
-                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:5px;">
+                    <div data-ui-min="pro" style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:5px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <span class="form-label" style="margin:0;" data-i18n="ui_deps_waits_for">Abhängigkeiten (Wartet auf)</span>
                             <button class="secondary" style="font-size:12px; padding:4px 8px;" onclick="openDependencyModal(document.getElementById('taskId').value, document.getElementById('t_project').value || t('new_task'))"><i class="fas fa-link"></i> <span data-i18n="ui_edit">Bearbeiten</span></button>
@@ -560,7 +560,7 @@
                         <div id="t_deps_display" style="font-size:12px; color:var(--text-muted); display:flex; flex-wrap:wrap;" data-i18n="ui_no_deps">Keine Abhängigkeiten definiert.</div>
                     </div>
 
-                    <div style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                    <div data-ui-min="medium" style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
                         <span class="form-label" data-i18n="t_rec">Wiederholung</span>
                         <div class="form-grid-2">
                             <div><select id="t_recurrence" onchange="toggleCustomRecurrence()"><option value="none">-</option><option value="daily" data-i18n="daily">Täglich</option><option value="weekly" data-i18n="weekly">Wöchentlich</option><option value="monthly" data-i18n="monthly">Monatlich</option><option value="yearly" data-i18n="yearly">Jährlich</option><option value="custom" data-i18n="custom">Benutzerdefiniert...</option></select></div>
@@ -629,7 +629,7 @@
                         <button class="secondary" style="margin-top:5px; font-size:12px;" onclick="addTaskChecklistItem()"><i class="fas fa-plus"></i> <span data-i18n="add_point">Punkt hinzufügen</span></button>
                     </div>
                     
-                    <div style="border-top:1px solid var(--border-color); padding-top:20px;">
+                    <div data-ui-min="medium" style="border-top:1px solid var(--border-color); padding-top:20px;">
                         <span class="form-label" data-i18n="t_files">Dateien & Anhänge (Lokal)</span>
                         <div style="font-size:11px; color:var(--text-muted); margin-bottom:5px;">
                             <span data-i18n="set_folder">Standard-Ordner:</span> <b id="t_base_folder_display"></b><br>
@@ -649,7 +649,7 @@
                         <div id="t_file_list" style="margin-top:10px; max-height:100px; overflow-y:auto;"></div>
                     </div>
                     
-                    <div style="border-top:1px solid var(--border-color); padding-top:20px;">
+                    <div data-ui-min="medium" style="border-top:1px solid var(--border-color); padding-top:20px;">
                         <span class="form-label" data-i18n="t_hist">Historie (Time-Logs & Bearbeitungen)</span>
                         <textarea id="t_notes" rows="4" onfocus="handleHistoryFocus(this)" onkeydown="handleHistoryKeydown(event, this)"></textarea>
                     </div>
@@ -699,14 +699,14 @@
                 <button class="stack-tab-btn active" onclick="switchStackTab('stab-general', this)" data-i18n="tab_gen">Allgemein</button>
                 <button class="stack-tab-btn" onclick="switchStackTab('stab-detail', this)" data-i18n="ui_notes_milestones">Notizen & Milestones</button>
                 <button class="stack-tab-btn" onclick="switchStackTab('stab-tasks', this)" data-i18n="tasks">Aufgaben</button>
-                <button class="stack-tab-btn" onclick="switchStackTab('stab-rating', this)" data-i18n="tab_rating">Bewertung</button>
+                <button class="stack-tab-btn" data-ui-min="pro" onclick="switchStackTab('stab-rating', this)" data-i18n="tab_rating">Bewertung</button>
             </div>
             <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
                 <input type="hidden" id="s_id">
 
                 <!-- STAB 1: Allgemein -->
                 <div id="stab-general" class="modal-tab-content active">
-                    <div class="preset-picker" id="s_preset_row" style="margin-bottom:12px; display:none;">
+                    <div class="preset-picker" id="s_preset_row" data-ui-min="medium" style="margin-bottom:12px; display:none;">
                         <span class="form-label"><i class="fas fa-copy"></i> <span data-i18n="preset_apply">Voreinstellung anwenden</span></span>
                         <select id="s_preset_select" onchange="applyPresetToForm('stack', this.value)"></select>
                     </div>
@@ -733,7 +733,7 @@
                         <div><span class="form-label" data-i18n="t_bucket">Bucket (Kategorie)</span><select id="s_bucket"></select></div>
                     </div>
 
-                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <div data-ui-min="pro" style="border-top: 1px solid var(--border-color); padding-top: 15px;">
                         <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
                         <div class="form-grid-2" style="margin-top:10px;">
                             <div>
@@ -751,7 +751,7 @@
                         <div id="s_budget_summary" style="margin-top:12px; display:none;"></div>
                     </div>
 
-                    <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <div data-ui-min="pro" style="border-top: 1px solid var(--border-color); padding-top: 15px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <span class="form-label" style="margin:0;" data-i18n="ui_deps_waits_for">Abhängigkeiten (Wartet auf)</span>
                             <button class="secondary" style="font-size:12px; padding:4px 8px;" onclick="openDependencyModal(document.getElementById('s_id').value, document.getElementById('s_name').value || t('new_stack'))"><i class="fas fa-link"></i> <span data-i18n="ui_edit">Bearbeiten</span></button>
@@ -870,13 +870,19 @@
                 <button class="modal-tab-btn active" onclick="switchSettingsTab('set-general', this)" data-i18n="set_gen">Allgemein & Layout</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-users', this)" data-i18n="set_team">Team & Profil</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-data', this)" data-i18n="set_data">Stammdaten</button>
-                <button class="modal-tab-btn" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
-                <button class="modal-tab-btn" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-copy"></i> Vorlagen</button>
+                <button class="modal-tab-btn" data-ui-min="pro" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
+                <button class="modal-tab-btn" data-ui-min="medium" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-copy"></i> Vorlagen</button>
             </div>
             <div class="modal-body-simple" style="padding-top:0;">
                 
                 <!-- TAB: Allgemein -->
                 <div id="set-general" class="modal-tab-content active" style="padding: 20px 0;">
+                    <!-- Ansicht-Modus: Basic · Medium · Pro -->
+                    <div class="ui-mode-section">
+                        <h4><i class="fas fa-sliders"></i> <span data-i18n="ui_mode_title">Ansicht-Modus</span></h4>
+                        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 10px;" data-i18n="ui_mode_hint">Bestimmt, wie viele Bereiche und Felder sichtbar sind. Daten bleiben in jedem Modus vollständig erhalten – du kannst jederzeit wechseln.</p>
+                        <div id="set_ui_mode_cards"></div>
+                    </div>
                     <div class="settings-grid">
                         <div>
                             <h4 data-i18n="set_intro"><i class="fas fa-compass"></i> Einführung</h4>
@@ -911,7 +917,7 @@
                     </div>
 
                     <div class="settings-grid">
-                        <div>
+                        <div data-ui-min="pro">
                             <h4><i class="fas fa-coins"></i> <span data-i18n="set_currency">Währung</span></h4>
                             <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_currency_desc">Gilt global für alle Budgets und Auswertungen.</p>
                             <select id="set_currency" style="max-width:300px; margin-top:0;" onchange="updateGlobalCurrency(this.value)">
@@ -920,7 +926,7 @@
                                 <option value="USD">USD</option>
                             </select>
                         </div>
-                        <div>
+                        <div data-ui-min="medium">
                             <h4 data-i18n="set_folder"><i class="fas fa-folder"></i> Stamm-Ordner für Dateien</h4>
                             <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="folder_desc">Lege hier deinen lokalen Ordner fest, in den du deine Projekt-Dateien speicherst (z.B. C:\Projekte\Dateien\). ProMan speichert dann nur noch die Pfade dorthin, um Backups klein zu halten.</p>
                             <input type="text" id="set_attachment_folder" data-i18n-placeholder="ui_folder_ph" placeholder="C:\Mein_ProMan_Ordner\">
@@ -943,7 +949,7 @@
                                     <label style="font-size:12px;" data-i18n="new_task">Neue Aufgabe</label>
                                     <input type="text" id="set_sc_newTask" style="width:50px; text-align:center; padding:4px; margin:0;" maxlength="1">
                                 </div>
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <div data-ui-min="medium" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                                     <label style="font-size:12px;" data-i18n="new_stack">Neues Projekt-Stack</label>
                                     <input type="text" id="set_sc_newStack" style="width:50px; text-align:center; padding:4px; margin:0;" maxlength="1">
                                 </div>
@@ -972,9 +978,9 @@
                                 <label><span data-i18n="lbl_to">Bis</span><input type="time" id="set_wd_end"></label>
                             </div>
 
-                            <h4 style="margin-top:20px;"><i class="fas fa-calendar-check"></i> <span data-i18n="set_timeacct">Zeitkonto (Soll-Zeiten)</span></h4>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_timeacct_desc">Legt fest, wie viele Stunden pro Arbeitstag gebucht sein müssen. Auf dieser Basis erkennt die Zeiterfassung unvollständig gebuchte Tage.</p>
-                            <div style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px; flex-wrap:wrap;">
+                            <h4 data-ui-min="medium" style="margin-top:20px;"><i class="fas fa-calendar-check"></i> <span data-i18n="set_timeacct">Zeitkonto (Soll-Zeiten)</span></h4>
+                            <p data-ui-min="medium" style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_timeacct_desc">Legt fest, wie viele Stunden pro Arbeitstag gebucht sein müssen. Auf dieser Basis erkennt die Zeiterfassung unvollständig gebuchte Tage.</p>
+                            <div data-ui-min="medium" style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px; flex-wrap:wrap;">
                                 <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_target_h">Soll-Stunden / Arbeitstag</span> <input type="number" id="set_target_hours" step="0.25" min="0.25" max="24" style="width:80px; margin:0; padding:4px;"></label>
                                 <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_track_from">Prüfung ab</span> <input type="date" id="set_track_from" style="margin:0; padding:4px;"></label>
                             </div>
@@ -1312,8 +1318,8 @@
     <!-- Eigenes JavaScript -->
     <!-- Motion (Framer-Motion-Engine als Vanilla-JS) für die UI-Animationen -->
     <script src="https://cdn.jsdelivr.net/npm/motion@12.23.24/dist/motion.js"></script>
-    <script src="i18n.js?v=20261023-54"></script>
-    <script src="app.js?v=20261023-54"></script>
+    <script src="i18n.js?v=20261029-55"></script>
+    <script src="app.js?v=20261029-55"></script>
 
 </body>
 </html>
