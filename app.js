@@ -618,6 +618,7 @@ function applyUiMode() {
     const r = document.documentElement; const m = uiMode();
     UI_MODES.forEach(x => r.classList.toggle('ui-' + x, x === m));
     r.dataset.uiMode = m;
+    try { renderUiQuick(); } catch (e) {}
     if (!uiAtLeast('pro') && typeof timeSubView !== 'undefined' && timeSubView === 'budgets') timeSubView = 'tracking';
 }
 function setUiMode(m, opts = {}) {
@@ -657,6 +658,21 @@ function renderUiModeCards() {
     if (host) host.innerHTML = uiModeCardsHtml(uiMode(), 'uiModePickSettings');
 }
 function uiModePickSettings(m) { if (m !== uiMode()) setUiMode(m); }
+/* Schnellwechsler oben in der Mitte der Kopfzeile: EIN unauffälliger Knopf.
+   Jeder Klick schaltet weiter: Basic → Medium → Pro → Basic … */
+function renderUiQuick() {
+    const host = document.getElementById('uiQuick'); if (!host) return;
+    const cur = uiMode(), lvl = UI_MODES.indexOf(cur);
+    const next = UI_MODES[(lvl + 1) % UI_MODES.length];
+    const tip = `${_t('ui_mode_title')}: ${_t('ui_mode_' + cur)} – ${_tf('ui_quick_next', { m: _t('ui_mode_' + next) })}`;
+    const dots = UI_MODES.map((_, i) => `<i class="ui-quick-dot${i <= lvl ? ' on' : ''}"></i>`).join('');
+    host.innerHTML = `<button type="button" class="ui-quick-btn" data-uiquick="${cur}" title="${tip}" aria-label="${tip}" onclick="uiQuickCycle()">
+        <span class="ui-quick-dots" aria-hidden="true">${dots}</span><span class="ui-quick-lbl">${_t('ui_mode_' + cur)}</span></button>`;
+}
+function uiQuickCycle() {
+    const next = UI_MODES[(UI_MODES.indexOf(uiMode()) + 1) % UI_MODES.length];
+    setUiMode(next, { silent: true });
+}
 
 let currentView = appData.settings.views.find(v => !v.hidden && v.id !== 'schedule' && v.id !== 'timeline')?.id || appData.settings.views[0].id;
 if (!uiViewAllowed(currentView)) currentView = uiResolveView(currentView);
@@ -12041,6 +12057,7 @@ function ttHeuteBook(iso){
     /* Titel der Schienen-Knöpfe */
     const railNew = document.getElementById('wkRailNew');
     if (railNew) { const lbl = t('wk_new_title'); if (lbl && lbl !== 'wk_new_title') { railNew.title = lbl; railNew.setAttribute('aria-label', lbl); } }
+    try { if (typeof renderUiQuick === 'function') renderUiQuick(); } catch (e) {}
     sync();
   }
 

@@ -3242,3 +3242,47 @@ button.ui-mode-card.on .ui-mode-check{ opacity:1; transform:none; }
 .onb-field .ui-mode-cards{ grid-template-columns:1fr; gap:8px; }
 .onb-field button.ui-mode-card{ display:grid; grid-template-columns:32px 1fr; column-gap:12px; row-gap:2px; padding:12px 40px 12px 12px; }
 .onb-field .ui-mode-ic{ grid-row:1 / span 2; }
+
+/* ═══════════════════════════════════════════════════════════
+   SCHNELLWECHSLER Ansicht-Modus (Kopfzeile, Mitte)
+   Bewusst unauffällig: ein einziger Text-Knopf ohne Fläche – drei Punkte zeigen die
+   Stufe (●○○ Basic, ●●○ Medium, ●●● Pro). Jeder Klick schaltet zur nächsten Stufe.
+   ═══════════════════════════════════════════════════════════ */
+.ui-quick{ display:flex; align-items:center; justify-content:center; }
+.ui-quick:empty{ display:none; }
+#uiQuick button.ui-quick-btn{
+  display:inline-flex; align-items:center; gap:7px; height:28px; min-height:0; padding:0 10px;
+  border:none !important; border-radius:8px !important; background:transparent !important; box-shadow:none !important;
+  color:var(--text-muted) !important; font-family:var(--ff-ui); font-size:12px; font-weight:600; letter-spacing:.02em;
+  cursor:pointer; white-space:nowrap; transform:none !important; opacity:.75;
+  transition:opacity .15s, background-color .15s, color .15s;
+}
+#uiQuick button.ui-quick-btn:hover,
+#uiQuick button.ui-quick-btn:focus-visible{ opacity:1; color:var(--text-main) !important; background:color-mix(in srgb, var(--text-main) 6%, transparent) !important; outline:none; }
+#uiQuick button.ui-quick-btn:active{ transform:scale(.96) !important; }
+.ui-quick-dots{ display:inline-flex; gap:3px; }
+.ui-quick-dot{ width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.28; transition:opacity .2s, background-color .2s; }
+.ui-quick-dot.on{ opacity:1; }
+#uiQuick button.ui-quick-btn:hover .ui-quick-dot.on{ background:var(--wk-magnet, #FFC93C); }
+
+@media (min-width:1090px){
+  .topbar{ display:grid !important; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); column-gap:16px; row-gap:0; flex-shrink:0; }
+  .topbar-left{ grid-column:1; grid-row:1; min-width:0; margin-right:0; }
+  .topbar-left #viewTitle{ overflow:hidden; text-overflow:ellipsis; }
+  .ui-quick{ grid-column:2; grid-row:1; justify-self:center; }
+  .topbar-actions{ grid-column:3; grid-row:1; justify-self:end; }
+  .topbar .filter-area{ grid-column:1 / -1; grid-row:2; }
+  .topbar .filter-chips:not(:empty){ margin-top:6px; }
+}
+@media (min-width:600px) and (max-width:1089px){
+  .ui-quick{ position:absolute; left:50%; top:calc(50% + var(--wk-safe-t) / 2); transform:translate(-50%,-50%); z-index:2; }
+  .topbar-left{ max-width:calc(50% - 60px); }
+  .topbar-left #viewTitle{ overflow:hidden; text-overflow:ellipsis; }
+}
+/* Telefon: neben Titel und Knöpfen ist kein Platz – der Knopf sitzt klein direkt unter dem Titel */
+@media (max-width:599px){
+  .topbar-left{ padding-bottom:14px; }
+  .ui-quick{ position:absolute; left:9px; bottom:3px; z-index:2; }
+  #uiQuick button.ui-quick-btn{ height:22px; padding:0 6px; font-size:11px; }
+  .topbar.search-active .ui-quick{ display:none; }
+}

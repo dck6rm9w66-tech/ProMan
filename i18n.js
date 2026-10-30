@@ -642,6 +642,7 @@ Object.assign(i18n.de, {
     ui_no_deps: "Keine Abhängigkeiten definiert.",
     ui_notes_milestones: "Notizen & Milestones",
     ui_project_rating: "Projekt-Bewertung",
+    ui_quick_next: "klicken für {m}",
     ui_rating_assess: "Einschätzung & Bewertung",
     ui_search_ph: "Suchen...",
     ui_search_title: "Suche (Strg+K)",
@@ -1268,6 +1269,7 @@ Object.assign(i18n.en, {
     ui_no_deps: "No dependencies defined.",
     ui_notes_milestones: "Notes & milestones",
     ui_project_rating: "Project rating",
+    ui_quick_next: "click for {m}",
     ui_rating_assess: "Assessment & rating",
     ui_search_ph: "Search...",
     ui_search_title: "Search (Ctrl+K)",
@@ -1894,6 +1896,7 @@ Object.assign(i18n.fr, {
     ui_no_deps: "Aucune dépendance définie.",
     ui_notes_milestones: "Notes et jalons",
     ui_project_rating: "Évaluation du projet",
+    ui_quick_next: "cliquer pour {m}",
     ui_rating_assess: "Évaluation et notation",
     ui_search_ph: "Rechercher...",
     ui_search_title: "Recherche (Ctrl+K)",
@@ -2000,6 +2003,7 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
 
 
 
