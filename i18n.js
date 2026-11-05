@@ -479,6 +479,8 @@ Object.assign(i18n.de, {
     prio_title: "Priorität",
     profile_settings: "Profil & Einstellungen",
     push_test_body: "Die Push-Mitteilungen funktionieren einwandfrei!",
+    rate_chip_rate: "Bewerten",
+    rate_chip_title: "Bewertung Ø {v} ({n}×) – klicken für neue Bewertung",
     rate_clear: "Nicht bewerten",
     rate_comment: "Kommentar",
     rate_comment_ph: "Was lief gut, was kann besser werden?",
@@ -1128,6 +1130,8 @@ Object.assign(i18n.en, {
     prio_title: "Priority",
     profile_settings: "Profile & settings",
     push_test_body: "Push notifications are working perfectly!",
+    rate_chip_rate: "Rate",
+    rate_chip_title: "Rating avg {v} ({n}×) – click to rate again",
     rate_clear: "Don’t rate",
     rate_comment: "Comment",
     rate_comment_ph: "What went well, what could be better?",
@@ -1777,6 +1781,8 @@ Object.assign(i18n.fr, {
     prio_title: "Priorité",
     profile_settings: "Profil et paramètres",
     push_test_body: "Les notifications push fonctionnent parfaitement !",
+    rate_chip_rate: "Évaluer",
+    rate_chip_title: "Note moy. {v} ({n}×) – cliquer pour réévaluer",
     rate_clear: "Ne pas évaluer",
     rate_comment: "Commentaire",
     rate_comment_ph: "Qu’est-ce qui a bien fonctionné, que peut-on améliorer ?",
@@ -2069,6 +2075,7 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
 
 
 

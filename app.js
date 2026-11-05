@@ -1974,6 +1974,25 @@ function rtStaticStars(val, cls = '') {
     const row = '<i class="fas fa-star"></i>'.repeat(5);
     return `<span class="rt-sstars ${cls}" aria-label="${val} / 5"><span class="rt-sstars-bg">${row}</span><span class="rt-sstars-fg" style="width:${pct}%">${row}</span></span>`;
 }
+/* Sterne-Bewertung abgeschlossener Aufgaben/Stacks für Kacheln, Listen & Co.
+   Bewertet: Sterne + Ø-Wert; unbewertet: dezenter „Bewerten"-Chip. Klick öffnet die Bewertung.
+   mini = nur Stern + Wert (für enge Zeilen, z. B. Aufgaben innerhalb eines Stacks). */
+function doneRatingHtml(type, ent, mini = false) {
+    if (!ent) return '';
+    const done = type === 'task' ? isTaskDone(ent) : ent.status === 'completed';
+    if (!done) return '';
+    const avg = parseFloat(getAvgRating(ent.rating)) || 0;
+    const n = (ent.ratingHistory || []).length;
+    const click = `event.stopPropagation(); openRatingModal('${type}','${ent.id}')`;
+    if (avg > 0) {
+        const tip = _tf('rate_chip_title', { v: rtFmt(avg), n: n || 1 });
+        const inner = mini ? `<i class="fas fa-star"></i><span class="wk-rate-val">${rtFmt(avg)}</span>`
+                           : `${rtStaticStars(avg, 'rt-sstars-sm')}<span class="wk-rate-val">${rtFmt(avg)}</span>`;
+        return `<button type="button" class="secondary wk-rate-chip${mini ? ' mini' : ''}" onclick="${click}" ondragstart="event.preventDefault()" title="${tip}" aria-label="${tip}">${inner}</button>`;
+    }
+    const tip = _t('rate_chip_rate');
+    return `<button type="button" class="secondary wk-rate-chip is-empty${mini ? ' mini' : ''}" onclick="${click}" title="${tip}" aria-label="${tip}"><i class="far fa-star"></i>${mini ? '' : `<span>${tip}</span>`}</button>`;
+}
 function rtFmt(v) { const n = parseFloat(v) || 0; try { return n.toLocaleString(ttLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }); } catch (e) { return n.toFixed(1); } }
 function rtEntityFor(containerId) {
     const taskId = document.getElementById('taskId') ? document.getElementById('taskId').value : null;
@@ -5397,7 +5416,7 @@ function renderNotesView(c) {
             const compOpacity = isCompleted ? 'opacity:0.6;' : ''; const pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
             
             html += `<div class="draggable-item" draggable="${notessortKey === 'manual'}" ondragstart="event.dataTransfer.setData('text/plain', '${item.id}'); event.dataTransfer.setData('type', 'note-card');" ondrop="handleNoteCardDrop(event, this, '${item.id}')" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" onclick="selectNoteItem('${item.id}')" style="padding:10px; margin-bottom:6px; background:${bg}; ${border} border-radius:var(--radius); border-top:1px solid var(--border-color); border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); cursor:pointer; display:flex; justify-content:space-between; align-items:center; ${compOpacity}">
-                        <div style="font-weight:${isActive?'bold':'normal'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${item.name}"><i class="fas ${icon}" style="color:${color}; margin-right:8px;"></i>${pausedIcon}${item.name}</div>
+                        <div style="font-weight:${isActive?'bold':'normal'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${item.name}"><i class="fas ${icon}" style="color:${color}; margin-right:8px;"></i>${pausedIcon}${item.name}</div>${doneRatingHtml(item.type === 'task' ? 'task' : 'stack', item.obj, true)}
                      </div>`;
         });
     }
@@ -5413,6 +5432,7 @@ function renderNotesView(c) {
                     <h2 style="margin:0; display:flex; align-items:center;">
                         <button class="secondary icon-btn notes-mobile-back" onclick="closeNotesDetailMobile()"><i class="fas fa-arrow-left"></i></button>
                         <i class="fas ${icon}" style="color:var(--primary-color); margin-right:10px;"></i> ${pausedIcon}${activeItem.name}
+                        ${doneRatingHtml(isTask ? 'task' : 'stack', activeItem.obj)}
                     </h2>
                     <div style="display:flex; align-items:center; gap:15px;">
                         <span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar-alt"></i> ${t('due')}: ${activeItem.dueDate||'-'}</span>
@@ -5512,6 +5532,7 @@ function renderChecklists(c, mode = 'checklists') {
             <h4 style="margin-bottom:10px; display:flex; align-items:center; gap:8px; cursor:pointer; flex-wrap:wrap;" onclick="${parentType==='stack' ? `openStackModal('${parentId}')` : `openModal('${parentId}')`}" title="${t('task_edit')}">
                 <i class="fas ${parentType === 'stack' ? 'fa-folder' : 'fa-tasks'}" style="color:var(--primary-color)"></i>
                 ${lockedIcon}${pausedIcon}${parentName} ${isCompleted ? '(' + t('col_completed') + ')' : ''}
+                ${isCompleted ? doneRatingHtml(parentType === 'stack' ? 'stack' : 'task', parentType === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId)) : ''}
                 ${stackBadge} ${metaBadges} ${avatarHtml}
                 <span style="margin-left:auto;">${wkActsHtml(parentType === 'stack' ? 'stack' : 'task', parentId)}</span>
             </h4><div style="display:flex; flex-direction:column; gap:5px;">`;
@@ -5816,7 +5837,7 @@ function createTaskCard(task) {
         card.innerHTML = `<div class="wk-card done">
             <div class="wk-card-done-main">
                 <div class="task-title done" title="${task.projectName || ''}"><i class="fas fa-check-circle wk-done-ic"></i> ${escapeHtmlToday(task.projectName || _t('unnamed'))}</div>
-                ${(doneSh || doneBucket) ? `<div class="wk-card-done-tags">${doneBucket}${doneSh}</div>` : ''}
+                <div class="wk-card-done-tags">${doneRatingHtml('task', task)}${doneBucket}${doneSh}</div>
             </div>
             <div class="wk-card-actions">${doneActions}</div>
         </div>`;
@@ -6029,7 +6050,7 @@ function renderStacks(c) {
     stacks.forEach(stack => {
         const sp = getStackProgress(stack.id); const isCompleted = stack.status === 'completed'; const isPaused = stack.status === 'paused';
         let badgeHtml = ''; if(isCompleted) badgeHtml = `<span class="badge low">${t('col_completed')}</span>`;
-        const rAvg = getAvgRating(stack.rating); const ratingHtml = rAvg > 0 && isCompleted ? `<span style="font-size:11px; color:var(--warning); font-weight:bold; margin-left:10px;"><i class="fas fa-star"></i> ${rAvg}</span>` : '';
+        const ratingHtml = doneRatingHtml('stack', stack);
         const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
         let btnHtml = '';
@@ -6075,7 +6096,7 @@ function renderStacks(c) {
                 let tLocked = isEntityLocked(t_obj.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;"></i>' : '';
                 tasksListHtml += `<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; background:var(--bg-color); padding:5px 8px; border-radius:4px; border:1px solid var(--border-color); font-size:11px; cursor:pointer; ${isTaskComp?'opacity:0.6; filter:grayscale(100%);':''}" onclick="event.stopPropagation(); openModal('${t_obj.id}')">
                     <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;" title="${t_obj.projectName}">${isTaskComp?'<i class="fas fa-check" style="color:var(--success)"></i> ':''}${tLocked}${pausedIcon}${t_obj.projectName}</span>
-                    <div style="display:flex; align-items:center; gap:6px; margin-left:10px; flex-shrink:0;">
+                    <div style="display:flex; align-items:center; gap:6px; margin-left:10px; flex-shrink:0;">${doneRatingHtml('task', t_obj, true)}
                         <div style="width:40px; height:5px; background:var(--border-color); border-radius:3px; overflow:hidden;"><div style="width:${tProg}%; height:100%; background:var(--primary-color);"></div></div>
                         <span style="font-size:9px; color:var(--text-muted); min-width:24px; text-align:right;">${tProg}%</span>
                     </div>
@@ -6193,7 +6214,7 @@ function renderList(c) {
         
         let kwBadge = ''; if(stack.dueDate) { const kw = getISOWeek(new Date(stack.dueDate)); kwBadge = `<span style="font-size:10px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 4px; border-radius:3px; margin-left:10px;">${_t('cw')} ${kw}</span>`; }
 
-        html += `<td data-c="name" data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.status === 'paused' ? `<i class="fas fa-pause wk-paused-ic" style="color:var(--warning); margin-right:6px;" title="${_t('paused')}"></i>` : ''}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
+        html += `<td data-c="name" data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.status === 'paused' ? `<i class="fas fa-pause wk-paused-ic" style="color:var(--warning); margin-right:6px;" title="${_t('paused')}"></i>` : ''}${stack.name}</b> ${doneRatingHtml('stack', stack)} ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
         
         if(endColSpan > 0) {
             html += `<td data-c="overview" data-label="${_t('dl_uebersicht')}" colspan="${endColSpan}" style="padding: 5px 15px;">`;
@@ -6232,7 +6253,7 @@ function generateListRow(task, isIndented) {
     
     let pausedIcon = task.isPaused && !isTaskDone(task) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
     const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('locked') + '"></i>' : '';
-    rHtml += `<td data-c="name" data-label="${_t('dl_aufgabenname')}" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b></td>`;
+    rHtml += `<td data-c="name" data-label="${_t('dl_aufgabenname')}" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b>${doneRatingHtml('task', task)}</td>`;
     
     if(cols.stakeholder) rHtml += `<td data-c="stakeholder"${sh ? '' : ' data-empty="1"'} data-label="${_t('dl_stakeholder')}">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
     if(cols.bucket) rHtml += `<td data-c="bucket"${task.bucket ? '' : ' data-empty="1"'} data-label="${_t('dl_bucket')}"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
@@ -6377,7 +6398,7 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
         }
         let tPausedIcon = t_obj.isPaused && !isCompleted ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
         h += `<div class="draggable-item ${isTaskDone(t_obj)?'is-completed':''}" style="padding:10px; background:var(--bg-color); border-radius:var(--radius); cursor:pointer; border:1px solid var(--border-color);" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${t_obj.id}'); event.dataTransfer.setData('type', 'task');" ondragover="handleCardDragOver(event, this, true)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${t_obj.id}', 'task', '${groupKey}', '${targetGroupVal}')" onclick="openModal('${t_obj.id}')">
-            <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><b>${lockedIcon}${tPausedIcon}${t_obj.projectName}</b><div style="display:flex; gap:5px; align-items:center;"><span style="font-size:12px; margin-right:5px;">${t_obj.dueDate||''}</span> ${actionBtns}</div></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><b>${lockedIcon}${tPausedIcon}${t_obj.projectName} ${doneRatingHtml('task', t_obj)}</b><div style="display:flex; gap:5px; align-items:center;"><span style="font-size:12px; margin-right:5px;">${t_obj.dueDate||''}</span> ${actionBtns}</div></div>
             ${!showTimeStats ? generateProgressBarHTML(progress) + `<div style="font-size:10px;text-align:right; margin-top:2px;">${t('list_prog')}: ${progress}%</div>` : ''}${timeBarHtml}
         </div>`; 
     });
@@ -6410,13 +6431,13 @@ function renderGroupedStack(sId, showTimeStats, groupKey, targetGroupVal) {
                 innerBarHtml = `<div style="display:flex; align-items:center; gap:6px; flex-shrink: 0;"><span style="font-size:10px; color:var(--text-muted); white-space:nowrap;">${tProg}%</span><div style="width: 40px; min-width: 40px; height: 5px; background: var(--border-color); border-radius: 3px; overflow: hidden; display: flex;"><div style="height: 100%; width: ${tProg}%; background: var(--primary-color);"></div></div></div>`;
             }
             let tPausedIcon = tx.isPaused && !isTaskDone(tx) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-            tasksHtml += `<div class="draggable-item" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${tx.id}'); event.dataTransfer.setData('type', 'task');" ondragover="handleCardDragOver(event, this, true)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${tx.id}', 'task', '${groupKey}', '${targetGroupVal}')" style="font-size:11px; background:var(--surface-color); padding:6px 8px; border-radius:4px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="event.stopPropagation(); openModal('${tx.id}')"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:10px; font-weight:500;" title="${tx.projectName}">${txLocked}${tPausedIcon}${tx.projectName}</span><div style="display:flex; align-items:center; gap:8px; flex-shrink: 0;">${innerBarHtml}${wkActsHtml('task', tx.id, true)}</div></div>`;
+            tasksHtml += `<div class="draggable-item" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${tx.id}'); event.dataTransfer.setData('type', 'task');" ondragover="handleCardDragOver(event, this, true)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${tx.id}', 'task', '${groupKey}', '${targetGroupVal}')" style="font-size:11px; background:var(--surface-color); padding:6px 8px; border-radius:4px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="event.stopPropagation(); openModal('${tx.id}')"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:10px; font-weight:500;" title="${tx.projectName}">${txLocked}${tPausedIcon}${tx.projectName}</span><div style="display:flex; align-items:center; gap:8px; flex-shrink: 0;">${doneRatingHtml('task', tx, true)}${innerBarHtml}${wkActsHtml('task', tx.id, true)}</div></div>`;
         });
         tasksHtml += `</div>`;
     }
 
     const sp = getStackProgress(s.id); const sPausedIcon = s.status === 'paused' ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-    return `<div class="draggable-item ${s.status==='completed'?'is-completed':''}" style="padding:10px; background:var(--primary-lightest); border-radius:var(--radius); border:1px solid var(--border-color);" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${s.id}'); event.dataTransfer.setData('type', 'stack');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${s.id}', 'stack', '${groupKey}', '${targetGroupVal}')" onclick="openStackModal('${s.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:5px; cursor:pointer;"><b><i class="fas fa-folder"></i> ${sLockedIcon}${sPausedIcon}${s.name}</b><span style="display:flex; align-items:center; gap:6px;"><span style="font-size:12px;">${s.dueDate||''}</span>${wkActsHtml('stack', s.id, true)}</span></div>${!showTimeStats ? generateProgressBarHTML(sp.tPct, true) + `<div style="font-size:10px;text-align:right; margin-top:2px;">${t('list_prog')}: ${sp.tPct}%</div>` : timeBarHtml}${tasksHtml}</div>`;
+    return `<div class="draggable-item ${s.status==='completed'?'is-completed':''}" style="padding:10px; background:var(--primary-lightest); border-radius:var(--radius); border:1px solid var(--border-color);" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${s.id}'); event.dataTransfer.setData('type', 'stack');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${s.id}', 'stack', '${groupKey}', '${targetGroupVal}')" onclick="openStackModal('${s.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:5px; cursor:pointer;"><b><i class="fas fa-folder"></i> ${sLockedIcon}${sPausedIcon}${s.name} ${doneRatingHtml('stack', s)}</b><span style="display:flex; align-items:center; gap:6px;"><span style="font-size:12px;">${s.dueDate||''}</span>${wkActsHtml('stack', s.id, true)}</span></div>${!showTimeStats ? generateProgressBarHTML(sp.tPct, true) + `<div style="font-size:10px;text-align:right; margin-top:2px;">${t('list_prog')}: ${sp.tPct}%</div>` : timeBarHtml}${tasksHtml}</div>`;
 }
 
 function renderStakeholder(c) { renderGroupedView(c, 'stakeholderId', appData.stakeholders, t('none'), true); }
@@ -6641,10 +6662,13 @@ function schedEventMeta(ev) {
 }
 
 function renderSchedule(c) {
+    /* Medium: Ansichten „Verlauf" und „Tag" gibt es nur in Pro */
+    const schedPro = uiAtLeast('pro');
+    if (!schedPro && (scheduleMode === 'list' || scheduleMode === 'day')) scheduleMode = 'week';
     let html = `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
         <div style="display:flex; gap:5px; overflow-x:auto; padding-bottom:5px; flex:1;">
-            <button class="secondary ${scheduleMode==='list'?'active':''}" onclick="scheduleMode='list'; safeRenderSchedule()"><i class="fas fa-clock-rotate-left"></i> ${t('sched_history')}</button>
-            <button class="secondary ${scheduleMode==='day'?'active':''}" onclick="scheduleMode='day'; safeRenderSchedule()"><i class="fas fa-calendar-day"></i> ${t('day')}</button>
+            ${schedPro ? `<button class="secondary ${scheduleMode==='list'?'active':''}" onclick="scheduleMode='list'; safeRenderSchedule()"><i class="fas fa-clock-rotate-left"></i> ${t('sched_history')}</button>
+            <button class="secondary ${scheduleMode==='day'?'active':''}" onclick="scheduleMode='day'; safeRenderSchedule()"><i class="fas fa-calendar-day"></i> ${t('day')}</button>` : ''}
             <button class="secondary ${scheduleMode==='week'?'active':''}" onclick="scheduleMode='week'; safeRenderSchedule()"><i class="fas fa-calendar-week"></i> ${t('week')}</button>
             <button class="secondary ${scheduleMode==='month'?'active':''}" onclick="scheduleMode='month'; safeRenderSchedule()"><i class="fas fa-calendar-alt"></i> ${t('month')}</button>
             <button class="secondary ${scheduleMode==='year'?'active':''}" onclick="scheduleMode='year'; safeRenderSchedule()"><i class="fas fa-calendar"></i> ${t('year')}</button>
@@ -8842,7 +8866,8 @@ function renderTimeTracking(c) {
     const sortedLogs = ttRangeLogs().sort((a,b) => new Date(b.date) - new Date(a.date));
     const sortedLogsTotal = sortedLogs.reduce((sum, l) => sum + (parseFloat(l.hours) || 0), 0);
 
-    let html = subTabsHtml + buildTimeRangeBarHtml() + renderTimeRangeReport() + `
+    /* Medium: Teil „Auswertung" ausgeblendet – nur Pro zeigt die Zeitraum-Auswertung */
+    let html = subTabsHtml + buildTimeRangeBarHtml() + (uiAtLeast('pro') ? renderTimeRangeReport() : '') + `
     <div id="tt_account_panel">${renderTimeAccount()}</div>
     <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
         <div style="flex:1; min-width:300px; display:flex; flex-direction:column; gap:20px;">
