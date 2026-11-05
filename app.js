@@ -6003,7 +6003,7 @@ function renderList(c) {
             </div>
         </div>
     </div>
-    <div style="overflow-x:auto; padding-bottom:150px;"><table class="data-table"><thead><tr>`;
+    <div style="overflow-x:auto; padding-bottom:150px;"><table class="data-table wk-list-table"><thead><tr>`;
     
     if(cols.assignee) html += `<th width="50"></th>`;
     html += `<th onclick="toggleSort('projectName')">${t('list_task_stack')} ${getSortIcon('projectName')}</th>`;
@@ -6043,15 +6043,15 @@ function renderList(c) {
         let badge = ''; if(stack.status==='completed') badge=`<span class="badge low" style="margin-left:5px;">${t('col_completed')}</span>`; else if(stack.status==='paused') badge=`<span class="badge medium" style="margin-left:5px;">${t('status_paused')}</span>`;
         const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
-        html += `<tr class="table-row-group clickable-row ${stack.status==='completed' ? 'is-completed' : ''}" onclick="openStackModal('${stack.id}')">`;
-        if(cols.assignee) html += `<td data-label="${_t('dl_assignee')}">${getAvatarHtml(stack.assigneeId, 'avatar-sm')}</td>`;
+        html += `<tr class="table-row-group clickable-row wk-list-stack ${stack.status==='completed' ? 'is-completed' : ''}" onclick="openStackModal('${stack.id}')">`;
+        if(cols.assignee) html += `<td data-c="assignee" data-label="${_t('dl_assignee')}">${getAvatarHtml(stack.assigneeId, 'avatar-sm')}</td>`;
         
         let kwBadge = ''; if(stack.dueDate) { const kw = getISOWeek(new Date(stack.dueDate)); kwBadge = `<span style="font-size:10px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 4px; border-radius:3px; margin-left:10px;">${_t('cw')} ${kw}</span>`; }
 
-        html += `<td data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
+        html += `<td data-c="name" data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
         
         if(endColSpan > 0) {
-            html += `<td data-label="${_t('dl_uebersicht')}" colspan="${endColSpan}" style="padding: 5px 15px;">`;
+            html += `<td data-c="overview" data-label="${_t('dl_uebersicht')}" colspan="${endColSpan}" style="padding: 5px 15px;">`;
             if(cols.progress) { html += `<div style="font-size:10px; color:var(--primary-color); font-weight:bold;">${t('tasks')} (${sp.tPct}%)</div>${generateProgressBarHTML(sp.tPct)}<div style="font-size:10px; color:var(--primary-color); font-weight:bold; margin-top:2px;">${t('milestones')} (${sp.mPct}%)</div>${generateProgressBarHTML(sp.mPct, false)}`; } 
             else { html += `<span style="font-size:11px; color:var(--text-muted);"><i>-</i></span>`; }
             html += `</td>`;
@@ -6063,7 +6063,7 @@ function renderList(c) {
     const standalone = sortArray(filteredTasks.filter(t_obj => !t_obj.projectStackId));
     if(standalone.length > 0) { 
         let totalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan;
-        html += `<tr class="table-row-group"><td data-label="${_t('dl_gruppierung')}" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
+        html += `<tr class="table-row-group wk-list-group"><td data-c="group" data-label="${_t('dl_gruppierung')}" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
         standalone.forEach(task => { html += generateListRow(task, false); }); 
     }
     c.innerHTML = html + `</tbody></table></div>`;
@@ -6079,34 +6079,34 @@ function renderList(c) {
 
 function generateListRow(task, isIndented) {
     const cols = appData.settings.listColumns; const progress = getTaskProgress(task); const st = appData.statuses.find(s => s.id === task.status); const sh = appData.stakeholders.find(s => s.id === task.stakeholderId);
-    let rHtml = `<tr class="clickable-row ${isTaskDone(task) ? 'is-completed' : ''}" onclick="openModal('${task.id}')">`;
+    let rHtml = `<tr class="clickable-row wk-list-task${isIndented ? ' in-stack' : ''} ${isTaskDone(task) ? 'is-completed' : ''}" onclick="openModal('${task.id}')">`;
     let indentStyle = isIndented && window.innerWidth > 768 ? 'padding-left:30px;' : '';
     
-    if(cols.assignee) { rHtml += `<td data-label="${_t('dl_benutzer')}" style="${indentStyle}">${getAvatarHtml(task.assigneeId, 'avatar-sm')}</td>`; indentStyle = ''; }
+    if(cols.assignee) { rHtml += `<td data-c="assignee" data-label="${_t('dl_benutzer')}" style="${indentStyle}">${getAvatarHtml(task.assigneeId, 'avatar-sm')}</td>`; indentStyle = ''; }
     
     let pausedIcon = task.isPaused && !isTaskDone(task) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
     const lockedIcon = isEntityLocked(task.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('locked') + '"></i>' : '';
-    rHtml += `<td data-label="${_t('dl_aufgabenname')}" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b></td>`;
+    rHtml += `<td data-c="name" data-label="${_t('dl_aufgabenname')}" style="${indentStyle}"><b>${lockedIcon}${pausedIcon}${task.projectName}</b></td>`;
     
-    if(cols.stakeholder) rHtml += `<td data-label="${_t('dl_stakeholder')}">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
-    if(cols.bucket) rHtml += `<td data-label="${_t('dl_bucket')}"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
-    if(cols.status) rHtml += `<td data-label="${_t('dl_status')}">${st ? (st.id === 'done' ? t('col_completed') : st.title) : '-'}</td>`;
-    if(cols.priority) rHtml += `<td data-label="${_t('dl_prioritaet')}">${({high:_t('prio_high'),medium:_t('prio_med'),low:_t('prio_low')})[task.priority] || task.priority}</td>`;
-    if(cols.startDate) rHtml += `<td data-label="${_t('dl_startdatum')}"><span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar"></i> ${task.startDate||'-'}</span></td>`;
+    if(cols.stakeholder) rHtml += `<td data-c="stakeholder"${sh ? '' : ' data-empty="1"'} data-label="${_t('dl_stakeholder')}">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
+    if(cols.bucket) rHtml += `<td data-c="bucket"${task.bucket ? '' : ' data-empty="1"'} data-label="${_t('dl_bucket')}"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
+    if(cols.status) rHtml += `<td data-c="status" data-label="${_t('dl_status')}">${st ? (st.id === 'done' ? t('col_completed') : st.title) : '-'}</td>`;
+    if(cols.priority) rHtml += `<td data-c="priority" data-label="${_t('dl_prioritaet')}">${({high:_t('prio_high'),medium:_t('prio_med'),low:_t('prio_low')})[task.priority] || task.priority}</td>`;
+    if(cols.startDate) rHtml += `<td data-c="start"${task.startDate ? '' : ' data-empty="1"'} data-label="${_t('dl_startdatum')}"><span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar"></i> ${task.startDate||'-'}</span></td>`;
     
     let kwBadge = ''; if(task.dueDate) { const kw = getISOWeek(new Date(task.dueDate)); kwBadge = `<div style="font-size:9px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 3px; border-radius:3px; display:inline-block; margin-top:2px;">${_t('cw')} ${kw}</div>`; }
-    if(cols.dueDate) rHtml += `<td data-label="${_t('dl_faelligkeit')}"><span style="font-size:12px; display:block;"><i class="far fa-calendar-alt"></i> ${task.dueDate||'-'}</span>${kwBadge}</td>`;
+    if(cols.dueDate) rHtml += `<td data-c="due"${task.dueDate ? '' : ' data-empty="1"'} data-label="${_t('dl_faelligkeit')}"><span style="font-size:12px; display:block;"><i class="far fa-calendar-alt"></i> ${task.dueDate||'-'}</span>${kwBadge}</td>`;
     
-    if(cols.recurrence) { const recMap = {none: '-', daily: t('daily'), weekly: t('weekly'), monthly: t('monthly'), yearly: t('yearly'), custom: t('custom')}; rHtml += `<td data-label="${_t('dl_wiederholung')}"><span style="font-size:11px;">${recMap[task.recurrence] || '-'}</span></td>`; }
+    if(cols.recurrence) { const recMap = {none: '-', daily: t('daily'), weekly: t('weekly'), monthly: t('monthly'), yearly: t('yearly'), custom: t('custom')}; rHtml += `<td data-c="rec"${(!task.recurrence || task.recurrence === 'none') ? ' data-empty="1"' : ''} data-label="${_t('dl_wiederholung')}"><span style="font-size:11px;">${recMap[task.recurrence] || '-'}</span></td>`; }
 
     if(cols.timeSpent) {
         const est = parseFloat(task.estimatedTime||0); const spent = parseFloat(task.spentTime||0);
         let pct = est > 0 ? (spent / est) * 100 : (spent > 0 ? 100 : 0); const isOver = pct > 100; if(pct > 100) pct = 100;
-        rHtml += `<td data-label="${_t('dl_aufwand')}"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; margin-bottom:2px;"><span>${spent}h</span><span>${est}h</span></div><div class="time-pb-container" style="margin-top:0;"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></td>`;
+        rHtml += `<td data-c="time" data-label="${_t('dl_aufwand')}"><div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; margin-bottom:2px;"><span>${spent}h</span><span>${est}h</span></div><div class="time-pb-container" style="margin-top:0;"><div class="time-pb-spent ${isOver?'over':''}" style="width:${pct}%"></div></div></td>`;
     }
 
-    if(cols.progress) rHtml += `<td data-label="${_t('dl_fortschritt')}"><div class="list-progress-cell" style="display:flex; align-items:center; gap:8px; width:100%; min-width:110px;"><span style="flex:1 1 auto; min-width:60px; display:block;">${generateProgressBarHTML(progress)}</span><small style="flex:0 0 auto; min-width:32px; text-align:right;">${progress}%</small></div></td>`;
-    if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-label="${_t('dl_notizen')}"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
+    if(cols.progress) rHtml += `<td data-c="progress" data-label="${_t('dl_fortschritt')}"><div class="list-progress-cell" style="display:flex; align-items:center; gap:8px; width:100%; min-width:110px;"><span style="flex:1 1 auto; min-width:60px; display:block;">${generateProgressBarHTML(progress)}</span><small style="flex:0 0 auto; min-width:32px; text-align:right;">${progress}%</small></div></td>`;
+    if(cols.description) { const desc = task.description ? (task.description.replace(/<[^>]*>?/gm, '').substring(0,50)+'...') : '-'; rHtml += `<td data-c="desc"${task.description && task.description.replace(/<[^>]*>?/gm, '').trim() ? '' : ' data-empty="1"'} data-label="${_t('dl_notizen')}"><span style="font-size:11px; color:var(--text-muted);">${desc}</span></td>`; }
     if(cols.checklist) { const cl = task.checklist || []; const clDone = cl.filter(c=>c.done).length;
         let cpExtra = '';
         /* Bei abgeschlossenen Aufgaben die offenen, zukünftigen Checkpunkte lesbar auflisten */
@@ -6115,9 +6115,9 @@ function generateListRow(task, isIndented) {
             const futureCps = cl.filter(c => !c.done && (c.dueDate || '').split('T')[0] >= _todayIso);
             if(futureCps.length) cpExtra = `<div style="margin-top:4px; display:flex; flex-direction:column; gap:2px;">` + futureCps.map(c => `<span style="font-size:11px; color:var(--text-main);"><i class="far fa-square" style="color:var(--primary-color); margin-right:4px;"></i>${escapeHtmlToday ? escapeHtmlToday(c.title) : c.title}${c.dueDate ? ` <span style="color:var(--text-muted);">(${(c.dueDate||'').split('T')[0]})</span>` : ''}</span>`).join('') + `</div>`;
         }
-        rHtml += `<td data-label="${_t('dl_checkliste')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span>${cpExtra}</td>`; }
-    if(cols.files) { const files = task.files || []; rHtml += `<td data-label="${_t('dl_dateien')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
-    if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-label="${_t('dl_historie')}"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
+        rHtml += `<td data-c="checklist"${cl.length ? '' : ' data-empty="1"'} data-label="${_t('dl_checkliste')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-check-square"></i> ${clDone}/${cl.length}</span>${cpExtra}</td>`; }
+    if(cols.files) { const files = task.files || []; rHtml += `<td data-c="files"${files.length ? '' : ' data-empty="1"'} data-label="${_t('dl_dateien')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
+    if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-c="history"${task.notes ? '' : ' data-empty="1"'} data-label="${_t('dl_historie')}"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
     
     rHtml += `</tr>`; return rHtml;
 }

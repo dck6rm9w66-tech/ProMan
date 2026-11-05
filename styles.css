@@ -3286,3 +3286,82 @@ button.ui-mode-card.on .ui-mode-check{ opacity:1; transform:none; }
   #uiQuick button.ui-quick-btn{ height:22px; padding:0 6px; font-size:11px; }
   .topbar.search-active .ui-quick{ display:none; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   LISTE (Arbeit → Liste) – kompakte Kacheln auf Handy & Tablet
+   Statt jede Spalte untereinander: Kopfzeile mit Zuständig · Name · Status,
+   darunter die übrigen Spalten als kleines Raster nebeneinander
+   (Handy 3, Tablet 4 pro Zeile), Balken je zur Hälfte, Texte einzeilig.
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width:1088px){
+  .wk-list-table tr.wk-list-task,
+  .wk-list-table tr.wk-list-stack{
+    display:grid !important; grid-template-columns:repeat(6, minmax(0,1fr)); grid-auto-flow:row dense;
+    column-gap:10px; row-gap:7px; align-items:start;
+    padding:10px 12px !important; margin-bottom:6px !important; box-shadow:none !important;
+  }
+  .wk-list-table tr.wk-list-task td,
+  .wk-list-table tr.wk-list-stack td{
+    grid-column:span 2; min-width:0; width:auto !important; padding:0 !important; border:none !important;
+    display:flex; flex-direction:column; gap:1px; font-size:12.5px; line-height:1.3; overflow:hidden;
+  }
+  .wk-list-table tr.wk-list-task td::before,
+  .wk-list-table tr.wk-list-stack td::before{
+    font-size:9px; letter-spacing:.04em; margin:0 0 1px; line-height:1.2; font-weight:700; opacity:.85;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .wk-list-table td > span, .wk-list-table td > b{ max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .wk-list-table td[data-c="stakeholder"] .stakeholder-badge{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block !important; font-size:11px; padding:2px 7px; }
+
+  /* Kopfzeile: Avatar klein links, Name über die volle Breite */
+  .wk-list-table tr.wk-list-task, .wk-list-table tr.wk-list-stack{ position:relative; }
+  .wk-list-table td[data-c="assignee"]{ position:absolute !important; left:12px; top:9px; width:auto !important; }
+  .wk-list-table td[data-c="assignee"] .avatar-sm{ width:24px; height:24px; font-size:10px; }
+  .wk-list-table td[data-c="name"]{ grid-column:1 / -1 !important; grid-row:1; min-height:24px; justify-content:center; font-size:14px; }
+  .wk-list-table tr:has(> td[data-c="assignee"]) td[data-c="name"]{ padding-left:32px !important; }
+  .wk-list-table td[data-c="name"] b{ font-weight:700; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; white-space:normal; }
+  .wk-list-table td[data-c="assignee"]::before, .wk-list-table td[data-c="name"]::before,
+  .wk-list-table td[data-c="overview"]::before{ display:none !important; }
+  /* Fälligkeit: Datum und KW nebeneinander */
+  .wk-list-table td[data-c="due"]{ flex-direction:row !important; flex-wrap:wrap; align-items:center; column-gap:5px; }
+  .wk-list-table td[data-c="due"]::before{ flex:0 0 100%; }
+
+  /* Balken nebeneinander, Texte über die ganze Breite und einzeilig */
+  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:span 3 !important; }
+  .wk-list-table td[data-c="desc"], .wk-list-table td[data-c="history"]{ grid-column:1 / -1 !important; }
+  .wk-list-table td[data-c="desc"] > span, .wk-list-table td[data-c="history"] > span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+  .wk-list-table td[data-c="due"] > span{ display:inline !important; white-space:nowrap; }
+  .wk-list-table td[data-c="due"] > div{ margin-top:0 !important; width:max-content; }
+  .wk-list-table .list-progress-cell{ min-width:0 !important; }
+  .wk-list-table .time-pb-container{ margin-top:2px; }
+
+  /* Leere Werte („-", 0 Dateien …) brauchen auf kleinen Bildschirmen keinen Platz */
+  .wk-list-table td[data-empty]{ display:none !important; }
+  /* Aufgaben in einem Stack: leicht eingerückt mit Akzentlinie */
+  .wk-list-table tr.wk-list-task.in-stack{ margin-left:10px !important; width:calc(100% - 10px) !important; box-sizing:border-box; border-left:3px solid var(--wk-magnet, var(--primary-color)) !important; }
+
+  /* Stack-Zeile: Name + Merkmale fliessen, Übersicht-Balken zweispaltig */
+  .wk-list-table tr.wk-list-stack td[data-c="name"]{ flex-direction:row; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:4px 6px; }
+  .wk-list-table tr.wk-list-stack td[data-c="name"] > b{ flex:0 0 100%; }
+  .wk-list-table tr.wk-list-stack td[data-c="name"] > span{ margin-left:0 !important; font-size:11px !important; }
+  .wk-list-table tr.wk-list-stack td[data-c="name"]::before{ display:none !important; }
+  .wk-list-table tr.wk-list-stack td[data-c="name"]{ grid-column-end:-1 !important; }
+  .wk-list-table tr.wk-list-stack td[data-c="overview"]{ grid-column:1 / -1 !important; display:grid !important;
+    grid-template-columns:1fr 1fr; grid-template-rows:auto auto; grid-auto-flow:column; column-gap:14px; row-gap:2px; }
+  .wk-list-table tr.wk-list-stack td[data-c="overview"] > div{ margin-top:0 !important; }
+
+  /* Gruppenüberschrift „Einzelaufgaben": schlichte Zwischenzeile statt Kachel */
+  .wk-list-table tr.wk-list-group{ background:transparent !important; border:none !important; box-shadow:none !important; padding:10px 2px 2px !important; margin:0 !important; }
+  .wk-list-table tr.wk-list-group td{ padding:0 !important; border:none !important; font-size:13px; }
+  .wk-list-table tr.wk-list-group td::before{ display:none !important; }
+}
+/* Telefon: KW-Hinweis neben dem Datum spart eine Zeile nur, wenn er Platz hat – sonst weglassen */
+@media (max-width:599px){
+  .wk-list-table td[data-c="due"] > div{ display:none !important; }
+}
+/* Tablet: mehr Platz → 4 Werte pro Zeile */
+@media (min-width:600px) and (max-width:1088px){
+  .wk-list-table tr.wk-list-task, .wk-list-table tr.wk-list-stack{ grid-template-columns:repeat(12, minmax(0,1fr)); }
+  .wk-list-table tr.wk-list-task td, .wk-list-table tr.wk-list-stack td{ grid-column:span 3; }
+  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:span 6 !important; }
+}
