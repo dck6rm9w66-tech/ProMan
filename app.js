@@ -1,3 +1,5 @@
+/* Fester Status „Pausiert" – ganz oben, weil die Daten-Normalisierung beim Laden ihn schon braucht */
+var PAUSED_STATUS_ID = 'paused';
 // --- PUSH NOTIFICATION API ---
 function requestPushPermission(cb) {
     if (!("Notification" in window)) return;
@@ -112,70 +114,17 @@ function testPushNotification() {
     });
 }
 
-// --- MOBILE SWIPE-TO-DELETE GESTURES ---
+// --- MOBILE LANGES DRÜCKEN (Ziehen) ---
 /* Touch: Ziehen erst nach kurzem Gedrückthalten. Bewegt sich der Finger vorher um mehr als
    LP_TOLERANCE px, ist es ein Scroll-Wisch und es wird nichts verschoben. Maus bleibt unverändert. */
 const LP_DELAY_MS = 350;
 const LP_TOLERANCE = 10;
 function lpHaptic() { try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} }
 
-let _clTouchStartX = 0;
-let _clTouchCurrentX = 0;
-let _activeSwipeItem = null;
-
-document.addEventListener('touchstart', function(e) {
-    if(window.innerWidth > 1089) return;
-    /* Nur die kleinen Bedien-Icons vom Swipe ausnehmen (Info, Checkbox, Griff, Löschen).
-       Das Titel-Textfeld NICHT ausnehmen — es füllt fast die ganze Zeile, sonst liesse sich
-       gar nicht mehr wischen. Ein reiner Tap löst dank Bewegungsschwelle ohnehin kein Löschen aus. */
-    if(e.target.closest('.cl-info-btn, .cl-done, .cl-drag, .cl-delete-btn, button, a, select')) {
-        _activeSwipeItem = null;
-        return;
-    }
-    const swipeTarget = e.target.closest('.cl-swipe-container');
-    if(swipeTarget) {
-        _clTouchStartX = e.touches[0].clientX;
-        _clTouchCurrentX = _clTouchStartX;   /* WICHTIG: sonst „erbt" ein Tap den alten Wert und löst versehentlich Löschen aus */
-        _activeSwipeItem = swipeTarget;
-        _activeSwipeItem.style.transition = 'none';
-    } else {
-        document.querySelectorAll('.cl-swipe-container').forEach(el => {
-            if(el.style.transform && el.style.transform !== 'translateX(0px)') {
-                el.style.transition = 'transform 0.2s';
-                el.style.transform = 'translateX(0px)';
-            }
-        });
-    }
-}, {passive: true});
-
-document.addEventListener('touchmove', function(e) {
-    if(!_activeSwipeItem) return;
-    _clTouchCurrentX = e.touches[0].clientX;
-    const diff = _clTouchCurrentX - _clTouchStartX;
-    if(diff < 0) {
-        _activeSwipeItem.style.transform = `translateX(${Math.max(diff, -100)}px)`;
-    }
-}, {passive: true});
-
-document.addEventListener('touchend', function(e) {
-    if(!_activeSwipeItem) return;
-    _activeSwipeItem.style.transition = 'transform 0.2s';
-    const diff = _clTouchCurrentX - _clTouchStartX;
-    
-    if(diff < -50) {
-        _activeSwipeItem.style.transform = `translateX(-100%)`;
-        const swipeEl = _activeSwipeItem;                 /* Referenz festhalten, da _activeSwipeItem gleich genullt wird */
-        const item = swipeEl.closest('.checklist-item');
-        setTimeout(() => {
-            const delBtn = swipeEl.querySelector('.cl-delete-btn');
-            if(delBtn) delBtn.click();
-            else if(item) item.remove();
-        }, 200);
-    } else {
-        _activeSwipeItem.style.transform = 'translateX(0px)';
-    }
-    _activeSwipeItem = null;
-});
+/* Wischen-zum-Löschen wurde entfernt: Die rote Fläche dahinter ragte unter dem Punkt hervor
+   (Fehldarstellung), das Löschen per Geste war versteckt und löste leicht versehentlich aus.
+   Mobil öffnet jetzt „⋮" die Details des Punktes – dort steht ein klar beschrifteter
+   Knopf „Löschen"; in Wissen/Checklisten lässt sich das Löschen per „Rückgängig" zurücknehmen. */
 
 function handleModalClCheckbox(cb) {
     if(cb.checked) {
@@ -349,6 +298,7 @@ if(loadedData) {
             appData.statuses.push({ id: 'done', title: 'Abgeschlossen' });
         }
     }
+    ensureFixedStatuses(); migratePausedTasks();
 
     if(!appData.settings.noteOrder) appData.settings.noteOrder = [];
     if(!appData.settings.reminders || appData.settings.reminders.length < 2) appData.settings.reminders = defaultData.settings.reminders;
@@ -982,7 +932,7 @@ function histStatusLabel(kind, v) {
     if (kind === 's') return ({ active: t('stack_status_active'), paused: t('status_paused'), completed: t('stack_status_completed') })[v] || v;
     if (v === 'done') return t('col_completed');
     const s = (appData.statuses || []).find(x => x.id === v);
-    return s ? s.title : v;
+    return s ? statusTitle(s) : v;
 }
 function histPrioLabel(v) { return ({ high: t('prio_high'), medium: t('prio_med'), low: t('prio_low') })[v] || v || '–'; }
 function histDateLabel(v) {
@@ -1024,7 +974,7 @@ function recordEntityChanges() {
     } catch (err) { console.error('Änderungshistorie fehlgeschlagen', err); }
 }
 
-function saveToLocal(skipRender = false) { recordEntityChanges(); localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
+function saveToLocal(skipRender = false) { try { ensureFixedStatuses(); migratePausedTasks(); } catch (e) {} recordEntityChanges(); localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
 function toggleSidebar() { document.getElementById('app-sidebar').classList.toggle('collapsed'); }
 
 function _rawToast(msg, type='success') {
@@ -1532,7 +1482,7 @@ function buildMSHTML(filterKey, items, valField, nameField) {
     let h = `<div class="ms-actions"><span onclick="mssetAll('${filterKey}', true, event)">${_t('ms_all')}</span><span onclick="mssetAll('${filterKey}', false, event)">${_t('ms_none')}</span></div>`;
     items.forEach(i => {
         let val = valField ? i[valField] : i; let name = nameField ? i[nameField] : i;
-        if (filterKey === 'status' && val === 'done') name = t('col_completed');
+        if (filterKey === 'status') { const _so = (appData.statuses || []).find(x => x.id === val); if (_so) name = statusTitle(_so); }
         const checked = activeFilters[filterKey].includes(val) ? 'checked' : '';
         h += `<label class="ms-option" onclick="event.stopPropagation()"><input type="checkbox" value="${val}" ${checked} onchange="msToggleItem('${filterKey}', this.value, this.checked)"> ${name}</label>`;
     });
@@ -1552,7 +1502,7 @@ function initFilters() {
         <div class="ms-wrapper" data-ui-min="medium"><div class="ms-btn" id="btn_ms_stack" onclick="toggleMS('ms_stack', event)"><span data-i18n="btn_stacks">${t('btn_stacks')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_stack">${buildMSHTML('stack', appData.projectStacks, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_sh" onclick="toggleMS('ms_sh', event)"><span data-i18n="btn_sh">${t('btn_sh')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_sh">${buildMSHTML('sh', appData.stakeholders, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_bucket" onclick="toggleMS('ms_bucket', event)"><span data-i18n="btn_buckets">${t('btn_buckets')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_bucket">${buildMSHTML('bucket', appData.buckets, null, null)}</div></div>
-        <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_status" onclick="toggleMS('ms_status', event)"><span data-i18n="btn_status">${t('btn_status')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_status">${buildMSHTML('status', [...appData.statuses, { id: 'paused_state', title: t('status_paused') }], 'id', 'title')}</div></div>
+        <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_status" onclick="toggleMS('ms_status', event)"><span data-i18n="btn_status">${t('btn_status')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_status">${buildMSHTML('status', appData.statuses, 'id', 'title')}</div></div>
     `;
 
     document.getElementById('desktopFilterContent').innerHTML = baseHtml;
@@ -1584,7 +1534,7 @@ function mssetAll(filterKey, checkAll, e) {
     if(filterKey==='stack') items = appData.projectStacks.map(x=>x.id); 
     if(filterKey==='sh') items = appData.stakeholders.map(x=>x.id);
     if(filterKey==='bucket') items = appData.buckets; 
-    if(filterKey==='status') items = [...appData.statuses.map(x=>x.id), 'paused_state'];
+    if(filterKey==='status') items = appData.statuses.map(x=>x.id);
     activeFilters[filterKey] = checkAll ? items : []; saveToLocal(); initFilters(); 
 }
 function msToggleItem(filterKey, val, isChecked) {
@@ -1602,8 +1552,7 @@ function renderFilterChips() {
     activeFilters.bucket.forEach(v => { html+=`<div class="chip">${_t('chip_bucket')} ${v} <i class="fas fa-times" onclick="removeFilter('bucket', '${v}')"></i></div>`; });
     
     activeFilters.status.forEach(v => { 
-        if (v === 'paused_state') { html+=`<div class="chip">${_t('chip_status')} ${t('status_paused')} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; } 
-        else { const o = appData.statuses.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_status')} ${v === 'done' ? t('col_completed') : o.title} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; }
+        { const o = appData.statuses.find(x=>x.id===v); if(o) html+=`<div class="chip">${_t('chip_status')} ${statusTitle(o)} <i class="fas fa-times" onclick="removeFilter('status', '${v}')"></i></div>`; }
     });
     container.innerHTML = html;
     updateFilterBadge();
@@ -1621,9 +1570,7 @@ function getFilteredTasks() {
         if(activeFilters.bucket.length > 0 && !activeFilters.bucket.includes(t_obj.bucket || '')) return false;
         
         if(activeFilters.status.length > 0) {
-            const wantsPaused = activeFilters.status.includes('paused_state'); const normalStatuses = activeFilters.status.filter(id => id !== 'paused_state'); let match = false;
-            if (wantsPaused && t_obj.isPaused) match = true;
-            if (normalStatuses.includes(t_obj.status)) match = true;
+            let match = activeFilters.status.includes(t_obj.status);
             if (!match) return false;
         }
 
@@ -1654,7 +1601,8 @@ function getFilteredStacks() {
         if(activeFilters.bucket.length > 0 && !activeFilters.bucket.includes(s.bucket || '')) return false;
         
         if(activeFilters.status.length > 0) {
-            const wantsPaused = activeFilters.status.includes('paused_state');
+            /* Nur „Pausiert" gewählt → auch bei Stacks nur pausierte zeigen */
+            const wantsPaused = activeFilters.status.includes(PAUSED_STATUS_ID);
             if (wantsPaused && activeFilters.status.length === 1 && s.status !== 'paused') return false;
         }
 
@@ -1694,19 +1642,117 @@ function getSortButtonsHTML(currentKey, jsVarName) {
 // --- 4. PROGREss & RATING HELPERS ---
 function isTaskDone(task) { return task.status === 'done'; }
 
+/* ============================================================
+   STATUS „PAUSIERT"
+   Pausieren ist ein eigener, fester Status (id 'paused') und bildet im Kanban-Board die
+   Spalte ganz links – wie „Abgeschlossen" (id 'done') ganz rechts. task.isPaused bleibt als
+   abgeleiteter Wert erhalten (Filter, Workflows, Icons) und folgt immer dem Status.
+   ============================================================ */
+function statusTitle(s) {
+    if (!s) return '-';
+    if (s.id === 'done') return t('col_completed');
+    if (s.id === PAUSED_STATUS_ID) return _t('status_paused');
+    return s.title;
+}
+/* Erster „Arbeits"-Status (nicht Pausiert, nicht Abgeschlossen) – Ziel für neue/wieder geöffnete Aufgaben */
+function firstWorkStatus() {
+    const s = (appData.statuses || []).find(x => x.id !== PAUSED_STATUS_ID && x.id !== 'done');
+    return s ? s.id : ((appData.statuses || [])[0] || {}).id || 'done';
+}
+/* Feste Reihenfolge: Pausiert zuerst, Abgeschlossen zuletzt */
+function ensureFixedStatuses() {
+    let list = Array.isArray(appData.statuses) ? appData.statuses.slice() : [];
+    let p = list.find(s => s.id === PAUSED_STATUS_ID);
+    const d = list.find(s => s.id === 'done');
+    list = list.filter(s => s.id !== PAUSED_STATUS_ID && s.id !== 'done');
+    if (!p) p = { id: PAUSED_STATUS_ID, title: _t('status_paused'), color: '#8A939E' };
+    const next = [p, ...list, ...(d ? [d] : [])];
+    const changed = next.length !== (appData.statuses || []).length || next.some((s, i) => s !== appData.statuses[i]);
+    if (changed) appData.statuses = next;
+    return changed;
+}
+/* Altbestand: per Icon pausierte Aufgaben wandern in den Status „Pausiert" (vorheriger Status gemerkt) */
+function migratePausedTasks() {
+    (appData.tasks || []).forEach(tk => {
+        if (tk.isPaused && tk.status !== 'done' && tk.status !== PAUSED_STATUS_ID) { tk.prePauseStatus = tk.status; tk.status = PAUSED_STATUS_ID; }
+        tk.isPaused = tk.status === PAUSED_STATUS_ID;
+    });
+}
+/* Einheitliche Aktions-Icons „Zeit buchen" + „Abschliessen" (bzw. „Wieder öffnen")
+   für Liste, Notizen, Checklisten, Milestones, Stakeholder und Buckets.
+   Zeit lässt sich nur auf Aufgaben buchen – Stacks bekommen daher nur „Abschliessen". */
+function wkActsHtml(type, id, small = false) {
+    const cls = `secondary icon-btn wk-act${small ? ' wk-act-sm' : ''}`;
+    if (type === 'task') {
+        const tk = (appData.tasks || []).find(x => x.id === id); if (!tk) return '';
+        const done = isTaskDone(tk);
+        return `<span class="wk-acts" onclick="event.stopPropagation()">`
+            + `<button class="${cls} wk-booktime" data-ui-min="medium" onclick="event.stopPropagation(); quickTrackTime('${id}')" title="${t('today_book_time')}" aria-label="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`
+            + (done
+                ? `<button class="${cls}" onclick="event.stopPropagation(); setTaskState('${id}', 'reopen')" title="${t('btn_reopen')}" aria-label="${t('btn_reopen')}"><i class="fas fa-rotate-left"></i></button>`
+                : `<button class="${cls} wk-act-done" onclick="event.stopPropagation(); setTaskState('${id}', 'complete')" title="${t('btn_complete')}" aria-label="${t('btn_complete')}"><i class="fas fa-check"></i></button>`)
+            + `</span>`;
+    }
+    const st = (appData.projectStacks || []).find(x => x.id === id); if (!st) return '';
+    const done = st.status === 'completed';
+    return `<span class="wk-acts" onclick="event.stopPropagation()">`
+        + (done
+            ? `<button class="${cls}" onclick="event.stopPropagation(); setStackStatus('${id}', 'active')" title="${t('btn_reopen')}" aria-label="${t('btn_reopen')}"><i class="fas fa-rotate-left"></i></button>`
+            : `<button class="${cls} wk-act-done" onclick="event.stopPropagation(); setStackStatus('${id}', 'completed')" title="${t('btn_complete')}" aria-label="${t('btn_complete')}"><i class="fas fa-check"></i></button>`)
+        + `</span>`;
+}
+
+/* „Zeit buchen" an einzelnen Checklistenpunkten: bucht auf die Aufgabe und trägt den Namen
+   des Punktes automatisch als Notiz ein. (Milestones gehören zu Stacks – darauf lässt sich
+   keine Zeit buchen, deshalb gibt es den Knopf nur bei Punkten von Aufgaben.) */
+function clBookBtnHtml(taskId, cpId, extraCls = '') {
+    return `<button class="secondary icon-btn cl-book wk-booktime ${extraCls}" data-ui-min="medium" onclick="event.stopPropagation(); clQuickBook('${taskId}','${cpId}')" title="${t('today_book_time')}" aria-label="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
+}
+function clQuickBook(taskId, cpId) {
+    const tk = (appData.tasks || []).find(x => x.id === taskId); if (!tk) return;
+    const cp = (tk.checklist || []).find(c => c.id === cpId);
+    quickTrackTime(taskId, cp ? (cp.title || '') : '');
+}
+/* Im Aufgaben-Dialog: erst speichern (sonst gingen Änderungen verloren), dann buchen */
+function clBookFromModal(btn) {
+    const row = btn.closest('.checklist-item'); if (!row) return;
+    const title = ((row.querySelector('.cl-title') || {}).value || '').trim();
+    const idEl = document.getElementById('taskId'); const taskId = idEl ? idEl.value : '';
+    if (!taskId || !(appData.tasks || []).some(x => x.id === taskId)) { showToast(_t('cl_book_save_first'), 'warning'); return; }
+    try { saveTask(); } catch (e) {}
+    const modal = document.getElementById('taskModal'); if (modal && modal.classList.contains('active')) return;   /* Speichern fehlgeschlagen */
+    quickTrackTime(taskId, title);
+}
+
+/* Nach jedem Statuswechsel aufrufen: hält isPaused synchron und löst die Pause-Workflows aus */
+function syncTaskPause(task, oldStatus, fireWorkflows = true) {
+    if (!task) return;
+    const nowP = task.status === PAUSED_STATUS_ID, wasP = oldStatus === PAUSED_STATUS_ID;
+    task.isPaused = nowP;
+    if (nowP && !wasP) {
+        if (oldStatus && oldStatus !== 'done') task.prePauseStatus = oldStatus;
+        if (fireWorkflows) triggerWorkflows('task_paused', { task });
+    }
+    if (!nowP && wasP && fireWorkflows) triggerWorkflows('task_resumed', { task });
+}
+
 function setTaskState(id, action) {
     if(action !== 'reopen' && isEntityLocked(id)) { showToast(_t('lock_task'), "warning"); return; }
     const task = appData.tasks.find(t => t.id === id); if(!task) return;
     let oldStatus = task.status;
 
-    if(action === 'pause') { task.isPaused = true; triggerWorkflows('task_paused', { task }); }
-    if(action === 'resume') { task.isPaused = false; triggerWorkflows('task_resumed', { task }); }
+    if(action === 'pause' && task.status !== PAUSED_STATUS_ID && !isTaskDone(task)) { task.status = PAUSED_STATUS_ID; }
+    if(action === 'resume' && task.status === PAUSED_STATUS_ID) {
+        const back = task.prePauseStatus && appData.statuses.some(s => s.id === task.prePauseStatus) && task.prePauseStatus !== 'done' ? task.prePauseStatus : firstWorkStatus();
+        task.status = back;
+    }
     if(action === 'complete') {
         task.status = 'done'; task.isPaused = false;
         if(!task.completedAt) task.completedAt = Date.now();
         triggerWorkflows('task_completed', { task }); showToast(t('toast_saved')); if (uiAtLeast('pro')) openRatingModal('task', id);
     }
-    if(action === 'reopen') { task.status = appData.statuses[0].id; delete task.completedAt; }
+    if(action === 'reopen') { task.status = firstWorkStatus(); delete task.completedAt; }
+    syncTaskPause(task, oldStatus);
     if(oldStatus !== task.status) { triggerWorkflows('task_status_changed', { task, oldStatus, newStatus: task.status }); }
     { const _actMap = { complete: ['fa-check', t('act_task_done')], reopen: ['fa-rotate-left', t('act_task_reopened')], pause: ['fa-pause', t('act_task_paused')], resume: ['fa-play', t('act_task_resumed')] };
       if(_actMap[action]) logActivity(_actMap[action][0], _actMap[action][1].replace('{n}', task.projectName || '')); }
@@ -2269,8 +2315,8 @@ function renderSettings() {
     // drag-and-drop Version der Status Spalten-Tabelle
     let stHtml = `<tr><th width="30"></th><th>${t('title')}</th><th width="50">${t('color')}</th><th width="60">${t('action')}</th></tr>`;
     appData.statuses.forEach((s, i) => { 
-        const isDoneCol = s.id === 'done';
-        const titleStr = isDoneCol ? t('col_completed') + ' (System)' : s.title;
+        const isDoneCol = s.id === 'done' || s.id === PAUSED_STATUS_ID;
+        const titleStr = isDoneCol ? statusTitle(s) + ' (System)' : s.title;
         const editStr = isDoneCol ? `<span style="opacity:0.6">${titleStr}</span>` : `<span class="editable-cell" ondblclick="editSetting(this, 'status', '${s.id}')" title="${_t('dblclick_edit')}">${s.title}</span>`;
         const delBtn = isDoneCol ? '' : `<button class="secondary icon-btn" style="color:var(--danger); margin-left:auto;" onclick="deleteStatus('${s.id}')"><i class="fas fa-trash"></i></button>`;
         const colorCell = `<input type="color" value="${getStatusColor(s)}" onchange="updateStatusColor('${s.id}', this.value)" style="width:40px; height:30px; padding:0; cursor:pointer;" title="${_t('col_color_title')}">`;
@@ -2318,6 +2364,7 @@ function renderSettings() {
 function getStatusColor(s) {
     if (s && s.color) return s.color;
     if (s && s.id === 'done') return '#1F9463';
+    if (s && s.id === PAUSED_STATUS_ID) return '#8A939E';
     return '#333B44';
 }
 /* Kanban-Spalten bekommen zufällig unterschiedliche Farben. Grün bleibt „Abgeschlossen" vorbehalten;
@@ -2335,9 +2382,9 @@ function ensureStatusColors() {
     let changed = false;
     const list = appData.statuses || [];
     const isUnset = (c) => !c || String(c).toLowerCase() === STATUS_DEFAULT_GREY;
-    const used = list.filter(s => s.id !== 'done' && !isUnset(s.color)).map(s => s.color);
+    const used = list.filter(s => s.id !== 'done' && s.id !== PAUSED_STATUS_ID && !isUnset(s.color)).map(s => s.color);
     list.forEach(s => {
-        if (s.id === 'done' || !isUnset(s.color)) return;
+        if (s.id === 'done' || s.id === PAUSED_STATUS_ID || !isUnset(s.color)) return;
         s.color = pickStatusColor(used); used.push(s.color); changed = true;
     });
     return changed;
@@ -2348,7 +2395,7 @@ function updateStatusColor(id, color) {
 }
 
 function addStatus() { const n = document.getElementById('new_status_name').value.trim(); if(n) { appData.statuses.push({ id: generateId(), title: n, color: pickStatusColor(appData.statuses.map(s => s.color)) }); document.getElementById('new_status_name').value = ''; renderSettings(); } }
-function deleteStatus(id) { if(id === 'done') return showToast(_t('err_system_col'), 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
+function deleteStatus(id) { if(id === 'done' || id === PAUSED_STATUS_ID) return showToast(_t('err_system_col'), 'error'); appData.statuses = appData.statuses.filter(s => s.id !== id); renderSettings(); }
 function addStakeholder() { const n = document.getElementById('new_sh_name').value.trim();
     /* Farbe wird wie bei Status/Buckets nicht vorab abgefragt: die nächste noch freie Palettenfarbe,
        änderbar über das Farbfeld in der Tabelle. */
@@ -2500,7 +2547,7 @@ function renderWfTriggerValueOptions(preselect = '') {
         /* Erste Option: JEDER Status. Ohne sie war immer der erste Status vorausgewählt,
            wodurch der Workflow nur bei genau diesem Status feuerte und sonst wirkungslos blieb. */
         valSelect.innerHTML = `<option value="" ${!preselect ? 'selected' : ''}>${t('wf_any_status')}</option>`
-            + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
+            + appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${statusTitle(s)}</option>`).join('');
     }
     else { valSelect.style.display = 'none'; valSelect.innerHTML = ''; }
     wfRefreshStatusActionRows();
@@ -2694,7 +2741,7 @@ function renderWfActionValueInput(actionSelectEl, preselect = '') {
     const action = actionSelectEl.value; const container = actionSelectEl.parentElement.querySelector('.wf-act-val-container'); let html = '';
     if(action === 'set_status') {
         const kind = wfActionTargetKind();
-        const taskOpts = appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
+        const taskOpts = appData.statuses.map(s => `<option value="${s.id}" ${s.id===preselect?'selected':''}>${statusTitle(s)}</option>`).join('');
         const stackOpts = `<option value="active" ${preselect==='active'?'selected':''}>${t('stack_status_active')}</option>`
             + `<option value="paused" ${preselect==='paused'?'selected':''}>${t('status_paused')}</option>`
             + `<option value="completed" ${preselect==='completed'?'selected':''}>${t('stack_status_completed')}</option>`;
@@ -3035,9 +3082,11 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
                der Wert zum tatsaechlichen Entitaetstyp passt; sonst ueberspringen statt zu beschaedigen. */
             const STACK_STATUS_VALUES = ['active', 'paused', 'completed'];
             const isStackStatusValue = STACK_STATUS_VALUES.includes(action.value);
-            const matchesEntityType = typeStr === 'stack' ? isStackStatusValue : !isStackStatusValue;
+            const matchesEntityType = typeStr === 'stack' ? isStackStatusValue : (action.value === PAUSED_STATUS_ID || !isStackStatusValue);
             if(matchesEntityType && entity.status !== action.value) {
+                const _oldSt = entity.status;
                 entity.status = action.value;
+                if (typeStr === 'task') syncTaskPause(entity, _oldSt, false);
                 const doneValue = typeStr === 'stack' ? 'completed' : 'done';
                 if(action.value === doneValue) { if(typeStr === 'task') entity.isPaused = false; if(!entity.completedAt) entity.completedAt = Date.now(); }
                 else { delete entity.completedAt; }
@@ -3068,7 +3117,7 @@ function executeWorkflowActions(actions, entity, typeStr, triggerNameStr, wfName
         if(action.type === 'create_task') {
             const newTask = {
                 id: generateId(), projectStackId: '', projectName: action.value || _t('new_task'),
-                stakeholderId: '', bucket: '', status: appData.statuses.length ? appData.statuses[0].id : 'todo',
+                stakeholderId: '', bucket: '', status: appData.statuses.length ? firstWorkStatus() : 'todo',
                 priority: 'medium', recurrence: 'none', customRecurrence: null, startDate: '', dueDate: '',
                 estimatedTime: '', spentTime: '', description: '', notes: '', checklist: [], files: [], assigneeId: '', predecessors: []
             };
@@ -3461,7 +3510,6 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
         + appData.users.map(u => `<button type="button" class="cl-assignee-opt" data-uid="${u.id}" onclick="clPickAssignee(this,'${u.id}')">${getAvatarHtml(u.id, 'avatar-sm', '')}<span>${escapeHtmlToday ? escapeHtmlToday(u.name) : u.name}</span></button>`).join('');
 
     return `
-    <div class="cl-swipe-bg"><i class="fas fa-trash"></i></div>
     <div class="cl-swipe-container" tabindex="-1">
         <div class="cl-main-row">
             <i class="fas fa-grip-vertical cl-drag"></i>
@@ -3469,7 +3517,7 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
             <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; justify-content: center;">
                 <div style="display: flex; align-items: center; width: 100%;">
                     <input type="text" class="cl-title" value="${title}" placeholder="...">
-                    <i class="fas fa-info-circle cl-info-btn" onclick="this.closest('.checklist-item').classList.toggle('show-details')"></i>
+                    <button type="button" class="secondary icon-btn cl-info-btn" onclick="this.closest('.checklist-item').classList.toggle('show-details')" title="${_t('cl_more_title')}" aria-label="${_t('cl_more_title')}"><i class="fas fa-ellipsis-vertical"></i></button>
                 </div>
             </div>
         </div>
@@ -3485,7 +3533,8 @@ function buildChecklistItemHTML(title, done, dueDate, assigneeId = '', id = '', 
             </span>
             <span class="cl-datespan cl-durspan" data-ui-min="medium"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-dur-hours" value="${durHours}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="clSumDuration()"><span class="cl-durunit">${_t('u_h')}</span></span>
             <button class="secondary icon-btn cl-dep-btn" data-ui-min="pro" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
-            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
+            <button class="secondary icon-btn cl-book wk-booktime" data-ui-min="medium" style="padding:4px; font-size:11px; margin-left:4px;" onclick="event.stopPropagation(); clBookFromModal(this)" title="${t('today_book_time')}" aria-label="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>
+            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="this.closest('.checklist-item').remove()" tabindex="-1" title="${_t('delete')}"><i class="fas fa-trash"></i><span class="cl-del-lbl">${_t('delete')}</span></button>
         </div>
     </div>
     <div class="cl-deps-display" data-ui-min="pro" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>`;
@@ -3552,6 +3601,10 @@ function openStackModal(id = null) {
     document.getElementById('s_assignee').innerHTML = `<option value="" data-i18n="nobody">${t('nobody')}</option>` + appData.users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
     document.getElementById('s_stakeholder').innerHTML = `<option value="" data-i18n="no_stakeholder">${t('no_stakeholder')}</option>` + appData.stakeholders.map(sh => `<option value="${sh.id}">${sh.name}</option>`).join('');
     document.getElementById('s_bucket').innerHTML = `<option value="" data-i18n="no_bucket">${t('no_bucket')}</option>` + appData.buckets.map(b => `<option value="${b}">${b}</option>`).join('');
+    { const _ss = document.getElementById('s_status');
+      if (_ss) { const _cur = id ? ((appData.projectStacks.find(x => x.id === id) || {}).status || 'active') : 'active';
+        _ss.innerHTML = [['active', t('stack_status_active')], ['paused', _t('status_paused')], ['completed', t('stack_status_completed')]]
+            .map(([v, l]) => `<option value="${v}" ${v === _cur ? 'selected' : ''}>${l}</option>`).join(''); } }
 
     const actionsContainer = document.getElementById('stack_header_actions'); let actionsHtml = '';
 
@@ -3576,8 +3629,6 @@ function openStackModal(id = null) {
         
         const isCompleted = s.status === 'completed'; const isPaused = s.status === 'paused';
         if(!isCompleted) {
-            if(isPaused) actionsHtml += `<button class="secondary icon-btn" onclick="setStackStatus('${s.id}', 'active')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-            else actionsHtml += `<button class="secondary icon-btn" onclick="setStackStatus('${s.id}', 'paused')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
             actionsHtml += `<button class="secondary icon-btn" onclick="setStackStatus('${s.id}', 'completed')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
         } else { actionsHtml += `<button class="secondary icon-btn" onclick="setStackStatus('${s.id}', 'active')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
@@ -3741,6 +3792,14 @@ function saveStack() {
         } else { 
             sData.status = 'active'; sData.ratingCount = 0; sData.ratingHistory = []; appData.projectStacks.push(sData); if(activeFilters.stack.length > 0) activeFilters.stack.push(id); triggerWorkflows('stack_created', { stack: sData });
         }
+        /* Status aus dem Dialog (ersetzt den früheren Pause-Knopf) */
+        { const _sel = document.getElementById('s_status'); const _new = _sel ? _sel.value : '';
+          if (_new && _new !== sData.status) {
+              const _st = appData.projectStacks.find(x => x.id === id) || sData; _st.status = _new;
+              if (_new === 'paused') triggerWorkflows('stack_paused', { stack: _st });
+              if (_new === 'active' && idx > -1) triggerWorkflows('stack_resumed', { stack: _st });
+              sData.status = _new;
+          } }
         if(modalRatingChanged) { let targetEntity = appData.projectStacks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
         if(sData.status === 'completed' && !sData.completedAt) { sData.completedAt = Date.now(); triggerWorkflows('stack_completed', { stack: sData }); }
         if(sData.status !== 'completed') { delete sData.completedAt; }
@@ -3779,7 +3838,7 @@ function setStackStatus(id, newStatus) {
 function populateTaskDropdowns() {
     document.getElementById('t_stakeholder').innerHTML = `<option value="" data-i18n="no_stakeholder">${t('no_stakeholder')}</option>` + appData.stakeholders.map(sh => `<option value="${sh.id}">${sh.name}</option>`).join('');
     document.getElementById('t_bucket').innerHTML = `<option value="" data-i18n="no_bucket">${t('no_bucket')}</option>` + appData.buckets.map(b => `<option value="${b}">${b}</option>`).join('');
-    document.getElementById('t_status').innerHTML = appData.statuses.map(s => `<option value="${s.id}">${s.id === 'done' ? t('col_completed') : s.title}</option>`).join('');
+    document.getElementById('t_status').innerHTML = appData.statuses.map(s => `<option value="${s.id}">${statusTitle(s)}</option>`).join('');
     document.getElementById('t_projectStack').innerHTML = `<option value="">-- ${t('no_project')} --</option>` + appData.projectStacks.map(ps => `<option value="${ps.id}">${ps.name}</option>`).join('');
     document.getElementById('t_assignee').innerHTML = `<option value="" data-i18n="nobody">${t('nobody')}</option>` + appData.users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
 }
@@ -3809,8 +3868,6 @@ function openModal(taskId = null, _scrollToCpId = null) {
         
         const isCompleted = isTaskDone(t_obj);
         if(!isCompleted) {
-            if(t_obj.isPaused) actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-            else actionsHtml += `<button class="secondary icon-btn" data-ui-min="medium" onclick="setTaskState('${taskId}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
             actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'complete')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
         } else { actionsHtml += `<button class="secondary icon-btn" onclick="setTaskState('${taskId}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
@@ -3839,7 +3896,7 @@ function openModal(taskId = null, _scrollToCpId = null) {
         document.getElementById('modalTitle').innerText = t('task_new'); document.getElementById('taskId').value = ''; document.getElementById('btnDeleteTask').style.display = 'none'; document.getElementById('dropdownShareTask').style.display = 'none';
         renderInteractiveRating('t_interactive_rating', null);
         document.getElementById('t_priority').value = 'medium'; document.getElementById('t_recurrence').value = 'none'; toggleCustomRecurrence(); { const _tl = document.getElementById('t_currency_label'); if(_tl) _tl.textContent = getGlobalCurrency(); }
-        if(appData.statuses.length > 0) document.getElementById('t_status').value = appData.statuses[0].id;
+        if(appData.statuses.length > 0) document.getElementById('t_status').value = firstWorkStatus();
         document.getElementById('t_assignee').value = appData.settings.currentUserId || '';
         populatePresetPicker('task');
         /* Standard-Voreinstellung (Preset) für neue Aufgaben anwenden */
@@ -4167,6 +4224,7 @@ function saveTask() {
 
         if(modalRatingChanged) { let targetEntity = appData.tasks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
         if (newStatus === 'done' && !taskData.completedAt) { taskData.completedAt = Date.now(); triggerWorkflows('task_completed', { task: taskData }); } else if (newStatus !== 'done') { delete taskData.completedAt; }
+        syncTaskPause(taskData, oldStatus, !!oldStatus);
         if(oldStatus && oldStatus !== newStatus) { triggerWorkflows('task_status_changed', { task: taskData, oldStatus, newStatus }); }
         
         logActivity(existingTask ? 'fa-pen' : 'fa-plus', (existingTask ? t('act_task_edited') : t('act_task_created')).replace('{n}', taskData.projectName || ''));
@@ -5284,6 +5342,7 @@ function renderNotesView(c) {
                     </h2>
                     <div style="display:flex; align-items:center; gap:15px;">
                         <span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar-alt"></i> ${t('due')}: ${activeItem.dueDate||'-'}</span>
+                        ${wkActsHtml(isTask ? 'task' : 'stack', activeItem.id)}
                         <button class="secondary icon-btn" onclick="${isTask?`openModal('${activeItem.id}')`:`openStackModal('${activeItem.id}')`}" title="${_t('open_whole_item')}"><i class="fas fa-external-link-alt"></i> ${t('open_details')}</button>
                     </div>
                  </div>`;
@@ -5378,8 +5437,9 @@ function renderChecklists(c, mode = 'checklists') {
         let h = `<div style="background:var(--surface-color); padding:15px; border-radius:var(--radius); border:1px solid var(--border-color); margin-bottom:15px; opacity:${opacity};">
             <h4 style="margin-bottom:10px; display:flex; align-items:center; gap:8px; cursor:pointer; flex-wrap:wrap;" onclick="${parentType==='stack' ? `openStackModal('${parentId}')` : `openModal('${parentId}')`}" title="${t('task_edit')}">
                 <i class="fas ${parentType === 'stack' ? 'fa-folder' : 'fa-tasks'}" style="color:var(--primary-color)"></i>
-                ${lockedIcon}${pausedIcon}${parentName} ${isCompleted ? '(Abgeschlossen)' : ''}
+                ${lockedIcon}${pausedIcon}${parentName} ${isCompleted ? '(' + t('col_completed') + ')' : ''}
                 ${stackBadge} ${metaBadges} ${avatarHtml}
+                <span style="margin-left:auto;">${wkActsHtml(parentType === 'stack' ? 'stack' : 'task', parentId)}</span>
             </h4><div style="display:flex; flex-direction:column; gap:5px;">`;
         
         if(list.length === 0) { h += `<span style="font-size:12px; color:var(--text-muted); padding-left:25px;">${t('no_cl_points')}</span>`; } 
@@ -5398,7 +5458,6 @@ function renderChecklists(c, mode = 'checklists') {
 
                 h += `
                 <div class="checklist-item draggable-item" draggable="false" data-parent-type="${parentType}" data-parent-id="${parentId}" style="margin-left:25px;" data-id="${item.id}">
-                    <div class="cl-swipe-bg"><i class="fas fa-trash"></i></div>
                     <div class="cl-swipe-container" tabindex="-1">
                         <div class="cl-main-row" style="${lineThrough}">
                             <i class="fas fa-grip-vertical cl-drag"></i>
@@ -5406,7 +5465,7 @@ function renderChecklists(c, mode = 'checklists') {
                             <div style="display: flex; flex-direction: column; flex: 1; min-width: 0; justify-content: center;">
                                 <div style="display: flex; align-items: center; width: 100%;">
                                     ${clLocked}<input type="text" class="cl-title" value="${item.title}" placeholder="..." onblur="updateGlobalCl('${parentType}', '${parentId}', ${originalIdx}, 'title', this.value)" onkeypress="if(event.key==='Enter') this.blur()">
-                                    <i class="fas fa-info-circle cl-info-btn" onclick="this.closest('.checklist-item').classList.toggle('show-details')"></i>
+                                    <button type="button" class="secondary icon-btn cl-info-btn" onclick="this.closest('.checklist-item').classList.toggle('show-details')" title="${_t('cl_more_title')}" aria-label="${_t('cl_more_title')}"><i class="fas fa-ellipsis-vertical"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -5415,8 +5474,9 @@ function renderChecklists(c, mode = 'checklists') {
                             <select class="cl-assignee" onchange="updateGlobalCl('${parentType}', '${parentId}', ${originalIdx}, 'assigneeId', this.value)">${userOpts}</select>
                             <span class="cl-datespan cl-startspan"><input type="date" class="cl-g-date cl-start-date" value="${d}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><input type="time" class="cl-g-time cl-start-time" value="${time}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"></span>
                             <span class="cl-datespan cl-durspan" data-ui-min="medium"><span class="cl-datelbl">${_t('cl_time')}</span><input type="number" class="cl-g-dur cl-dur-hours" value="${_durVal}" min="0" max="999" step="0.25" title="${_t('cl_dur_title')}" onchange="updateGlobalClSchedule('${parentType}', '${parentId}', ${originalIdx}, this)"><span class="cl-durunit">${_t('u_h')}</span></span>
+                            ${parentType === 'task' ? clBookBtnHtml(parentId, item.id) : ''}
                             <button class="secondary icon-btn cl-dep-btn" data-ui-min="pro" style="padding:4px; font-size:11px; margin-left:4px; color:var(--text-muted);" onclick="openDependencyModalForCl(this)" title="${_t('cl_deps_title')}"><i class="fas fa-link"></i></button>
-                            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="${_t('delete')}"><i class="fas fa-trash"></i></button>
+                            <button class="secondary icon-btn cl-delete-btn" style="color:var(--danger); margin-left:10px;" onclick="deleteGlobalCl('${parentType}', '${parentId}', ${originalIdx})" title="${_t('delete')}"><i class="fas fa-trash"></i><span class="cl-del-lbl">${_t('delete')}</span></button>
                         </div>
                     </div>
                     <div class="cl-deps-display" data-ui-min="pro" style="padding: 0 35px 4px 35px; width: 100%; display: flex; flex-wrap: wrap; gap: 4px;"></div>
@@ -5460,7 +5520,7 @@ function updateGlobalCl(type, parentId, idx, field, val) {
     if(parent && parent.checklist && parent.checklist[idx]) { 
         if(field === 'done' && val === true && isEntityLocked(parent.checklist[idx].id)) {
             showToast(_t('lock_point'), "warning");
-            if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
+            if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'), currentView === 'milestones' ? 'milestones' : 'checklists');
             return;
         }
         const oldVal = parent.checklist[idx][field];
@@ -5481,7 +5541,7 @@ function updateGlobalCl(type, parentId, idx, field, val) {
         }
 
         saveToLocal(true); if(field === 'done' && val === true) showToast(_t('checked_off')); 
-        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
+        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'), currentView === 'milestones' ? 'milestones' : 'checklists');
     }
 }
 /*
@@ -5513,18 +5573,32 @@ function addGlobalCl(type, parentId) {
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent) {
         if(!parent.checklist) parent.checklist = []; parent.checklist.push({ id: generateId(), done: false, title: _t('new_point'), dueDate: '', assigneeId: '', predecessors: [] }); logActivity('fa-plus', t('act_cp_added').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', parent.name || parent.projectName || '')); saveToLocal(true); 
-        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
+        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'), currentView === 'milestones' ? 'milestones' : 'checklists');
     }
 }
+/* Löschen ohne Rückfrage-Dialog, dafür mit „Rückgängig" im Hinweis (sicherer und schneller als confirm()) */
+let _clLastDeleted = null;
 function deleteGlobalCl(type, parentId, idx) {
-    if(!confirm(t('delete') + '?')) return;
     let parent = type === 'stack' ? appData.projectStacks.find(x => x.id === parentId) : appData.tasks.find(x => x.id === parentId);
     if(parent && parent.checklist) {
-        { const _dt = (parent.checklist[idx] && parent.checklist[idx].title) || ''; logActivity('fa-trash', t('act_cp_deleted').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', _dt)); }
+        const _item = parent.checklist[idx]; if (!_item) return;
+        { const _dt = _item.title || ''; logActivity('fa-trash', t('act_cp_deleted').replace('{k}', type === 'stack' ? t('act_ms') : t('act_cp')).replace('{n}', _dt)); }
         parent.checklist.splice(idx, 1); saveToLocal(true); 
-        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'));
-        showToast(t('toast_deleted'));
+        _clLastDeleted = { type, parentId, idx, item: _item };
+        if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else renderChecklists(document.getElementById('mainContainer'), currentView === 'milestones' ? 'milestones' : 'checklists');
+        _rawToast(`${escapeHtmlToday(_tf('cl_deleted_named', { n: _item.title || _t('unnamed') }))} <button type="button" class="secondary toast-undo" onclick="clUndoDelete(this)">${_t('undo')}</button>`, 'success');
     }
+}
+function clUndoDelete(btn) {
+    const d = _clLastDeleted; if (!d) return;
+    const parent = d.type === 'stack' ? appData.projectStacks.find(x => x.id === d.parentId) : appData.tasks.find(x => x.id === d.parentId);
+    if (!parent) return;
+    if (!Array.isArray(parent.checklist)) parent.checklist = [];
+    parent.checklist.splice(Math.min(d.idx, parent.checklist.length), 0, d.item);
+    _clLastDeleted = null; saveToLocal(true);
+    if(currentView === 'notes') renderNotesView(document.getElementById('mainContainer')); else if (currentView === 'checklists' || currentView === 'milestones') renderChecklists(document.getElementById('mainContainer'), currentView); else renderView();
+    const tst = btn && btn.closest('.toast'); if (tst) tst.remove();
+    _rawToast(_t('cl_restored'));
 }
 
 
@@ -5535,16 +5609,18 @@ function renderKanban(c) {
         const colDiv = document.createElement('div');
         colDiv.className = 'kanban-column';
         colDiv.dataset.statusId = col.id;           
-        const colTitle = col.id === 'done' ? t('col_completed') : col.title;
+        const colTitle = statusTitle(col);
         const colCount = col.id === 'done' ? appData.tasks.filter(t_obj => isTaskDone(t_obj) && kanbanPassesUserFilters(t_obj)).length : tasks.filter(t_obj => t_obj.status === col.id).length;
         const _stColor = getStatusColor(col);
         colDiv.style.setProperty('--col-color', _stColor);
-        colDiv.innerHTML = `<div class="kanban-header"><span class="kanban-col-dot" style="background:${_stColor}"></span><span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${colCount}</span></div>`;
+        const _dot = col.id === PAUSED_STATUS_ID ? `<i class="fas fa-pause kanban-col-pause" style="color:var(--warning)"></i>` : `<span class="kanban-col-dot" style="background:${_stColor}"></span>`;
+        colDiv.innerHTML = `<div class="kanban-header">${_dot}<span>${colTitle}</span> <span class="badge" style="background:var(--border-color); color:var(--text-main)">${colCount}</span></div>`;
         const cardsDiv = document.createElement('div'); cardsDiv.className = 'kanban-cards';
 
         if (col.id === 'done') {
             colDiv.classList.add('done-column');
         }
+        if (col.id === PAUSED_STATUS_ID) colDiv.classList.add('paused-column');
 
         colDiv.ondragover = (e) => {
             e.preventDefault(); 
@@ -5649,8 +5725,6 @@ function createTaskCard(task) {
     let actionBtns = '';
     actionBtns += `<button class="secondary icon-btn wk-booktime" data-ui-min="medium" onclick="event.stopPropagation(); quickTrackTime('${task.id}')" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>`;
     if(!isCompleted) {
-        if(isPaused) actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-        else actionBtns += `<button class="secondary icon-btn" data-ui-min="medium" onclick="event.stopPropagation(); setTaskState('${task.id}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
         actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'complete')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
     } else { actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${task.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
@@ -5709,7 +5783,7 @@ function dropTaskToColumn(e, newStatus) {
     const task = appData.tasks.find(t_obj => t_obj.id === id); 
     if(task && task.status !== newStatus) { 
         if(newStatus === 'done' && isEntityLocked(id)) { showToast(_t('lock_task'), "warning"); return; }
-        checkTaskCompletion(id, newStatus); let oldStatus = task.status; task.status = newStatus; 
+        checkTaskCompletion(id, newStatus); let oldStatus = task.status; task.status = newStatus; syncTaskPause(task, oldStatus);
         if(newStatus === 'done') { task.isPaused = false; if(!task.completedAt) { task.completedAt = Date.now(); triggerWorkflows('task_completed', { task }); } } else { delete task.completedAt; }
         triggerWorkflows('task_status_changed', { task, oldStatus, newStatus: newStatus });
         if (newStatus === 'done') { const taskIndex = appData.tasks.findIndex(t => t.id === id); if(taskIndex > -1) { const [taskToMove] = appData.tasks.splice(taskIndex, 1); appData.tasks.unshift(taskToMove); } }
@@ -5886,8 +5960,6 @@ function renderStacks(c) {
 
         let btnHtml = '';
         if(!isCompleted) {
-            if(isPaused) btnHtml += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setStackStatus('${stack.id}', 'active')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-            else btnHtml += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setStackStatus('${stack.id}', 'paused')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
             btnHtml += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setStackStatus('${stack.id}', 'completed')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
         } else { btnHtml += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setStackStatus('${stack.id}', 'active')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
 
@@ -6018,6 +6090,7 @@ function renderList(c) {
     if(cols.checklist) html += `<th>${_t('sr_checklist')}</th>`;
     if(cols.files) html += `<th>${t('list_files')}</th>`;
     if(cols.notes) html += `<th>${t('history')}</th>`;
+    html += `<th class="wk-list-acts-th" width="84"></th>`;   /* Zeit buchen · Abschliessen */
     
     html += `</tr></thead><tbody>`;
     
@@ -6054,13 +6127,14 @@ function renderList(c) {
             else { html += `<span style="font-size:11px; color:var(--text-muted);"><i>-</i></span>`; }
             html += `</td>`;
         }
+        html += `<td data-c="acts" data-label="">${wkActsHtml('stack', stack.id)}</td>`;
         html += `</tr>`;
         if(sTasks.length > 0) sortArray(sTasks).forEach(task => { html += generateListRow(task, true); });
     });
     
     const standalone = sortArray(filteredTasks.filter(t_obj => !t_obj.projectStackId));
     if(standalone.length > 0) { 
-        let totalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan;
+        let totalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan + 1;
         html += `<tr class="table-row-group wk-list-group"><td data-c="group" data-label="${_t('dl_gruppierung')}" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
         standalone.forEach(task => { html += generateListRow(task, false); }); 
     }
@@ -6088,7 +6162,7 @@ function generateListRow(task, isIndented) {
     
     if(cols.stakeholder) rHtml += `<td data-c="stakeholder"${sh ? '' : ' data-empty="1"'} data-label="${_t('dl_stakeholder')}">${sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin:0;">${sh.name}</span>` : '-'}</td>`;
     if(cols.bucket) rHtml += `<td data-c="bucket"${task.bucket ? '' : ' data-empty="1"'} data-label="${_t('dl_bucket')}"><span style="font-size:12px; color:var(--text-muted);">${task.bucket || '-'}</span></td>`;
-    if(cols.status) rHtml += `<td data-c="status" data-label="${_t('dl_status')}">${st ? (st.id === 'done' ? t('col_completed') : st.title) : '-'}</td>`;
+    if(cols.status) rHtml += `<td data-c="status" data-label="${_t('dl_status')}">${st ? (statusTitle(st)) : '-'}</td>`;
     if(cols.priority) rHtml += `<td data-c="priority" data-label="${_t('dl_prioritaet')}">${({high:_t('prio_high'),medium:_t('prio_med'),low:_t('prio_low')})[task.priority] || task.priority}</td>`;
     if(cols.startDate) rHtml += `<td data-c="start"${task.startDate ? '' : ' data-empty="1"'} data-label="${_t('dl_startdatum')}"><span style="font-size:12px; color:var(--text-muted);"><i class="far fa-calendar"></i> ${task.startDate||'-'}</span></td>`;
     
@@ -6117,6 +6191,7 @@ function generateListRow(task, isIndented) {
     if(cols.files) { const files = task.files || []; rHtml += `<td data-c="files"${files.length ? '' : ' data-empty="1"'} data-label="${_t('dl_dateien')}"><span style="font-size:11px; color:var(--text-muted);"><i class="fas fa-paperclip"></i> ${files.length}</span></td>`; }
     if(cols.notes) { const notes = task.notes ? (task.notes.length > 50 ? task.notes.substring(0,50)+'...' : task.notes) : '-'; rHtml += `<td data-c="history"${task.notes ? '' : ' data-empty="1"'} data-label="${_t('dl_historie')}"><span style="font-size:11px; color:var(--text-muted);" title="${task.notes}">${notes}</span></td>`; }
     
+    rHtml += `<td data-c="acts" data-label="">${wkActsHtml('task', task.id)}</td>`;
     rHtml += `</tr>`; return rHtml;
 }
 
@@ -6219,11 +6294,7 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
         const progress = getTaskProgress(t_obj); let timeBarHtml = ''; let actionBtns = ''; const isCompleted = isTaskDone(t_obj);
         const lockedIcon = isEntityLocked(t_obj.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:10px; margin-right:4px;" title="' + _t('locked') + '"></i>' : '';
 
-        if(!isCompleted) {
-            if(t_obj.isPaused) actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${t_obj.id}', 'resume')" title="${t('btn_resume')}"><i class="fas fa-play"></i></button>`;
-            else actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${t_obj.id}', 'pause')" title="${t('btn_pause')}"><i class="fas fa-pause"></i></button>`;
-            actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${t_obj.id}', 'complete')" title="${t('btn_complete')}"><i class="fas fa-check"></i></button>`;
-        } else { actionBtns += `<button class="secondary icon-btn" onclick="event.stopPropagation(); setTaskState('${t_obj.id}', 'reopen')" title="${t('btn_reopen')}"><i class="fas fa-undo"></i></button>`; }
+        actionBtns = wkActsHtml('task', t_obj.id);
 
         if(showTimeStats) {
             const est = parseFloat(t_obj.estimatedTime||0); const spent = parseFloat(t_obj.spentTime||0);
@@ -6265,13 +6336,13 @@ function renderGroupedStack(sId, showTimeStats, groupKey, targetGroupVal) {
                 innerBarHtml = `<div style="display:flex; align-items:center; gap:6px; flex-shrink: 0;"><span style="font-size:10px; color:var(--text-muted); white-space:nowrap;">${tProg}%</span><div style="width: 40px; min-width: 40px; height: 5px; background: var(--border-color); border-radius: 3px; overflow: hidden; display: flex;"><div style="height: 100%; width: ${tProg}%; background: var(--primary-color);"></div></div></div>`;
             }
             let tPausedIcon = tx.isPaused && !isTaskDone(tx) ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-            tasksHtml += `<div class="draggable-item" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${tx.id}'); event.dataTransfer.setData('type', 'task');" ondragover="handleCardDragOver(event, this, true)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${tx.id}', 'task', '${groupKey}', '${targetGroupVal}')" style="font-size:11px; background:var(--surface-color); padding:6px 8px; border-radius:4px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="event.stopPropagation(); openModal('${tx.id}')"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:10px; font-weight:500;" title="${tx.projectName}">${txLocked}${tPausedIcon}${tx.projectName}</span><div style="display:flex; align-items:center; gap:8px; flex-shrink: 0;">${innerBarHtml}<div style="width: 14px; text-align: center;">${isTaskDone(tx) ? '<i class="fas fa-check" style="color:var(--success)"></i>' : ''}</div></div></div>`;
+            tasksHtml += `<div class="draggable-item" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${tx.id}'); event.dataTransfer.setData('type', 'task');" ondragover="handleCardDragOver(event, this, true)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${tx.id}', 'task', '${groupKey}', '${targetGroupVal}')" style="font-size:11px; background:var(--surface-color); padding:6px 8px; border-radius:4px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="event.stopPropagation(); openModal('${tx.id}')"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; margin-right:10px; font-weight:500;" title="${tx.projectName}">${txLocked}${tPausedIcon}${tx.projectName}</span><div style="display:flex; align-items:center; gap:8px; flex-shrink: 0;">${innerBarHtml}${wkActsHtml('task', tx.id, true)}</div></div>`;
         });
         tasksHtml += `</div>`;
     }
 
     const sp = getStackProgress(s.id); const sPausedIcon = s.status === 'paused' ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-    return `<div class="draggable-item ${s.status==='completed'?'is-completed':''}" style="padding:10px; background:var(--primary-lightest); border-radius:var(--radius); border:1px solid var(--border-color);" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${s.id}'); event.dataTransfer.setData('type', 'stack');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${s.id}', 'stack', '${groupKey}', '${targetGroupVal}')" onclick="openStackModal('${s.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:5px; cursor:pointer;"><b><i class="fas fa-folder"></i> ${sLockedIcon}${sPausedIcon}${s.name}</b><span style="font-size:12px;">${s.dueDate||''}</span></div>${!showTimeStats ? generateProgressBarHTML(sp.tPct, true) + `<div style="font-size:10px;text-align:right; margin-top:2px;">${t('list_prog')}: ${sp.tPct}%</div>` : timeBarHtml}${tasksHtml}</div>`;
+    return `<div class="draggable-item ${s.status==='completed'?'is-completed':''}" style="padding:10px; background:var(--primary-lightest); border-radius:var(--radius); border:1px solid var(--border-color);" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${s.id}'); event.dataTransfer.setData('type', 'stack');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleGroupItemDrop(event, this, '${s.id}', 'stack', '${groupKey}', '${targetGroupVal}')" onclick="openStackModal('${s.id}')"><div style="display:flex; justify-content:space-between; margin-bottom:5px; cursor:pointer;"><b><i class="fas fa-folder"></i> ${sLockedIcon}${sPausedIcon}${s.name}</b><span style="display:flex; align-items:center; gap:6px;"><span style="font-size:12px;">${s.dueDate||''}</span>${wkActsHtml('stack', s.id, true)}</span></div>${!showTimeStats ? generateProgressBarHTML(sp.tPct, true) + `<div style="font-size:10px;text-align:right; margin-top:2px;">${t('list_prog')}: ${sp.tPct}%</div>` : timeBarHtml}${tasksHtml}</div>`;
 }
 
 function renderStakeholder(c) { renderGroupedView(c, 'stakeholderId', appData.stakeholders, t('none'), true); }
@@ -6652,6 +6723,7 @@ function renderSchedule(c) {
                     
                     html += `<div class="cal-event ${isComp?'is-completed':''}" ${dragAttrs} style="background:${bg}; color:${color}; padding:6px 12px; font-size:12px; display:inline-flex; flex-direction:row; align-items:center; gap:6px; border-radius:20px; cursor:pointer; border: 1px solid ${color};" onclick="${click}">
                         ${icon} <span style="font-weight:bold; white-space:nowrap;">${pausedIcon}${title} <span style="font-weight:normal; font-size:10px; opacity:0.7;">${spanText}</span></span>
+                        ${ev.type === 'task-checklist' && ev.parent ? clBookBtnHtml(ev.parent.id, ev.data.id, 'cl-book-cal') : ''}
                     </div>`;
                 });
                 html += `</div>`;
@@ -6750,6 +6822,7 @@ function renderSchedule(c) {
                 html += `<div class="cal-event ${isComp?'is-completed':''}" style="position:absolute; left:${item.leftPct}%; width:${item.widthPct}%; min-width:140px; height:42px; top:${topPos}px; background:${bg}; color:${color}; border:1px solid ${color}; padding:6px 10px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:center; cursor:pointer;" onclick="${click}" title="${timeLabel} | ${title}">
                     <div style="font-size:10px; opacity:0.8; margin-bottom:2px; line-height:1; font-weight:normal;">${timeLabel}</div>
                     <div style="font-weight:bold; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">${icon} ${pausedIcon}${title}</div>
+                    ${ev.type === 'task-checklist' && ev.parent ? clBookBtnHtml(ev.parent.id, ev.data.id, 'cl-book-cal cl-book-abs') : ''}
                 </div>`;
             });
 
@@ -6808,12 +6881,12 @@ function renderSchedule(c) {
                         if (activeFilters.users.length > 0) openCl = openCl.filter(c => activeFilters.users.includes(c.assigneeId || ''));
                         if(openCl.length > 0) {
                             clHtml = `<div style="display:flex; flex-direction:column; gap:3px; margin-top:4px; padding-left:22px; opacity:0.85;">`;
-                            openCl.forEach(cl => { let lineThrough = cl.done ? 'text-decoration:line-through; opacity:0.6;' : ''; clHtml += `<div style="font-size:9.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:normal; display:flex; align-items:center; gap:4px; ${lineThrough}"><i class="${cl.done ? 'fas fa-check-square' : 'far fa-square'}"></i> ${cl.title}</div>`; });
+                            openCl.forEach(cl => { let lineThrough = cl.done ? 'text-decoration:line-through; opacity:0.6;' : ''; clHtml += `<div style="font-size:9.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:normal; display:flex; align-items:center; gap:4px; ${lineThrough}"><i class="${cl.done ? 'fas fa-check-square' : 'far fa-square'}"></i> <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;">${cl.title}</span>${ev.type === 'task' ? clBookBtnHtml(ev.data.id, cl.id, 'cl-book-cal cl-book-xs') : ''}</div>`; });
                             clHtml += `</div>`;
                         }
                     }
 
-                    evHtml += `<div class="cal-event ${spanClass} ${isComp?'is-completed':''}" style="background:${bg}; color:${color}; ${borderStyle} margin-bottom:4px; padding: 6px;" onclick="${click}" title="${title}"><div class="cal-event-title">${startBadge}<span style="margin-right:2px;">${icon}</span><span style="flex:1; overflow:hidden; text-overflow:ellipsis;">${displayTitle}</span>${dueBadge}</div>${clHtml}</div>`;
+                    evHtml += `<div class="cal-event ${spanClass} ${isComp?'is-completed':''}" style="background:${bg}; color:${color}; ${borderStyle} margin-bottom:4px; padding: 6px;" onclick="${click}" title="${title}"><div class="cal-event-title">${startBadge}<span style="margin-right:2px;">${icon}</span><span style="flex:1; overflow:hidden; text-overflow:ellipsis;">${displayTitle}</span>${dueBadge}${ev.type === 'task-checklist' && ev.parent ? clBookBtnHtml(ev.parent.id, ev.data.id, 'cl-book-cal') : ''}</div>${clHtml}</div>`;
                 });
                 
                 let kwBadge = ''; const iterD = new Date(dateStr);
@@ -7632,7 +7705,7 @@ function renderTimeline(c) {
         let itemOpacity = isComp ? 'opacity:0.6; filter:grayscale(50%);' : '';
 
         let rowHtml = `<div class="gantt-row ${isComp?'is-completed':''}" style="${itemOpacity}; width: ${trackWidth + 220}px;">
-            <div class="timeline-left-col" style="font-size:11px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; padding-left:${paddingLeft}; padding-right:10px; cursor:pointer; font-weight:${fontWeight}; display:flex; align-items:center;" onclick="${clickFn}">${name}</div>
+            <div class="timeline-left-col" style="font-size:11px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; padding-left:${paddingLeft}; padding-right:10px; cursor:pointer; font-weight:${fontWeight}; display:flex; align-items:center;" onclick="${clickFn}"><span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;">${name}</span>${item.type === 'task-checklist' && item.taskId ? clBookBtnHtml(item.taskId, item.d.id, 'cl-book-cal cl-book-xs') : ''}</div>
             <div style="flex:1; position:relative; height:100%; border-left:1px solid var(--border-color); overflow: hidden;">
                 <div class="gantt-bar ${isDiamond?'is-diamond':''}" style="left:${finalStartX}px; width:${isDiamond?'20px':width+'px'}; ${barStyle}" title="${itemPositions[entityId].name} (${progressPct}%)" onclick="${clickFn}">
                     ${progressOverlay}${dragHandles}
@@ -9125,7 +9198,7 @@ function wordTaskBlock(task) {
         if (sh) { shName = sh.name; shColor = sh.color || accent; }
     }
     const st = appData.statuses.find(s => s.id === task.status);
-    const statusLabel = st ? (st.id === 'done' ? t('col_completed') : st.title) : '-';
+    const statusLabel = st ? (statusTitle(st)) : '-';
     const statusColor = (typeof getStatusColor === 'function') ? getStatusColor(st) : accent;
     const bucketColor = task.bucket && typeof getBucketColor === 'function' ? getBucketColor(task.bucket) : '#6e7681';
     const PRIO = { high: '#d9342b', medium: '#e8a317', low: '#1f9463' };
@@ -9673,7 +9746,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
 
         /* Kennzahlen */
         const st = appData.statuses.find(s => s.id === task.status);
-        const statusLabel = st ? (st.id === 'done' ? t('col_completed') : st.title) : '-';
+        const statusLabel = st ? (statusTitle(st)) : '-';
         const statusColor = pdfHexToRgb(getStatusColor(st), [51, 59, 68]);
         const shColor = task.stakeholderId ? cardColor : [130, 138, 148];
         const bucketColor = task.bucket ? pdfHexToRgb(getBucketColor(task.bucket), ACCENT) : [130, 138, 148];
@@ -11615,7 +11688,7 @@ function createTodayItemCard(it) {
     if (it.kind === 'checkpoint' && it.parent) {
         const _idx = (it.parent.checklist || []).findIndex(c => c.id === it.obj.id);
         cpActions = `<div class="wk-card-actions">
-            <button class="secondary icon-btn wk-booktime" onclick="event.stopPropagation(); quickTrackTime('${it.parent.id}', decodeURIComponent('${encodeURIComponent(it.obj.title||'')}'))" title="${t('today_book_time')}"><i class="fas fa-stopwatch"></i></button>
+            ${clBookBtnHtml(it.parent.id, it.obj.id)}
             <button class="secondary icon-btn wk-cp-complete" onclick="event.stopPropagation(); updateGlobalCl('task','${it.parent.id}',${_idx},'done',true); renderView();" title="${t('mark_done') || 'Abschließen'}"><i class="fas fa-check"></i></button>
         </div>`;
     }
@@ -12191,6 +12264,7 @@ function ttHeuteBook(iso){
         checkTaskCompletion(taskId, newStatus);
         const oldStatus = task.status;
         task.status = newStatus;
+        syncTaskPause(task, oldStatus);
         if (newStatus === 'done') {
             task.isPaused = false;
             if (!task.completedAt) { task.completedAt = Date.now(); triggerWorkflows('task_completed', { task }); }
@@ -12722,7 +12796,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         {
             key: 'columns', icon: 'fa-table-columns', get title() { return _t('onb_s_cols_t'); }, get hint() { return _t('onb_s_cols_h'); },
-            render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done').map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="${_t('onb_cols_ph')}">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> ${_t('col_completed')} <span>${_t('onb_system_default')}</span></div>`; },
+            render: () => { const cur = collected.columns || (appData.statuses || []).filter(s => s.id !== 'done' && s.id !== PAUSED_STATUS_ID).map(s => s.title); return `<textarea id="onb_cols" rows="4" placeholder="${_t('onb_cols_ph')}">${cur.join('\n')}</textarea><div class="onb-fixed-col"><i class="fas fa-lock"></i> ${_t('col_completed')} <span>${_t('onb_system_default')}</span></div>`; },
             save: () => { const lines = (document.getElementById('onb_cols').value || '').split('\n').map(s => s.trim()).filter(Boolean); if (lines.length) collected.columns = lines; }
         },
         {
@@ -12804,7 +12878,10 @@ document.addEventListener('DOMContentLoaded', () => {
             /* „Abgeschlossen" bleibt als fester System-Standard immer erhalten (ID 'done'). */
             const prevDone = (appData.statuses || []).find(s => s.id === 'done');
             cols.push(prevDone || { id: 'done', title: 'Abgeschlossen' });
-            appData.statuses = cols;
+            const prevPaused = (appData.statuses || []).find(s => s.id === PAUSED_STATUS_ID);
+            appData.statuses = cols.filter(c => (c.title || '').trim().toLowerCase() !== String(_t('status_paused')).toLowerCase() || c.id === 'done');
+            if (prevPaused) appData.statuses.unshift(prevPaused);
+            ensureFixedStatuses();
             ensureStatusColors();
         }
         if (collected.stakeholders) {
