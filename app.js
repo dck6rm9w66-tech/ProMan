@@ -1960,85 +1960,123 @@ function buildRatingDisplay(rating, count = 0, skipWrapper = false) {
     return h + `</div>${skipWrapper ? '' : '</div>'}`;
 }
 
+/* ============================================================
+   REITER „BEWERTUNG" (Aufgaben- und Stack-Dialog)
+   Gleiche Bedienung wie beim Abschluss: Gesamteindruck mit einem Tipp, Kategorien optional,
+   dazu ein optionaler Kommentar. Oben die Zusammenfassung (Ø, Balken je Kategorie),
+   darunter der Verlauf mit Kommentaren. Gespeichert wird mit „Speichern" im Dialog.
+   ============================================================ */
+let currentModalComment = '';
+function rtLabels() { return { comm: t('rate_comm'), time: t('rate_time'), qual: t('rate_qual'), team: t('rate_team'), crea: t('rate_crea'), satis: t('rate_satis') }; }
+/* Sterne als Anzeige mit Bruchteilen (z. B. 4,3) */
+function rtStaticStars(val, cls = '') {
+    const pct = Math.max(0, Math.min(100, (parseFloat(val) || 0) / 5 * 100));
+    const row = '<i class="fas fa-star"></i>'.repeat(5);
+    return `<span class="rt-sstars ${cls}" aria-label="${val} / 5"><span class="rt-sstars-bg">${row}</span><span class="rt-sstars-fg" style="width:${pct}%">${row}</span></span>`;
+}
+function rtFmt(v) { const n = parseFloat(v) || 0; try { return n.toLocaleString(ttLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }); } catch (e) { return n.toFixed(1); } }
+function rtEntityFor(containerId) {
+    const taskId = document.getElementById('taskId') ? document.getElementById('taskId').value : null;
+    const stackId = document.getElementById('s_id') ? document.getElementById('s_id').value : null;
+    if (containerId.startsWith('t_') && taskId) return appData.tasks.find(x => x.id === taskId) || null;
+    if (containerId.startsWith('s_') && stackId) return appData.projectStacks.find(x => x.id === stackId) || null;
+    return null;
+}
+
 function renderInteractiveRating(containerId, entityRating) {
     const container = document.getElementById(containerId);
     if(!container) return;
-    
     currentModalRating = { comm: null, time: null, qual: null, team: null, crea: null, satis: null };
+    currentModalComment = '';
     modalRatingChanged = false;
+    const labels = rtLabels();
 
     const existingContainer = document.getElementById(containerId + '_existing');
     if (existingContainer) {
-        let entity = null;
-        const taskId = document.getElementById('taskId') ? document.getElementById('taskId').value : null;
-        const stackId = document.getElementById('s_id') ? document.getElementById('s_id').value : null;
-        
-        if (containerId.startsWith('t_') && taskId) entity = appData.tasks.find(x => x.id === taskId);
-        if (containerId.startsWith('s_') && stackId) entity = appData.projectStacks.find(x => x.id === stackId);
-
-        let existingHtml = '';
+        const entity = rtEntityFor(containerId);
+        let html = '';
         if (entity && entity.ratingCount > 0 && entity.rating) {
-            let avg = getAvgRating(entity.rating);
-            
-            let historyHtml = '';
-            if (entity.ratingHistory && entity.ratingHistory.length > 0) {
-                historyHtml += `<div style="margin-top: 20px; text-align: left; border-top:1px solid var(--border-color); padding-top:15px;">
-                    <div style="font-weight:bold; font-size:11px; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">${_t('rating_history')}</div>`;
-                
-                entity.ratingHistory.sort((a,b) => b.date - a.date).forEach(rh => {
-                    const dateStr = new Date(rh.date).toLocaleString(ttLocale(), {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-                    const avgSingle = getAvgRating(rh.values);
-                    historyHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-color); padding:8px 12px; border-radius:4px; margin-bottom:5px; border:1px solid var(--border-color); font-size:12px;">
-                        <div>
-                            <span style="font-weight:bold; color:var(--text-main); margin-right:10px; min-width:45px; display:inline-block;">Ø ${avgSingle} <i class="fas fa-star" style="color:var(--warning); font-size:12px;"></i></span>
-                            <span style="color:var(--text-muted);"><i class="far fa-clock"></i> ${dateStr}</span>
+            const avg = getAvgRating(entity.rating);
+            const bars = RATE_CATS.map(c => {
+                const v = entity.rating[c];
+                if (v === undefined || v === null) return '';
+                return `<div class="rt-bar-row"><span class="rt-bar-lbl">${labels[c]}</span><span class="rt-bar"><span style="width:${Math.max(0, Math.min(100, v / 5 * 100))}%"></span></span><b class="rt-bar-val">${rtFmt(v)}</b></div>`;
+            }).join('');
+            html += `<div class="rt-summary">
+                <div class="rt-score">
+                    <div class="rt-avg">${rtFmt(avg)}</div>
+                    ${rtStaticStars(avg, 'rt-sstars-md')}
+                    <div class="rt-count">${_t('rating_based_on')} ${entity.ratingCount} ${entity.ratingCount > 1 ? _t('rating_many') : _t('rating_one')}</div>
+                </div>
+                <div class="rt-bars">${bars}</div>
+            </div>`;
+            if (entity.ratingHistory && entity.ratingHistory.length) {
+                html += `<div class="rt-sec-h"><i class="fas fa-clock-rotate-left"></i> ${String(_t('rating_history')).replace(/:\s*$/, '')}</div><div class="rt-hist">`;
+                entity.ratingHistory.slice().sort((x, y) => y.date - x.date).forEach(rh => {
+                    const dateStr = new Date(rh.date).toLocaleString(ttLocale(), { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const a1 = getAvgRating(rh.values);
+                    const chips = RATE_CATS.filter(c => rh.values && rh.values[c] > 0).map(c => `<span class="rt-chip" title="${labels[c]}">${labels[c].split(/\s|&/)[0]} <b>${rh.values[c]}</b></span>`).join('');
+                    html += `<div class="rt-h-item">
+                        <div class="rt-h-top">
+                            ${rtStaticStars(a1, 'rt-sstars-sm')}<b class="rt-h-avg">${rtFmt(a1)}</b>
+                            <span class="rt-h-date">${dateStr}</span>
+                            <button type="button" class="secondary icon-btn rt-h-del" onclick="deleteRating('${entity.id}', '${rh.id}', '${containerId}')" title="${_t('rating_delete_one')}" aria-label="${_t('rating_delete_one')}"><i class="fas fa-trash"></i></button>
                         </div>
-                        <button class="secondary icon-btn" style="color:var(--danger); padding:4px 6px; font-size:11px;" onclick="deleteRating('${entity.id}', '${rh.id}', '${containerId}')" title="${_t('rating_delete_one')}"><i class="fas fa-trash"></i></button>
+                        ${rh.comment ? `<div class="rt-h-comment"><i class="fas fa-quote-left"></i> ${escapeHtmlToday(rh.comment)}</div>` : ''}
+                        ${chips ? `<div class="rt-h-chips">${chips}</div>` : ''}
                     </div>`;
                 });
-                historyHtml += `</div>`;
+                html += `</div>`;
             }
-
-            existingHtml = `<div style="margin-bottom:20px; padding-bottom:15px; border-bottom:1px dashed var(--border-color); text-align:center;">
-                <div style="font-weight:bold; margin-bottom:10px; color:var(--text-muted); text-transform:uppercase; font-size:11px; letter-spacing:0.5px;">${_t('rating_avg_so_far')}</div>
-                <div style="font-size: 42px; font-weight: bold; color: var(--warning); display:flex; align-items:center; justify-content:center; gap:10px; line-height:1;">
-                    ${avg} <i class="fas fa-star" style="font-size:36px;"></i>
-                </div>
-                <div style="font-size: 11px; color: var(--text-muted); margin-top:8px; margin-bottom: 20px;">${_t('rating_based_on')} ${entity.ratingCount} ${entity.ratingCount>1?_t('rating_many'):_t('rating_one')}</div>
-                <div style="text-align:left; background:var(--surface-color); padding:15px; border-radius:var(--radius); border:1px solid var(--border-color);">${buildRatingDisplay(entity.rating, 0, true)}</div>
-                ${historyHtml}
-            </div>`;
         }
-        existingContainer.innerHTML = existingHtml;
+        existingContainer.innerHTML = html;
     }
 
-    let newHtml = `<div><div style="font-weight:bold; margin-bottom:10px;">${_t('rating_new')}</div><div style="display:grid; grid-template-columns: 1fr auto; gap: 8px; align-items:center;">`;
-    const labels = { comm: t('rate_comm'), time: t('rate_time'), qual: t('rate_qual'), team: t('rate_team'), crea: t('rate_crea'), satis: t('rate_satis') };
-    
-    for(let k in labels) {
-        newHtml += `<div><label style="font-size:13px;">${labels[k]}</label></div><div style="display:flex; gap:5px; align-items:center;" id="ir_stars_${k}">`;
-        newHtml += generateInteractiveStarRow(k, null, containerId);
-        newHtml += `</div>`;
-    }
-    newHtml += `</div></div>`;
-
-    container.innerHTML = newHtml;
+    container.innerHTML = `<div class="rt-new">
+        <div class="rt-sec-h"><i class="fas fa-plus"></i> ${String(_t('rating_new')).replace(/:\s*$/, '')}</div>
+        <div class="rate-overall">
+            <div class="rate-stars rate-stars-lg" id="${containerId}_ov" role="radiogroup"></div>
+            <div class="rate-word" id="${containerId}_word"></div>
+        </div>
+        <button type="button" class="secondary rate-more" id="${containerId}_more" onclick="mrToggleDetails('${containerId}')" aria-expanded="false">
+            <span>${_t('rate_details_toggle')}</span> <i class="fas fa-chevron-down"></i>
+        </button>
+        <div class="rate-details" id="${containerId}_det" hidden>
+            ${RATE_CATS.map(c => `<div class="rate-row"><label>${labels[c]}</label><div class="rate-stars" id="${containerId}_st_${c}" role="radiogroup"></div></div>`).join('')}
+        </div>
+        <label class="rt-cmt-lbl" for="${containerId}_cmt">${_t('rate_comment')} <span>${_t('rate_optional')}</span></label>
+        <textarea id="${containerId}_cmt" class="rt-cmt" rows="3" maxlength="1000" placeholder="${_t('rate_comment_ph')}" oninput="currentModalComment=this.value"></textarea>
+        <div class="rt-hint" id="${containerId}_hint">${_t('rate_tab_hint')}</div>
+    </div>`;
+    mrDraw(containerId);
 }
-
-function generateInteractiveStarRow(cat, val, containerId) {
-    let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setModalRating('${containerId}', '${cat}', 0)" title="${_t('stars_0')}"></i>`;
-    for(let i=1; i<=5; i++) {
-        let cls = 'far fa-star';
-        if(val !== null && val >= i) cls = 'fas fa-star';
-        else if(val !== null && val >= i - 0.5) cls = 'fas fa-star-half-alt';
-        html += `<i class="${cls}" style="cursor:pointer; color:var(--warning); font-size:18px; transition:0.2s;" onclick="setModalRating('${containerId}', '${cat}', ${i})"></i>`;
-    }
-    return html;
+function mrStarsHtml(cid, key, val, big) {
+    let h = '';
+    for (let i = 1; i <= 5; i++) h += `<button type="button" class="secondary rate-star${val >= i ? ' on' : ''}" role="radio" aria-checked="${val === i}" aria-label="${i} / 5 – ${_t('rate_w' + i)}" title="${_t('rate_w' + i)}" onclick="${big ? `mrSetOverall('${cid}', ${i})` : `setModalRating('${cid}', '${key}', ${i})`}"><i class="fas fa-star"></i></button>`;
+    if (!big) h += `<button type="button" class="secondary rate-clear${val > 0 ? '' : ' off'}" onclick="setModalRating('${cid}', '${key}', null)" title="${_t('rate_clear')}" aria-label="${_t('rate_clear')}"><i class="fas fa-xmark"></i></button>`;
+    return h;
 }
-
+function mrOverall() {
+    const v = RATE_CATS.map(c => currentModalRating[c]).filter(x => x !== null && x !== undefined && x > 0);
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0;
+}
+function mrDraw(cid) {
+    const ov = mrOverall();
+    const o = document.getElementById(cid + '_ov'); if (o) o.innerHTML = mrStarsHtml(cid, '', ov, true);
+    const w = document.getElementById(cid + '_word'); if (w) { w.textContent = ov ? _t('rate_w' + ov) : _t('rate_tap_hint'); w.classList.toggle('muted', !ov); }
+    RATE_CATS.forEach(c => { const el = document.getElementById(`${cid}_st_${c}`); if (el) el.innerHTML = mrStarsHtml(cid, c, currentModalRating[c] || 0, false); });
+    const hint = document.getElementById(cid + '_hint'); if (hint) hint.classList.toggle('on', ov > 0);
+    if (hint) hint.textContent = ov > 0 ? _t('rate_tab_pending') : _t('rate_tab_hint');
+}
+function mrSetOverall(cid, val) { RATE_CATS.forEach(c => { currentModalRating[c] = val; }); modalRatingChanged = true; mrDraw(cid); }
+function mrToggleDetails(cid) {
+    const det = document.getElementById(cid + '_det'), mb = document.getElementById(cid + '_more'); if (!det) return;
+    det.hidden = !det.hidden; if (mb) mb.setAttribute('aria-expanded', String(!det.hidden));
+}
 function setModalRating(containerId, cat, val) {
-    currentModalRating[cat] = val; modalRatingChanged = true;
-    document.getElementById(`ir_stars_${cat}`).innerHTML = generateInteractiveStarRow(cat, val, containerId);
+    currentModalRating[cat] = (val === null || val === undefined) ? null : val;
+    modalRatingChanged = RATE_CATS.some(c => currentModalRating[c] > 0);
+    mrDraw(containerId);
 }
 
 function recalculateEntityRating(entity) {
@@ -2061,23 +2099,36 @@ function recalculateEntityRating(entity) {
     entity.rating = newAvg; entity.ratingCount = entity.ratingHistory.length;
 }
 
+let _rtLastDeleted = null;
 function deleteRating(entityId, ratingId, containerId) {
-    if(!confirm(_t('rating_confirm_delete'))) return;
     let entity = appData.tasks.find(t => t.id === entityId) || appData.projectStacks.find(s => s.id === entityId);
     if(!entity || !entity.ratingHistory) return;
-
-    entity.ratingHistory = entity.ratingHistory.filter(rh => rh.id !== ratingId);
-    recalculateEntityRating(entity); saveToLocal();
-    renderInteractiveRating(containerId, entity.rating); renderView(); showToast(_t('rating_deleted'));
+    const idx = entity.ratingHistory.findIndex(rh => rh.id === ratingId); if (idx < 0) return;
+    const removed = entity.ratingHistory.splice(idx, 1)[0];
+    _rtLastDeleted = { entityId, containerId, entry: removed };
+    recalculateEntityRating(entity); saveToLocal(true);
+    renderInteractiveRating(containerId, entity.rating); renderView();
+    _rawToast(`${escapeHtmlToday(_t('rating_deleted'))} <button type="button" class="secondary toast-undo" onclick="undoDeleteRating(this)">${_t('undo')}</button>`, 'success');
+}
+function undoDeleteRating(btn) {
+    const d = _rtLastDeleted; if (!d) return;
+    const entity = appData.tasks.find(t => t.id === d.entityId) || appData.projectStacks.find(s => s.id === d.entityId); if (!entity) return;
+    if (!entity.ratingHistory) entity.ratingHistory = [];
+    entity.ratingHistory.push(d.entry); _rtLastDeleted = null;
+    recalculateEntityRating(entity); saveToLocal(true);
+    if (document.getElementById(d.containerId)) renderInteractiveRating(d.containerId, entity.rating);
+    renderView();
+    const tst = btn && btn.closest('.toast'); if (tst) tst.remove();
 }
 
-function addRatingToEntity(entity, newRatingsObj) {
+function addRatingToEntity(entity, newRatingsObj, comment = '') {
     if(!entity.ratingHistory) entity.ratingHistory = [];
     const cats = ['comm', 'time', 'qual', 'team', 'crea', 'satis']; let hasValues = false;
-    cats.forEach(c => { if(newRatingsObj[c] !== null && newRatingsObj[c] !== undefined && newRatingsObj[c] >= 0) hasValues = true; });
+    cats.forEach(c => { if(newRatingsObj[c] !== null && newRatingsObj[c] !== undefined && newRatingsObj[c] > 0) hasValues = true; });
     if(!hasValues) return;
-
-    entity.ratingHistory.push({ id: generateId(), date: Date.now(), values: { ...newRatingsObj } });
+    const entry = { id: generateId(), date: Date.now(), values: { ...newRatingsObj } };
+    const cm = String(comment || '').trim(); if (cm) entry.comment = cm.slice(0, 1000);
+    entity.ratingHistory.push(entry);
     recalculateEntityRating(entity);
 }
 
@@ -3397,6 +3448,7 @@ function openRatingModal(type, id) {
     const kd = document.getElementById('rate_entity_kind'); if (kd) kd.textContent = type === 'task' ? _t('rate_kind_task') : _t('rate_kind_stack');
     const det = document.getElementById('rate_details'); if (det) det.hidden = true;
     const mb = document.getElementById('rate_more_btn'); if (mb) mb.setAttribute('aria-expanded', 'false');
+    const cmt = document.getElementById('rate_comment'); if (cmt) cmt.value = '';
     m.classList.add('active'); drawCompletionStars();
     setTimeout(() => { const f = m.querySelector('#stars_overall .rate-star'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }, 60);
 }
@@ -3429,7 +3481,7 @@ function drawCompletionStars() {
 }
 function saveRating() {
     if(!currentRatingEntity) return; const { type, id } = currentRatingEntity; let entity = type === 'task' ? appData.tasks.find(t => t.id === id) : appData.projectStacks.find(s => s.id === id);
-    if(entity) { addRatingToEntity(entity, currentRatings); saveToLocal(); showToast(_t('rate_saved_toast')); }
+    if(entity) { const _c = document.getElementById('rate_comment'); addRatingToEntity(entity, currentRatings, _c ? _c.value : ''); saveToLocal(); showToast(_t('rate_saved_toast')); }
     closeRatingModal();
 }
 
@@ -3822,7 +3874,7 @@ function saveStack() {
               if (_new === 'completed') setTimeout(() => openRatingModal('stack', id), 400);
               sData.status = _new;
           } }
-        if(modalRatingChanged) { let targetEntity = appData.projectStacks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
+        if(modalRatingChanged) { let targetEntity = appData.projectStacks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating, currentModalComment); }
         if(sData.status === 'completed' && !sData.completedAt) { sData.completedAt = Date.now(); triggerWorkflows('stack_completed', { stack: sData }); }
         if(sData.status !== 'completed') { delete sData.completedAt; }
         logActivity('fa-folder', (existingStack ? t('act_stack_edited') : t('act_stack_created')).replace('{n}', sData.name || ''));
@@ -4244,7 +4296,7 @@ function saveTask() {
             triggerWorkflows('task_created', { task: taskData });
         }
 
-        if(modalRatingChanged) { let targetEntity = appData.tasks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
+        if(modalRatingChanged) { let targetEntity = appData.tasks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating, currentModalComment); }
         if (newStatus === 'done' && !taskData.completedAt) { taskData.completedAt = Date.now(); triggerWorkflows('task_completed', { task: taskData }); } else if (newStatus !== 'done') { delete taskData.completedAt; }
         syncTaskPause(taskData, oldStatus, !!oldStatus);
         if(oldStatus && oldStatus !== newStatus) { triggerWorkflows('task_status_changed', { task: taskData, oldStatus, newStatus }); }

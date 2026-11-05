@@ -3489,3 +3489,50 @@ button.rate-more[aria-expanded="true"] i{ transform:rotate(180deg); }
   .rate-row{ flex-direction:column; align-items:flex-start; gap:2px; }
   .rate-stars button.rate-star{ width:38px; height:38px; font-size:20px; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   REITER „BEWERTUNG" – Zusammenfassung · Verlauf · neue Bewertung
+   ═══════════════════════════════════════════════════════════ */
+.rt-wrap{ display:flex; flex-direction:column; gap:14px; }
+.rt-title{ margin:0; font-size:15px; display:flex; align-items:center; gap:8px; }
+.rt-title i{ color:var(--warning); }
+.rt-summary{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; padding:16px; border:1px solid var(--border-color); border-radius:14px; background:var(--surface-color); }
+.rt-score{ display:flex; flex-direction:column; align-items:center; gap:4px; min-width:120px; padding-right:18px; border-right:1px solid var(--border-color); }
+.rt-avg{ font-size:40px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+.rt-count{ font-size:11px; color:var(--text-muted); text-align:center; }
+.rt-bars{ display:flex; flex-direction:column; gap:7px; min-width:0; }
+.rt-bar-row{ display:grid; grid-template-columns:minmax(0,1fr) 110px 28px; align-items:center; gap:10px; font-size:12px; }
+.rt-bar-lbl{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-muted); }
+.rt-bar{ height:7px; border-radius:99px; background:var(--bg-color); overflow:hidden; }
+.rt-bar > span{ display:block; height:100%; border-radius:99px; background:var(--warning); }
+.rt-bar-val{ text-align:right; font-size:12px; }
+/* Sterne mit Bruchteilen */
+.rt-sstars{ position:relative; display:inline-block; white-space:nowrap; line-height:1; font-size:13px; letter-spacing:2px; }
+.rt-sstars-bg{ color:color-mix(in srgb, var(--text-muted) 30%, transparent); }
+.rt-sstars-fg{ position:absolute; left:0; top:0; overflow:hidden; color:var(--warning); }
+.rt-sstars-md{ font-size:16px; }
+.rt-sstars-sm{ font-size:11px; letter-spacing:1px; }
+.rt-sec-h{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); display:flex; align-items:center; gap:6px; margin:2px 0 8px; }
+.rt-hist{ display:flex; flex-direction:column; gap:6px; }
+.rt-h-item{ padding:9px 10px 9px 12px; border:1px solid var(--border-color); border-radius:12px; background:var(--surface-color); }
+.rt-h-top{ display:flex; align-items:center; gap:8px; }
+.rt-h-avg{ font-size:13px; }
+.rt-h-date{ font-size:11.5px; color:var(--text-muted); }
+button.rt-h-del{ margin-left:auto; width:28px; height:28px; min-width:0; min-height:0; padding:0 !important; display:inline-grid; place-items:center; font-size:11px; color:var(--text-muted) !important; border-radius:50% !important; }
+button.rt-h-del:hover{ color:var(--danger) !important; }
+.rt-h-comment{ margin-top:6px; font-size:13px; line-height:1.45; white-space:pre-wrap; }
+.rt-h-comment i{ font-size:10px; color:var(--text-muted); margin-right:4px; vertical-align:top; }
+.rt-h-chips{ display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
+.rt-chip{ font-size:10.5px; padding:2px 7px; border-radius:99px; background:var(--bg-color); color:var(--text-muted); }
+.rt-chip b{ color:var(--text-main); }
+.rt-new{ padding:14px; border:1px dashed var(--border-color); border-radius:14px; }
+.rt-cmt-lbl{ display:block; margin:14px 0 6px; font-size:12.5px; font-weight:600; }
+.rt-cmt-lbl span{ font-weight:400; color:var(--text-muted); }
+textarea.rt-cmt{ width:100%; box-sizing:border-box; resize:vertical; min-height:56px; font-size:13px; line-height:1.4; }
+.rt-hint{ margin-top:8px; font-size:11.5px; color:var(--text-muted); }
+.rt-hint.on{ color:var(--success); font-weight:600; }
+@media (max-width:599px){
+  .rt-summary{ grid-template-columns:1fr; gap:12px; }
+  .rt-score{ border-right:none; padding-right:0; border-bottom:1px solid var(--border-color); padding-bottom:12px; }
+  .rt-bar-row{ grid-template-columns:minmax(0,1fr) 80px 26px; }
+}
