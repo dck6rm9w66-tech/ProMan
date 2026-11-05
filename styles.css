@@ -3599,3 +3599,19 @@ h2 .wk-rate-chip, h3 .wk-rate-chip{ font-size:12px !important; }
   .dep-levels .dep-sort select{ min-height:0 !important; height:auto !important; }
 }
 @media (hover:none){ .dep-hint{ display:none !important; } }
+
+/* ===== Rechter Status-Streifen für Kacheln (Notizen, Stacks, Checklisten, Milestones, Stakeholder, Buckets)
+   – gleiche Optik wie Kanban/Hub (.task-card::after). Ersetzt den grauen Strich links. ===== */
+.wk-sstrip{ position:relative; padding-right:17px !important; }
+.wk-sstrip.sm{ padding-right:13px !important; }
+.wk-sstrip::after{ content:''; position:absolute; right:-1px; top:-1px; bottom:-1px; width:5px; pointer-events:none;
+  background:var(--card-strip, var(--border-color));
+  border-top-right-radius:inherit; border-bottom-right-radius:inherit; }
+.wk-sstrip.sm::after{ width:4px; }
+.notes-left-pane .draggable-item.wk-sstrip{ border-left-width:1px !important; padding-right:18px !important; }
+.notes-left-pane .draggable-item.wk-sstrip.is-active{ border-color:var(--wk-graphite-2) !important; }
+
+/* Buchungs-Historie: Datum nie umbrechen, Spalte etwas breiter */
+.tt-log-table th.tt-log-date, .tt-log-table td.tt-log-date{ white-space:nowrap; min-width:116px; width:116px; padding-right:18px; font-variant-numeric:tabular-nums; }
+@media (max-width:1088px){ .tt-log-table th.tt-log-date, .tt-log-table td.tt-log-date{ width:auto; min-width:0; } }
+.cl-grp-title{ min-width:0; overflow-wrap:anywhere; }
