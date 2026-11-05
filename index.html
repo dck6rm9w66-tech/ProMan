@@ -34,7 +34,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261105-63">
+    <link rel="stylesheet" href="styles.css?v=20261105-64">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -323,18 +323,34 @@
                 <h3 data-i18n="modal_rate">Bewertung abgeben</h3>
                 <button class="secondary icon-btn modal-close-btn" onclick="closeRatingModal()"><i class="fas fa-times"></i></button>
             </div>
-            <div class="modal-body-simple">
-                <p style="font-size:13px; color:var(--text-muted); margin-bottom:20px;" data-i18n="modal_rate_desc">Du hast dieses Projekt/Aufgabe abgeschlossen. Wie lief es?</p>
-                <div style="display:grid; grid-template-columns: 1fr auto; gap: 15px; align-items:center;">
-                    <label data-i18n="rate_comm">Kommunikation & Transparenz</label><div id="stars_comm" style="display:flex; gap:5px; align-items:center;"></div>
-                    <label data-i18n="rate_time">Einhaltung von Zeitplänen</label><div id="stars_time" style="display:flex; gap:5px; align-items:center;"></div>
-                    <label data-i18n="rate_qual">Qualität der Ergebnisse</label><div id="stars_qual" style="display:flex; gap:5px; align-items:center;"></div>
-                    <label data-i18n="rate_team">Zusammenarbeit & Teamdynamik</label><div id="stars_team" style="display:flex; gap:5px; align-items:center;"></div>
-                    <label data-i18n="rate_crea">Kreativität & Innovation</label><div id="stars_crea" style="display:flex; gap:5px; align-items:center;"></div>
-                    <label data-i18n="rate_satis">Kundenzufriedenheit</label><div id="stars_satis" style="display:flex; gap:5px; align-items:center;"></div>
+            <div class="modal-body-simple rate-body">
+                <!-- Was wurde abgeschlossen? -->
+                <div class="rate-hero">
+                    <div class="rate-hero-ic"><i class="fas fa-flag-checkered"></i></div>
+                    <div style="min-width:0;">
+                        <div class="rate-hero-kind" id="rate_entity_kind"></div>
+                        <div class="rate-hero-name" id="rate_entity_name"></div>
+                    </div>
+                </div>
+                <p class="rate-q" data-i18n="modal_rate_desc">Du hast dieses Projekt/Aufgabe abgeschlossen. Wie lief es?</p>
+                <!-- Ein Tipp genügt: Gesamteindruck setzt alle Kategorien -->
+                <div class="rate-overall">
+                    <div class="rate-stars rate-stars-lg" id="stars_overall" role="radiogroup"></div>
+                    <div class="rate-word" id="rate_word_overall"></div>
+                </div>
+                <button type="button" class="secondary rate-more" id="rate_more_btn" onclick="toggleRateDetails()" aria-expanded="false">
+                    <span data-i18n="rate_details_toggle">Einzeln bewerten</span> <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="rate-details" id="rate_details" hidden>
+                    <div class="rate-row"><label data-i18n="rate_comm">Kommunikation & Transparenz</label><div class="rate-stars" id="stars_comm" role="radiogroup"></div></div>
+                    <div class="rate-row"><label data-i18n="rate_time">Einhaltung von Zeitplänen</label><div class="rate-stars" id="stars_time" role="radiogroup"></div></div>
+                    <div class="rate-row"><label data-i18n="rate_qual">Qualität der Ergebnisse</label><div class="rate-stars" id="stars_qual" role="radiogroup"></div></div>
+                    <div class="rate-row"><label data-i18n="rate_team">Zusammenarbeit & Teamdynamik</label><div class="rate-stars" id="stars_team" role="radiogroup"></div></div>
+                    <div class="rate-row"><label data-i18n="rate_crea">Kreativität & Innovation</label><div class="rate-stars" id="stars_crea" role="radiogroup"></div></div>
+                    <div class="rate-row"><label data-i18n="rate_satis">Kundenzufriedenheit</label><div class="rate-stars" id="stars_satis" role="radiogroup"></div></div>
                 </div>
             </div>
-            <div class="modal-footer" style="justify-content: flex-end;"><button class="secondary" onclick="closeRatingModal()" data-i18n="rate_skip">Überspringen</button><button onclick="saveRating()" data-i18n="save">Speichern</button></div>
+            <div class="modal-footer" style="justify-content: flex-end;"><button class="secondary" onclick="closeRatingModal()" data-i18n="rate_skip">Überspringen</button><button id="rate_save_btn" onclick="saveRating()" disabled><i class="fas fa-star"></i> <span data-i18n="rate_save">Bewertung speichern</span></button></div>
         </div>
     </div>
 
@@ -1323,8 +1339,8 @@
     <!-- Eigenes JavaScript -->
     <!-- Motion (Framer-Motion-Engine als Vanilla-JS) für die UI-Animationen -->
     <script src="https://cdn.jsdelivr.net/npm/motion@12.23.24/dist/motion.js"></script>
-    <script src="i18n.js?v=20261105-63"></script>
-    <script src="app.js?v=20261105-63"></script>
+    <script src="i18n.js?v=20261105-64"></script>
+    <script src="app.js?v=20261105-64"></script>
 
 </body>
 </html>

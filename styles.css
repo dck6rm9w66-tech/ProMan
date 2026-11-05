@@ -3444,3 +3444,48 @@ button.cl-book.cl-book-abs{ position:absolute; right:6px; top:50%; transform:tra
 
 /* „Rückgängig" im Hinweis */
 .toast button.toast-undo{ margin-left:10px; padding:4px 10px !important; min-height:0; height:auto; font-size:12px; font-weight:700; border-radius:8px !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   BEWERTUNG beim Abschluss – ein Tipp auf den Gesamteindruck genügt,
+   Einzelkategorien optional aufklappbar. Sterne sind echte Knöpfe (Tastatur, Screenreader),
+   Vorschau beim Überfahren, grosse Tippflächen am Handy.
+   ═══════════════════════════════════════════════════════════ */
+.rate-body{ padding-top:4px; }
+.rate-hero{ display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+.rate-hero-ic{ flex:none; width:42px; height:42px; border-radius:12px; display:grid; place-items:center; background:var(--wk-magnet, #FFC93C); color:#22262B; font-size:17px; }
+.rate-hero-kind{ font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--success); }
+.rate-hero-name{ font-size:16px; font-weight:800; line-height:1.25; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.rate-q{ font-size:13px; color:var(--text-muted); margin:0 0 14px; }
+.rate-overall{ display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 10px 12px; border-radius:14px; background:var(--bg-color); }
+.rate-word{ font-size:13px; font-weight:700; min-height:18px; }
+.rate-word.muted{ font-weight:500; color:var(--text-muted); }
+.rate-stars{ display:inline-flex; align-items:center; gap:2px; }
+.rate-stars button.rate-star{ width:32px; height:32px; min-width:0; min-height:0; padding:0 !important; border:none !important; background:transparent !important; box-shadow:none !important;
+  display:inline-grid; place-items:center; font-size:18px; color:color-mix(in srgb, var(--text-muted) 35%, transparent) !important; cursor:pointer; transform:none !important;
+  transition:color .12s, transform .12s; border-radius:8px !important; }
+.rate-stars button.rate-star.on{ color:var(--warning) !important; }
+/* Vorschau: beim Überfahren bis zum Stern unter dem Zeiger füllen */
+@media (hover:hover){
+  .rate-stars:hover button.rate-star{ color:var(--warning) !important; }
+  .rate-stars button.rate-star:hover ~ button.rate-star{ color:color-mix(in srgb, var(--text-muted) 35%, transparent) !important; }
+  .rate-stars button.rate-star:hover{ transform:scale(1.15) !important; }
+}
+.rate-stars button.rate-star:focus-visible{ outline:2px solid var(--wk-magnet, #FFC93C); outline-offset:1px; }
+.rate-stars-lg button.rate-star{ width:46px; height:46px; font-size:30px; }
+.rate-stars button.rate-clear{ width:26px; height:26px; min-width:0; min-height:0; padding:0 !important; margin-left:4px; border:none !important; background:transparent !important;
+  display:inline-grid; place-items:center; font-size:12px; color:var(--text-muted) !important; border-radius:50% !important; }
+.rate-stars button.rate-clear.off{ visibility:hidden; }
+.rate-stars button.rate-clear:hover{ background:var(--bg-color) !important; color:var(--text-main) !important; }
+button.rate-more{ display:flex; align-items:center; gap:6px; margin:12px auto 0; padding:6px 12px !important; font-size:12.5px; font-weight:600; border-radius:999px !important; }
+button.rate-more i{ font-size:10px; transition:transform .2s; }
+button.rate-more[aria-expanded="true"] i{ transform:rotate(180deg); }
+.rate-details{ margin-top:10px; border-top:1px solid var(--border-color); }
+.rate-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color); }
+.rate-row:last-child{ border-bottom:none; }
+.rate-row label{ font-size:13px; min-width:0; }
+#rate_save_btn:disabled{ opacity:.45; cursor:not-allowed; }
+@media (max-width:599px){
+  .rate-stars-lg button.rate-star{ width:52px; height:52px; font-size:32px; }
+  .rate-row{ flex-direction:column; align-items:flex-start; gap:2px; }
+  .rate-stars button.rate-star{ width:38px; height:38px; font-size:20px; }
+}

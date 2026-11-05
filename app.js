@@ -1749,7 +1749,7 @@ function setTaskState(id, action) {
     if(action === 'complete') {
         task.status = 'done'; task.isPaused = false;
         if(!task.completedAt) task.completedAt = Date.now();
-        triggerWorkflows('task_completed', { task }); showToast(t('toast_saved')); if (uiAtLeast('pro')) openRatingModal('task', id);
+        triggerWorkflows('task_completed', { task }); showToast(t('toast_saved')); openRatingModal('task', id);
     }
     if(action === 'reopen') { task.status = firstWorkStatus(); delete task.completedAt; }
     syncTaskPause(task, oldStatus);
@@ -3383,32 +3383,53 @@ function triggerWorkflows(eventName, context) {
 function checkTaskCompletion(taskId, newStatusId) {
     if(!appData.statuses.length) return; const lastStatusId = appData.statuses[appData.statuses.length-1].id;
     const task = appData.tasks.find(t_obj => t_obj.id === taskId); const oldStatus = task ? task.status : null;
-    if(newStatusId === lastStatusId && oldStatus !== lastStatusId && uiAtLeast('pro')) { setTimeout(() => { openRatingModal('task', taskId); }, 500); }
+    if(newStatusId === lastStatusId && oldStatus !== lastStatusId) { setTimeout(() => { openRatingModal('task', taskId); }, 500); }
 }
-function openRatingModal(type, id) { currentRatingEntity = { type, id }; currentRatings = { comm: null, time: null, qual: null, team: null, crea: null, satis: null }; document.getElementById('ratingModal').classList.add('active'); drawCompletionStars(); }
+/* Bewertung beim Abschluss (Aufgaben + Stacks), in allen Ansicht-Modi.
+   Ein Tipp auf den Gesamteindruck setzt alle Kategorien; „Einzeln bewerten" klappt sie auf. */
+const RATE_CATS = ['comm', 'time', 'qual', 'team', 'crea', 'satis'];
+function openRatingModal(type, id) {
+    const ent = type === 'task' ? (appData.tasks || []).find(x => x.id === id) : (appData.projectStacks || []).find(x => x.id === id);
+    if (!ent) return;
+    const m = document.getElementById('ratingModal'); if (!m) return;
+    currentRatingEntity = { type, id }; currentRatings = { comm: null, time: null, qual: null, team: null, crea: null, satis: null };
+    const nm = document.getElementById('rate_entity_name'); if (nm) nm.textContent = type === 'task' ? (ent.projectName || _t('unnamed')) : (ent.name || _t('unnamed'));
+    const kd = document.getElementById('rate_entity_kind'); if (kd) kd.textContent = type === 'task' ? _t('rate_kind_task') : _t('rate_kind_stack');
+    const det = document.getElementById('rate_details'); if (det) det.hidden = true;
+    const mb = document.getElementById('rate_more_btn'); if (mb) mb.setAttribute('aria-expanded', 'false');
+    m.classList.add('active'); drawCompletionStars();
+    setTimeout(() => { const f = m.querySelector('#stars_overall .rate-star'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }, 60);
+}
+function toggleRateDetails() {
+    const det = document.getElementById('rate_details'), mb = document.getElementById('rate_more_btn'); if (!det) return;
+    det.hidden = !det.hidden; if (mb) mb.setAttribute('aria-expanded', String(!det.hidden));
+}
+function rateOverallValue() {
+    const v = RATE_CATS.map(c => currentRatings[c]).filter(x => x !== null && x !== undefined && x > 0);
+    return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : 0;
+}
+function setOverallRating(val) { RATE_CATS.forEach(c => { currentRatings[c] = val; }); drawCompletionStars(); }
+function rateStarsHtml(key, val, onPick, big) {
+    let h = '';
+    for (let i = 1; i <= 5; i++) h += `<button type="button" class="secondary rate-star${val >= i ? ' on' : ''}" role="radio" aria-checked="${val === i}" aria-label="${i} / 5 – ${_t('rate_w' + i)}" title="${_t('rate_w' + i)}" onclick="${onPick}(${key ? `'${key}', ` : ''}${i})"><i class="fas fa-star"></i></button>`;
+    if (!big) h += `<button type="button" class="secondary rate-clear${val > 0 ? '' : ' off'}" onclick="${onPick}('${key}', null)" title="${_t('rate_clear')}" aria-label="${_t('rate_clear')}"><i class="fas fa-xmark"></i></button>`;
+    return h;
+}
 function closeRatingModal() { document.getElementById('ratingModal').classList.remove('active'); currentRatingEntity = null; renderView(); }
-function setStar(cat, val) { currentRatings[cat] = val; drawCompletionStars(); }
+function setStar(cat, val) { currentRatings[cat] = (val === null || val === undefined) ? null : val; drawCompletionStars(); }
 
 function drawCompletionStars() {
-    const cats = ['comm', 'time', 'qual', 'team', 'crea', 'satis'];
-    cats.forEach(c => {
-        const container = document.getElementById(`stars_${c}`);
-        if(container) {
-            let val = currentRatings[c]; let html = `<i class="fas fa-ban" style="color:var(--danger); cursor:pointer; font-size:14px; margin-right:8px;" onclick="setStar('${c}', 0)" title="${_t('stars_0')}"></i>`;
-            for(let i=1; i<=5; i++) {
-                let cls = 'far fa-star';
-                if(val !== null && val >= i) cls = 'fas fa-star';
-                else if(val !== null && val >= i - 0.5) cls = 'fas fa-star-half-alt';
-                html += `<i class="${cls}" style="cursor:pointer; color:var(--warning); margin-right:2px; font-size:16px;" onclick="setStar('${c}', ${i})"></i>`;
-            }
-            container.innerHTML = html;
-        }
-    });
+    const ov = rateOverallValue();
+    const oEl = document.getElementById('stars_overall');
+    if (oEl) oEl.innerHTML = rateStarsHtml('', ov, 'setOverallRating', true);
+    const w = document.getElementById('rate_word_overall');
+    if (w) { w.textContent = ov ? _t('rate_w' + ov) : _t('rate_tap_hint'); w.classList.toggle('muted', !ov); }
+    RATE_CATS.forEach(c => { const el = document.getElementById(`stars_${c}`); if (el) el.innerHTML = rateStarsHtml(c, currentRatings[c] || 0, 'setStar', false); });
+    const sb = document.getElementById('rate_save_btn'); if (sb) sb.disabled = !RATE_CATS.some(c => currentRatings[c] > 0);
 }
-
 function saveRating() {
     if(!currentRatingEntity) return; const { type, id } = currentRatingEntity; let entity = type === 'task' ? appData.tasks.find(t => t.id === id) : appData.projectStacks.find(s => s.id === id);
-    if(entity) { addRatingToEntity(entity, currentRatings); saveToLocal(); showToast(t('toast_saved')); }
+    if(entity) { addRatingToEntity(entity, currentRatings); saveToLocal(); showToast(_t('rate_saved_toast')); }
     closeRatingModal();
 }
 
@@ -3798,6 +3819,7 @@ function saveStack() {
               const _st = appData.projectStacks.find(x => x.id === id) || sData; _st.status = _new;
               if (_new === 'paused') triggerWorkflows('stack_paused', { stack: _st });
               if (_new === 'active' && idx > -1) triggerWorkflows('stack_resumed', { stack: _st });
+              if (_new === 'completed') setTimeout(() => openRatingModal('stack', id), 400);
               sData.status = _new;
           } }
         if(modalRatingChanged) { let targetEntity = appData.projectStacks.find(x => x.id === id); if(targetEntity) addRatingToEntity(targetEntity, currentModalRating); }
@@ -3830,7 +3852,7 @@ function setStackStatus(id, newStatus) {
         { const _sm = { paused: ['fa-pause', t('act_stack_paused')], active: ['fa-play', t('act_stack_resumed')], completed: ['fa-check', t('act_stack_done')] };
           if(_sm[newStatus]) logActivity(_sm[newStatus][0], _sm[newStatus][1].replace('{n}', stack.name || '')); }
         saveToLocal(); if(document.getElementById('stackModal').classList.contains('active')) { openStackModal(id); } renderView();
-        if(newStatus === 'completed') { showToast(_t('stack_completed_toast')); if (uiAtLeast('pro')) openRatingModal('stack', id); } 
+        if(newStatus === 'completed') { showToast(_t('stack_completed_toast')); openRatingModal('stack', id); } 
     }
 }
 
