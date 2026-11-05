@@ -3556,3 +3556,18 @@ h2 .wk-rate-chip, h3 .wk-rate-chip{ font-size:12px !important; }
   .wk-list-table td[data-c="name"] > .wk-rate-chip{ align-self:flex-start; margin:4px 0 0 !important; }
   .wk-list-table tr.wk-list-stack td[data-c="name"] > .wk-rate-chip{ align-self:center; margin:0 !important; }
 }
+
+/* ===== Hub-Held im Medium-Modus: ohne Kennzahlen-Ringe & Ticker → kompakte Zeile ===== */
+.wk-hero.compact.wk-hero-lean{ padding:20px 28px; }
+.wk-hero-lean .wk-hero-left{ display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"eye eye eye" "num track acts" "num note acts"; column-gap:28px; row-gap:6px; align-items:center; }
+.wk-hero-lean .wk-hero-eyebrow{ grid-area:eye; }
+.wk-hero-lean .wk-hero-num{ grid-area:num; margin:0 !important; }
+.wk-hero-lean .wk-hero-track{ grid-area:track; max-width:520px; width:100%; margin:0; align-self:end; }
+.wk-hero-lean .wk-hero-note{ grid-area:note; margin:0 !important; align-self:start; }
+.wk-hero-lean .wk-hero-acts{ grid-area:acts; margin:0 !important; padding:0 !important; }
+@media (max-width:760px){
+  .wk-hero.compact.wk-hero-lean{ padding:18px; }
+  .wk-hero-lean .wk-hero-left{ grid-template-columns:minmax(0,1fr); grid-template-areas:"eye" "num" "track" "note" "acts"; row-gap:8px; }
+  .wk-hero-lean .wk-hero-track{ max-width:none; }
+  .wk-hero-lean .wk-hero-acts{ margin-top:4px !important; }
+}

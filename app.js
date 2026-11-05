@@ -11613,8 +11613,10 @@ function renderToday(c) {
     let html = `<div class="wk-today">`;
 
     /* Held: gebuchte Zeit als physische Schiene — volle Breite */
+    /* Medium/Basic: Held ohne Kennzahlen-Ringe (wk-hero-stats) und Aktivitäts-Ticker, Hub ohne Widgets */
+    const hubPro = uiAtLeast('pro');
     const ring = (p, label, sub, cls) => `<div class="wk-stat"><div class="wk-stat-ring ${cls||''}" style="--p:${p}"><span>${p}<u>%</u></span></div><div class="wk-stat-txt"><b>${label}</b><u>${sub}</u></div></div>`;
-    html += `<section class="wk-hero compact">
+    html += `<section class="wk-hero compact${hubPro ? '' : ' wk-hero-lean'}">
         <div class="wk-hero-left">
             <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
             <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
@@ -11630,7 +11632,7 @@ function renderToday(c) {
                 <button class="wk-hero-cta" onclick="goToTimeTracking()"><i class="fas fa-clock"></i> ${t('today_book_time')}</button>
             </div>
         </div>
-        <div class="wk-hero-stats">
+        ${hubPro ? `<div class="wk-hero-stats">
             ${ring(weekPct, t('today_week_quota'), ttNum(weekIst) + ' / ' + ttNum(weekSoll) + ' h', weekPct>=100?'ok':'')}
             ${ring(donePct, t('today_done_share'), doneAll + ' / ' + totalAll + ' ' + t('tasks'), 'accent')}
             <div class="wk-stat wide"><div class="wk-stat-nums">
@@ -11646,7 +11648,7 @@ function renderToday(c) {
                     `<li><span class="wk-ticker-ic"><i class="fas ${a.icon || 'fa-circle'}"></i></span><span class="wk-ticker-txt">${escapeHtmlToday(a.text)}</span><time>${ttRelTime(a.ts)}</time></li>`
                   ).join('')}</ul>`
                 : `<div class="wk-ticker-empty">${t('today_no_activity')}</div>`}
-        </div>
+        </div>` : ''}
     </section>`;
 
     /* ── Schmale Leiste direkt unter dem Held: laufende Timer + nicht gebuchte Tage.
@@ -11680,7 +11682,7 @@ function renderToday(c) {
     html += sideHtml;
 
     /* Individuell konfigurierbare Widgets (siehe HUB-WIDGETS) */
-    html += hwRenderSection();
+    if (hubPro) html += hwRenderSection();
 
     /* Aufgaben über die volle Breite (Timer + offene Tage stehen oben in der Leiste) */
     html += `<div class="wk-today-grid">`;
