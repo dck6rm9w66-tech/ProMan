@@ -5588,10 +5588,7 @@ function createTaskCard(task) {
       else if (task.priority === 'medium') _strip = 'var(--primary-color)';
       else if (task.priority === 'low') _strip = 'var(--success)';
       card.style.setProperty('--card-strip', _strip); }
-    if(isPaused && !isCompleted) {
-        card.style.background = 'color-mix(in srgb, var(--surface-color) 92%, #000 8%)';
-        card.style.borderColor = 'color-mix(in srgb, var(--border-color) 85%, #000 15%)';
-    }
+    /* Pausiert: Kennzeichnung per Pause-Icon am Titel (wie in Wissen/Notizen), keine dunklere Kachel */
     
     /* Kanban nutzt ausschliesslich den zeigerbasierten Mechanismus (Maus + Touch),
        damit das Verhalten auf allen Geraeten identisch ist. */
@@ -5692,7 +5689,7 @@ function createTaskCard(task) {
                 <div class="wk-card-tags">${stackBadge}${shBadge}${bucketBadge}</div>
                 <div class="wk-card-actions">${actionBtns}</div>
             </div>
-            <div class="task-title">${lockedIcon}${escapeHtmlToday(task.projectName || _t('unnamed'))}</div>
+            <div class="task-title">${lockedIcon}${(isPaused && !isCompleted) ? `<i class="fas fa-pause wk-paused-ic" style="color:var(--warning); margin-right:6px;" title="${_t('paused')}"></i>` : ''}${escapeHtmlToday(task.projectName || _t('unnamed'))}</div>
             ${timeBarHtml}
             <div class="wk-card-foot">
                 <div class="wk-card-foot-l">
@@ -5883,7 +5880,7 @@ function renderStacks(c) {
     
     stacks.forEach(stack => {
         const sp = getStackProgress(stack.id); const isCompleted = stack.status === 'completed'; const isPaused = stack.status === 'paused';
-        let badgeHtml = ''; if(isCompleted) badgeHtml = `<span class="badge low">${t('col_completed')}</span>`; else if(isPaused) badgeHtml = `<span class="badge medium">${t('status_paused')}</span>`;
+        let badgeHtml = ''; if(isCompleted) badgeHtml = `<span class="badge low">${t('col_completed')}</span>`;
         const rAvg = getAvgRating(stack.rating); const ratingHtml = rAvg > 0 && isCompleted ? `<span style="font-size:11px; color:var(--warning); font-weight:bold; margin-left:10px;"><i class="fas fa-star"></i> ${rAvg}</span>` : '';
         const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
@@ -5943,11 +5940,12 @@ function renderStacks(c) {
 
         let avatarHtml = getAvatarHtml(stack.assigneeId, 'avatar-sm'); if(avatarHtml) avatarHtml = `<div style="margin-top:5px; display:inline-flex;">${avatarHtml}</div>`;
 
-        const pausedBg = isPaused ? 'color-mix(in srgb, var(--surface-color) 92%, #000 8%)' : 'var(--surface-color)';
-        const pausedBorder = isPaused ? 'color-mix(in srgb, var(--border-color) 85%, #000 15%)' : 'var(--border-color)';
+        const pausedBg = 'var(--surface-color)';
+        const pausedBorder = 'var(--border-color)';
+        const stackPausedIcon = isPaused ? `<i class="fas fa-pause wk-paused-ic" style="color:var(--warning); margin-right:6px;" title="${_t('paused')}"></i>` : '';
 
         html += `<div class="draggable-item ${isCompleted ? 'is-completed' : ''}" draggable="true" ondragstart="event.stopPropagation(); event.dataTransfer.setData('text/plain', '${stack.id}'); event.dataTransfer.setData('type', 'stack');" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" ondrop="handleStackDrop(event, this, '${stack.id}')" style="background:${pausedBg}; padding:20px; border-radius:var(--radius); border:1px solid ${pausedBorder}; display:flex; flex-direction:column; cursor:pointer; transition: transform 0.2s, border-color 0.2s; overflow:hidden;" onclick="openStackModal('${stack.id}')" onmouseover="this.style.borderColor='var(--primary-color)';" onmouseout="this.style.borderColor='${pausedBorder}';"
->            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5px;"><div style="flex:1;">${badgeHtml}<h3 style="color:var(--primary-color); margin-top:5px; margin-bottom:5px; line-height:1.2;"><i class="fas fa-folder-open"></i> ${lockedIcon}${stack.name} ${ratingHtml}</h3>${avatarHtml}</div><div style="display:flex; gap:5px; margin-left:10px;">${btnHtml}</div></div>
+>            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:5px;"><div style="flex:1;">${badgeHtml}<h3 style="color:var(--primary-color); margin-top:5px; margin-bottom:5px; line-height:1.2;"><i class="fas fa-folder-open"></i> ${lockedIcon}${stackPausedIcon}${stack.name} ${ratingHtml}</h3>${avatarHtml}</div><div style="display:flex; gap:5px; margin-left:10px;">${btnHtml}</div></div>
             ${chartHtml}
             <div style="font-size:11px; color:var(--text-muted); margin-bottom:12px; display:flex; justify-content:space-between;"><span><i class="fas fa-play"></i> ${stack.startDate||'-'}</span><span><i class="fas fa-flag-checkered"></i> ${stack.dueDate||'-'}</span></div>
             <div style="display:flex; gap:10px; margin-bottom:5px;"><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('tasks')}</div>${generateProgressBarHTML(sp.tPct)}</div><div style="flex:1;"><div style="font-size:11px; font-weight:bold; margin-bottom:2px;">${t('milestones')}</div>${generateProgressBarHTML(sp.mPct, false)}</div></div>
@@ -6040,7 +6038,7 @@ function renderList(c) {
         const sp = getStackProgress(stack.id); const sh = appData.stakeholders.find(s => s.id === stack.stakeholderId);
         const shBadge = sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin-left:10px; margin-bottom:0;">${sh.name}</span>` : '';
         const bucketText = stack.bucket ? `<span class="badge" style="margin-left:10px; background:var(--border-color); color:var(--text-main); font-weight:normal;">${stack.bucket}</span>` : '';
-        let badge = ''; if(stack.status==='completed') badge=`<span class="badge low" style="margin-left:5px;">${t('col_completed')}</span>`; else if(stack.status==='paused') badge=`<span class="badge medium" style="margin-left:5px;">${t('status_paused')}</span>`;
+        let badge = ''; if(stack.status==='completed') badge=`<span class="badge low" style="margin-left:5px;">${t('col_completed')}</span>`; 
         const lockedIcon = isEntityLocked(stack.id) ? '<i class="fas fa-lock" style="color:var(--text-muted); font-size:12px; margin-right:6px;" title="' + _t('lock_title') + '"></i>' : '';
 
         html += `<tr class="table-row-group clickable-row wk-list-stack ${stack.status==='completed' ? 'is-completed' : ''}" onclick="openStackModal('${stack.id}')">`;
@@ -6048,7 +6046,7 @@ function renderList(c) {
         
         let kwBadge = ''; if(stack.dueDate) { const kw = getISOWeek(new Date(stack.dueDate)); kwBadge = `<span style="font-size:10px; color:var(--primary-color); border:1px solid var(--primary-light); padding:1px 4px; border-radius:3px; margin-left:10px;">${_t('cw')} ${kw}</span>`; }
 
-        html += `<td data-c="name" data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
+        html += `<td data-c="name" data-label="${_t('dl_projektstack')}" colspan="${middleColSpan + 1}"><b><i class="fas fa-folder" style="color:var(--primary-color)"></i> ${lockedIcon}${stack.status === 'paused' ? `<i class="fas fa-pause wk-paused-ic" style="color:var(--warning); margin-right:6px;" title="${_t('paused')}"></i>` : ''}${stack.name}</b> ${shBadge} ${bucketText} ${badge} <span style="font-size:12px; color:var(--text-muted); margin-left:10px;">${stack.startDate||''} - ${stack.dueDate||'-'} ${kwBadge}</span></td>`;
         
         if(endColSpan > 0) {
             html += `<td data-c="overview" data-label="${_t('dl_uebersicht')}" colspan="${endColSpan}" style="padding: 5px 15px;">`;
@@ -11479,10 +11477,40 @@ function renderToday(c) {
         </div>
     </section>`;
 
+    /* ── Schmale Leiste direkt unter dem Held: laufende Timer + nicht gebuchte Tage.
+       Früher eine eigene rechte Spalte – die nahm der Aufgabenliste viel Breite weg. ── */
+    let sideHtml = `<div class="wk-today-side wk-side-strip">`;
+    if (running.length) {
+        sideHtml += `<div class="wk-ss-group wk-ss-run">
+            <span class="wk-ss-h"><i class="fas fa-stopwatch"></i>${t('today_running')}<span class="wk-count">${running.length}</span></span>
+            <div class="wk-ss-items">${running.map(tk => `<button class="secondary wk-run-card wk-ss-run-card" onclick="goToTimeTracking()" title="${escapeHtmlToday(tk.projectName)}">
+                <span class="wk-run-dot"></span><span class="wk-run-name">${escapeHtmlToday(tk.projectName)}</span></button>`).join('')}</div>
+        </div>`;
+    }
+    sideHtml += `<div class="wk-ss-group wk-ss-open">
+        <span class="wk-ss-h"><i class="fas fa-calendar-xmark"></i>${t('today_unbooked')}<span class="wk-count">${openDays.length}</span></span>`;
+    if (openDays.length) {
+        sideHtml += `<div class="wk-ss-items">` + openDays.slice(-5).reverse().map(d => {
+            const miss = `${t('tt_missing')}: ${ttNum(d.missing)} h ${t('tt_of')} ${ttNum(d.target)} h`;
+            return `<div class="wk-quickrow wk-ss-day">
+                <span class="wk-qd wk-qd-link" role="button" tabindex="0" title="${ttFmtFull(d.iso)} · ${miss} – ${t('tt_hub_open_day')}" onclick="ttHubOpenDay('${d.iso}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ttHubOpenDay('${d.iso}')}">${ttFmtShort(d.iso)}<u>−${ttNum(d.missing)} h</u></span>
+                <span class="wk-qacts">
+                    <button class="secondary wk-chip v" onclick="ttHeuteAbs('${d.iso}','vacation')" title="${t('abs_vacation')}" aria-label="${t('abs_vacation')}"><i class="fas fa-umbrella-beach"></i></button>
+                    <button class="secondary wk-chip k" onclick="ttHeuteAbs('${d.iso}','sick')" title="${t('abs_sick')}" aria-label="${t('abs_sick')}"><i class="fas fa-notes-medical"></i></button>
+                    <button class="secondary wk-chip t" onclick="ttHeuteBook('${d.iso}')" title="${t('tt_book_task')}" aria-label="${t('tt_book_task')}"><i class="fas fa-clock"></i></button>
+                </span>
+            </div>`; }).join('') + `</div>`;
+    } else {
+        sideHtml += `<span class="wk-ss-ok"><i class="fas fa-check-circle"></i>${t('today_all_booked')}</span>`;
+    }
+    sideHtml += `<button class="wk-linkbtn wk-ss-link" onclick="goToTimeTracking()">${t('view_time')}</button></div>`;
+    sideHtml += `</div>`; /* /wk-today-side */
+    html += sideHtml;
+
     /* Individuell konfigurierbare Widgets (siehe HUB-WIDGETS) */
     html += hwRenderSection();
 
-    /* Zwei Spalten: Hauptspalte (Aufgaben), Seitenspalte (Timer + Zeitkonto) */
+    /* Aufgaben über die volle Breite (Timer + offene Tage stehen oben in der Leiste) */
     html += `<div class="wk-today-grid">`;
 
     /* ── Hauptspalte ── */
@@ -11511,39 +11539,6 @@ function renderToday(c) {
     }
     html += `</div>`; /* /wk-today-main */
 
-    /* ── Seitenspalte ── */
-    html += `<div class="wk-today-side">`;
-
-    if (running.length) {
-        html += `<div class="wk-strip-h"><b>${t('today_running')}</b><span class="wk-count">${running.length}</span><span class="wk-rule"></span></div>
-        <div class="wk-run">`;
-        running.forEach(tk => {
-            html += `<button class="wk-run-card" onclick="goToTimeTracking()">
-                <span class="wk-run-dot"></span>
-                <span class="wk-run-name">${escapeHtmlToday(tk.projectName)}</span>
-                <i class="fas fa-stopwatch"></i>
-            </button>`;
-        });
-        html += `</div>`;
-    }
-
-    html += `<div class="wk-strip-h"><b>${t('today_unbooked')}</b><span class="wk-count">${openDays.length}</span><span class="wk-rule"></span>
-        <button class="wk-linkbtn" onclick="goToTimeTracking()">${t('view_time')}</button></div>`;
-    if (openDays.length) {
-        openDays.slice(-5).reverse().forEach(d => {
-            html += `<div class="wk-quickrow">
-                <span class="wk-qd wk-qd-link" role="button" tabindex="0" title="${t('tt_hub_open_day')}" onclick="ttHubOpenDay('${d.iso}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();ttHubOpenDay('${d.iso}')}">${ttFmtFull(d.iso)}<i class="fas fa-arrow-right wk-qd-go"></i><u>${t('tt_missing')}: ${ttNum(d.missing)} h ${t('tt_of')} ${ttNum(d.target)} h</u></span>
-                <span class="wk-qacts">
-                    <button class="wk-chip v" onclick="ttHeuteAbs('${d.iso}','vacation')">${t('abs_vacation')}</button>
-                    <button class="wk-chip k" onclick="ttHeuteAbs('${d.iso}','sick')">${t('abs_sick')}</button>
-                    <button class="wk-chip t" onclick="ttHeuteBook('${d.iso}')"><i class="fas fa-clock"></i> ${t('tt_book_task')}</button>
-                </span>
-            </div>`;
-        });
-    } else {
-        html += `<div class="wk-empty small"><i class="fas fa-check-circle"></i><b>${t('today_all_booked')}</b></div>`;
-    }
-    html += `</div>`; /* /wk-today-side */
 
     html += `</div>`; /* /wk-today-grid */
 
@@ -12015,7 +12010,7 @@ function ttHeuteBook(iso){
           c = defaults[task.status] || 'var(--border-color)';
         }
       } else if (el.classList.contains('is-completed')) c = getStatusColor(appData.statuses.find(s => s.id === 'done'));
-      el.style.setProperty('--card-strip', task.isPaused ? '#8A939E' : c);
+      el.style.setProperty('--card-strip', c);
     });
   }
 

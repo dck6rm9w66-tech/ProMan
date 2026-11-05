@@ -1838,16 +1838,7 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
 
 /* Ab Tablet quer: Held voll, darunter zwei Spalten */
 @media (min-width:1024px){
-  .wk-today-grid{
-    display:grid;grid-template-columns:1fr 380px;gap:28px;align-items:start;
-  }
-  .wk-today-side{
-    position:sticky;top:8px;
-    background:var(--surface-color);border:1px solid var(--border-color);
-    border-radius:var(--radius);padding:6px 18px 18px;box-shadow:var(--shadow);
-  }
-  .wk-today-side .wk-strip-h{margin-top:18px}
-  .wk-today-side .wk-strip-h:first-child{margin-top:8px}
+  .wk-today-grid{ display:block; }
   .wk-hero{padding:32px 32px 34px}
   .wk-hero-num{font-size:64px}
   .wk-hero-note{font-size:15px}
@@ -1858,9 +1849,11 @@ button:not(.secondary):not(.icon-btn):not(.wk-lens):not(.wk-tab):not(.wk-rail-it
 }
 
 /* Sehr breite Fenster: Hauptliste dreispaltig */
-@media (min-width:1600px){
-  .wk-today-grid{grid-template-columns:1fr 420px}
+@media (min-width:1360px){
   .wk-today-main .wk-today-list{grid-template-columns:repeat(3,1fr)}
+}
+@media (min-width:1800px){
+  .wk-today-main .wk-today-list{grid-template-columns:repeat(4,1fr)}
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3327,7 +3320,8 @@ button.ui-mode-card.on .ui-mode-check{ opacity:1; transform:none; }
   .wk-list-table td[data-c="due"]::before{ flex:0 0 100%; }
 
   /* Balken nebeneinander, Texte über die ganze Breite und einzeilig */
-  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:span 3 !important; }
+  /* Balken (Aufwand, Fortschritt) immer untereinander, je über die volle Breite */
+  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:1 / -1 !important; }
   .wk-list-table td[data-c="desc"], .wk-list-table td[data-c="history"]{ grid-column:1 / -1 !important; }
   .wk-list-table td[data-c="desc"] > span, .wk-list-table td[data-c="history"] > span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
   .wk-list-table td[data-c="due"] > span{ display:inline !important; white-space:nowrap; }
@@ -3346,8 +3340,7 @@ button.ui-mode-card.on .ui-mode-check{ opacity:1; transform:none; }
   .wk-list-table tr.wk-list-stack td[data-c="name"] > span{ margin-left:0 !important; font-size:11px !important; }
   .wk-list-table tr.wk-list-stack td[data-c="name"]::before{ display:none !important; }
   .wk-list-table tr.wk-list-stack td[data-c="name"]{ grid-column-end:-1 !important; }
-  .wk-list-table tr.wk-list-stack td[data-c="overview"]{ grid-column:1 / -1 !important; display:grid !important;
-    grid-template-columns:1fr 1fr; grid-template-rows:auto auto; grid-auto-flow:column; column-gap:14px; row-gap:2px; }
+  .wk-list-table tr.wk-list-stack td[data-c="overview"]{ grid-column:1 / -1 !important; display:flex !important; flex-direction:column; gap:2px; }
   .wk-list-table tr.wk-list-stack td[data-c="overview"] > div{ margin-top:0 !important; }
 
   /* Gruppenüberschrift „Einzelaufgaben": schlichte Zwischenzeile statt Kachel */
@@ -3363,5 +3356,51 @@ button.ui-mode-card.on .ui-mode-check{ opacity:1; transform:none; }
 @media (min-width:600px) and (max-width:1088px){
   .wk-list-table tr.wk-list-task, .wk-list-table tr.wk-list-stack{ grid-template-columns:repeat(12, minmax(0,1fr)); }
   .wk-list-table tr.wk-list-task td, .wk-list-table tr.wk-list-stack td{ grid-column:span 3; }
-  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:span 6 !important; }
+  .wk-list-table td[data-c="time"], .wk-list-table td[data-c="progress"]{ grid-column:1 / -1 !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HUB – schmale Leiste unter dem Held (laufende Timer · nicht gebuchte Tage)
+   Ersetzt die frühere rechte Seitenspalte, damit die Aufgaben die volle Breite haben.
+   ═══════════════════════════════════════════════════════════ */
+.wk-side-strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px;
+  margin:12px 0 4px; padding:7px 10px 7px 14px;
+  background:var(--surface-color); border:1px solid var(--border-color); border-radius:12px;
+}
+.wk-ss-group{ display:flex; align-items:center; gap:10px; min-width:0; flex:0 1 auto; }
+.wk-ss-open{ flex:1 1 420px; }
+.wk-ss-h{ display:inline-flex; align-items:center; gap:7px; flex:none; font-size:12.5px; font-weight:700; white-space:nowrap; }
+.wk-ss-h > i{ font-size:12px; color:var(--text-muted); }
+.wk-ss-run .wk-ss-h > i{ color:var(--danger); }
+.wk-ss-items{ display:flex; gap:6px; min-width:0; overflow-x:auto; scrollbar-width:none; padding:1px; }
+.wk-ss-items::-webkit-scrollbar{ display:none; }
+.wk-ss-link{ margin-left:auto; flex:none; padding:4px 6px !important; }
+.wk-ss-ok{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-muted); white-space:nowrap; }
+.wk-ss-ok i{ color:var(--success); }
+
+/* Laufender Timer als kleine Pille */
+button.wk-run-card.wk-ss-run-card{ flex:none; gap:8px; padding:5px 11px !important; border-radius:999px !important; font-size:12.5px; max-width:240px; min-height:0;
+  background:var(--surface-color) !important; color:var(--text-main) !important; border:1px solid var(--danger) !important; }
+.wk-ss-run-card .wk-run-name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wk-ss-run-card .wk-run-dot{ width:7px; height:7px; }
+
+/* Offener Tag als kompakte Pille: Datum · Fehlzeit · drei Symbol-Knöpfe */
+.wk-quickrow.wk-ss-day{ flex:none; flex-wrap:nowrap; gap:6px; margin:0; padding:3px 4px 3px 10px; border-radius:999px; }
+.wk-ss-day .wk-qd{ flex:none; min-width:0; display:inline-flex; align-items:baseline; gap:6px; font-size:12.5px; white-space:nowrap; margin:-3px -4px; padding:3px 4px; }
+.wk-ss-day .wk-qd u{ display:inline; margin:0; font-size:11px; color:var(--danger); }
+.wk-ss-day .wk-qacts{ flex-wrap:nowrap; gap:3px; }
+.wk-ss-day .wk-chip{ width:26px; height:26px; min-width:0; min-height:0; padding:0 !important; border-radius:50% !important; display:inline-grid; place-items:center; font-size:11px;
+  border:1px solid var(--border-color) !important; color:var(--c, var(--text-main)) !important; background:transparent !important; }
+.wk-ss-day .wk-chip:hover{ background:var(--c, var(--wk-graphite)) !important; color:#fff !important; border-color:transparent !important; }
+.wk-ss-day .wk-chip.t{ --c:var(--text-main); }
+.wk-ss-day .wk-chip.t:hover{ background:var(--wk-graphite) !important; }
+/* rechts sanft ausblenden, wenn mehr Tage da sind, als Platz ist */
+.wk-ss-open .wk-ss-items{ -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent); mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent); padding-right:20px; }
+
+@media (max-width:599px){
+  .wk-side-strip{ padding:8px 10px; gap:8px 12px; }
+  .wk-ss-group, .wk-ss-open{ flex:1 1 100%; }
+  .wk-ss-open{ flex-wrap:wrap; }
+  .wk-ss-open .wk-ss-items{ order:3; flex:1 1 100%; }
 }
