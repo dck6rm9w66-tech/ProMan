@@ -3571,3 +3571,31 @@ h2 .wk-rate-chip, h3 .wk-rate-chip{ font-size:12px !important; }
   .wk-hero-lean .wk-hero-track{ max-width:none; }
   .wk-hero-lean .wk-hero-acts{ margin-top:4px !important; }
 }
+
+/* ===== Verwaltung (Stakeholder/Buckets): abgeschlossen + Ø-Bewertung in der Kachel ===== */
+.wk-grp-done, .wk-grp-rate{ display:inline-flex; align-items:center; gap:5px; border-radius:999px; padding:2px 9px; font-size:11px; font-weight:600; line-height:1.5; white-space:nowrap; }
+.wk-grp-done{ background:color-mix(in srgb, var(--success) 14%, var(--surface-color)); color:var(--success); border:1px solid var(--success); }
+.wk-grp-rate{ background:color-mix(in srgb, var(--warning) 12%, var(--surface-color)); color:var(--text-main); border:1px solid color-mix(in srgb, var(--warning) 45%, transparent); }
+.wk-grp-rate .rt-sstars{ font-size:10px; letter-spacing:1px; }
+.wk-grp-rate b{ font-variant-numeric:tabular-nums; }
+.wk-grp-rate small{ font-size:10px; font-weight:500; color:var(--text-muted); }
+.wk-grp-rate.is-empty{ background:transparent; color:var(--text-muted); border:1px dashed var(--border-color); font-weight:500; }
+
+/* ===== Abhängigkeiten: Klammer-Verbindungen innerhalb derselben Spalte + Hover-Hervorhebung ===== */
+.dep-edge-loop{ stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round; }
+.dep-edge-loop.dep-edge-checklist{ stroke-dasharray:6 4; }
+.dep-edge-dot{ fill:#ffc93c; stroke:var(--surface-color); stroke-width:1.5; }
+.dep-edge, .dep-edge-dot, .dep-gnode{ transition:opacity .15s ease, stroke-width .15s ease; }
+.dep-canvas.dep-hi-on .dep-edges > :not(defs):not(.is-hi){ opacity:.14; }
+.dep-canvas.dep-hi-on .dep-edge.is-hi{ stroke-width:4; }
+.dep-canvas.dep-hi-on .dep-gnode:not(.is-rel){ opacity:.5; }
+@media (hover:none){ .dep-canvas.dep-hi-on .dep-edges > :not(defs):not(.is-hi), .dep-canvas.dep-hi-on .dep-gnode:not(.is-rel){ opacity:1; } }
+/* Abhängigkeiten mobil: kompakte Werkzeugleiste (vorher wurde „Verbinden" zur übergrossen Pille) */
+@media (max-width:599px){
+  .dep-toolbar{ gap:10px; padding-bottom:12px; margin-bottom:14px; }
+  .dep-legend{ gap:6px 12px; flex-wrap:wrap; font-size:11px; }
+  .dep-levels{ flex-wrap:nowrap; align-items:stretch; }
+  .dep-levels .dep-lvl, .dep-levels .dep-sort{ flex:1 1 0; height:40px !important; min-height:0 !important; box-sizing:border-box; justify-content:center; border-radius:10px !important; font-size:12px; }
+  .dep-levels .dep-sort select{ min-height:0 !important; height:auto !important; }
+}
+@media (hover:none){ .dep-hint{ display:none !important; } }

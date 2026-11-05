@@ -215,6 +215,10 @@ Object.assign(i18n.de, {
     gantt_jump_today: "Zum heutigen Datum springen",
     gantt_link_title: "Klicken, um in die Abhängigkeiten-Ansicht zu wechseln",
     gantt_project_task: "Projekt / Aufgabe",
+    grp_done_hidden: "Abgeschlossene sind per Filter ausgeblendet",
+    grp_rate_none: "Noch keine Bewertung",
+    grp_rate_title: "Ø {v} aus {n} von {m} abgeschlossenen (bewertet)",
+    grp_rated: "{n} bewertet",
     hist_cp_done: "Checklistenpunkt „{n}“ erledigt.",
     hist_ms_done: "Milestone „{n}“ erledigt.",
     hub_open_of: "{a} von {b} h offen",
@@ -866,6 +870,10 @@ Object.assign(i18n.en, {
     gantt_jump_today: "Jump to today",
     gantt_link_title: "Click to open the dependency view",
     gantt_project_task: "Project / task",
+    grp_done_hidden: "Completed items are hidden by the filter",
+    grp_rate_none: "No rating yet",
+    grp_rate_title: "Avg {v} from {n} of {m} completed (rated)",
+    grp_rated: "{n} rated",
     hist_cp_done: "Checklist item “{n}” completed.",
     hist_ms_done: "Milestone “{n}” completed.",
     hub_open_of: "{a} of {b} h open",
@@ -1517,6 +1525,10 @@ Object.assign(i18n.fr, {
     gantt_jump_today: "Aller à aujourd'hui",
     gantt_link_title: "Cliquer pour ouvrir la vue des dépendances",
     gantt_project_task: "Projet / tâche",
+    grp_done_hidden: "Les éléments terminés sont masqués par le filtre",
+    grp_rate_none: "Pas encore d’évaluation",
+    grp_rate_title: "Moy. {v} sur {n} des {m} terminés (évalués)",
+    grp_rated: "{n} évalué(s)",
     hist_cp_done: "Point de contrôle « {n} » terminé.",
     hist_ms_done: "Jalon « {n} » terminé.",
     hub_open_of: "{a} sur {b} h restantes",
@@ -2075,6 +2087,8 @@ Object.assign(i18n.fr, {
     zoom_out: "Zoom arrière",
 });
 /* <<< Übersetzungs-Ergänzungen <<< */
+
+
 
 
 

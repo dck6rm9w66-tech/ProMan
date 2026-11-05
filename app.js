@@ -5128,28 +5128,56 @@ function renderDependenciesView(c) {
     canvasW += H_PAD; canvasH += V_PAD;
     /* ---- Kanten (SVG) zeichnen: von Vorgänger (rechts) zu Abhängigem (links) ---- */
     let edges = '';
+    /* Verbindungen innerhalb derselben Spalte (z. B. Checklistenpunkte derselben Aufgabe):
+       Früher eine Kurve, die eng an den Karten vorbei bzw. dahinter verlief und kaum zu sehen war.
+       Jetzt als eckige „Klammer" in einer eigenen Bahn rechts NEBEN dem Gruppenrahmen –
+       mehrere Klammern bekommen versetzte Bahnen, damit sie sich nicht überdecken. */
+    const LANE0 = 24, LANE_STEP = 11, LANE_MAX = 5, LOOP_R = 7;
+    const loopEdges = [], plainEdges = [];
     nodes.forEach(n => {
         n.preds.forEach(pid => {
             const p = byId[pid];
             if (!p) return;
-            const x1 = p.x + NODE_W, y1 = p.y + nodeHeight(p) / 2;
-            const x2 = n.x, y2 = n.y + nodeHeight(n) / 2;
-            const dx = x2 - x1;
-            const dy = Math.abs(y2 - y1);
-            let d;
-            if (dx < 60) {
-                /* Vorgänger und Abhängiger liegen (nahezu) übereinander – z. B. zwei
-                   Checklistenpunkte derselben Aufgabe. Die Linie holt weit nach rechts aus,
-                   damit sie neben der Punkte-Liste sichtbar ist und nicht dahinter verschwindet. */
-                const bow = Math.max(70, dy * 0.9);
-                d = `M ${x1} ${y1} C ${x1 + bow} ${y1}, ${x2 + bow} ${y2}, ${x2} ${y2}`;
-            } else {
-                const mx = (x1 + x2) / 2;
-                d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-            }
-            edges += `<path class="dep-edge dep-edge-${n.type}" d="${d}" marker-end="url(#depArrow)"></path>`;
+            (Math.abs(p.x - n.x) < 1 ? loopEdges : plainEdges).push({ p, n });
         });
     });
+    const lanesByCol = {};
+    loopEdges.map(ed => {
+        ed.y1 = ed.p.y + nodeHeight(ed.p) / 2;
+        ed.y2 = ed.n.y + nodeHeight(ed.n) / 2 + 9;          /* unterhalb des Ausgangs-Punkts der Zielkarte */
+        ed.top = Math.min(ed.y1, ed.y2); ed.bot = Math.max(ed.y1, ed.y2);
+        return ed;
+    }).sort((a, b) => (a.bot - a.top) - (b.bot - b.top)).forEach(ed => {
+        const colX = Math.max(ed.p.x, ed.n.x);
+        const lanes = lanesByCol[colX] = lanesByCol[colX] || [];
+        let li = 0;
+        while (li < LANE_MAX && (lanes[li] || []).some(o => !(ed.bot + 4 < o.top || ed.top - 4 > o.bot))) li++;
+        if (li >= LANE_MAX) li = LANE_MAX - 1;
+        (lanes[li] = lanes[li] || []).push(ed);
+        const xs = ed.p.x + NODE_W, xe = ed.n.x + NODE_W;
+        const lx = colX + NODE_W + LANE0 + li * LANE_STEP;
+        const dir = ed.y2 >= ed.y1 ? 1 : -1;
+        const r = Math.min(LOOP_R, Math.abs(ed.y2 - ed.y1) / 2);
+        const d = `M ${xs} ${ed.y1} H ${lx - r} Q ${lx} ${ed.y1} ${lx} ${ed.y1 + dir * r} V ${ed.y2 - dir * r} Q ${lx} ${ed.y2} ${lx - r} ${ed.y2} H ${xe + 2}`;
+        edges += `<path class="dep-edge dep-edge-loop dep-edge-${ed.n.type}" data-from="${ed.p.id}" data-to="${ed.n.id}" d="${d}" marker-end="url(#depArrow)"></path>`;
+        edges += `<circle class="dep-edge-dot" data-from="${ed.p.id}" data-to="${ed.n.id}" cx="${xs + 1}" cy="${ed.y1}" r="3.2"></circle>`;
+    });
+    plainEdges.forEach(({ p, n }) => {
+        const x1 = p.x + NODE_W, y1 = p.y + nodeHeight(p) / 2;
+        const x2 = n.x, y2 = n.y + nodeHeight(n) / 2;
+        let d;
+        if (x2 - x1 < 60) {
+            /* Abhängiger liegt links vom Vorgänger (andere Spalte): weiter Bogen nach rechts */
+            const bow = Math.max(70, Math.abs(y2 - y1) * 0.9);
+            d = `M ${x1} ${y1} C ${x1 + bow} ${y1}, ${x2 - bow} ${y2}, ${x2} ${y2}`;
+        } else {
+            const mx = (x1 + x2) / 2;
+            d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+        }
+        edges += `<path class="dep-edge dep-edge-${n.type}" data-from="${p.id}" data-to="${n.id}" d="${d}" marker-end="url(#depArrow)"></path>`;
+    });
+    /* Platz für die Klammer-Bahnen der letzten Spalte */
+    Object.keys(lanesByCol).forEach(cx => { canvasW = Math.max(canvasW, +cx + NODE_W + LANE0 + lanesByCol[cx].length * LANE_STEP + H_PAD); });
 
     const typeIcon = { stack: 'fa-folder', task: 'fa-tasks', checklist: 'fa-check-square', milestone: 'fa-flag' };
 
@@ -5165,7 +5193,7 @@ function renderDependenciesView(c) {
             data-depid="${n.id}" data-deptype="${n.type}" draggable="true"
             ondragstart="depDragStart(event,'${n.id}','${n.type}')" ondragend="depDragEnd(event)"
             ondragover="depDragOver(event)" ondragleave="depDragLeave(event)" ondrop="depDrop(event,'${n.id}','${n.type}')"
-            onclick="depNodeClick(event,'${n.id}','${n.type}')">
+            onclick="depNodeClick(event,'${n.id}','${n.type}')" onmouseenter="depHi('${n.id}')" onmouseleave="depHi(null)">
             ${!hasPreds
                 ? ``
                 : `<span class="dep-gport in linked ${locked ? 'locked' : ''}" title="${t('dep_unlink_hint')}" onclick="event.stopPropagation(); depClearPreds('${n.id}')"><i class="fas fa-lock"></i></span>`}
@@ -5191,6 +5219,21 @@ function renderDependenciesView(c) {
 
     html += `</div>`;
     c.innerHTML = html;
+}
+
+/* Fährt der Cursor über eine Karte, werden ihre Verbindungen hervorgehoben und der Rest gedimmt */
+function depHi(id) {
+    const cv = document.querySelector('.dep-canvas'); if (!cv) return;
+    cv.querySelectorAll('.dep-edges .is-hi').forEach(el => el.classList.remove('is-hi'));
+    cv.querySelectorAll('.dep-gnode.is-rel').forEach(el => el.classList.remove('is-rel'));
+    if (!id) { cv.classList.remove('dep-hi-on'); return; }
+    const rel = cv.querySelectorAll(`.dep-edges [data-from="${id}"], .dep-edges [data-to="${id}"]`);
+    if (!rel.length) { cv.classList.remove('dep-hi-on'); return; }
+    cv.classList.add('dep-hi-on');
+    rel.forEach(el => {
+        el.classList.add('is-hi');
+        [el.getAttribute('data-from'), el.getAttribute('data-to')].forEach(nid => { const nd = cv.querySelector(`.dep-gnode[data-depid="${nid}"]`); if (nd) nd.classList.add('is-rel'); });
+    });
 }
 
 let depDragSource = null;
@@ -5960,18 +6003,20 @@ function getGroupTaskIdsAll(groupKey, groupVal) {
 /* Zaehlt abgeschlossene und pausierte Eintraege einer Gruppe (Aufgaben + Stacks). */
 function getGroupHiddenCounts(groupKey, groupVal) {
     const { taskIds, stackIds } = getGroupTaskIdsAll(groupKey, groupVal);
-    let doneCount = 0, pausedCount = 0;
+    let doneCount = 0, pausedCount = 0, ratedCount = 0, ratingSum = 0;
+    /* Bewertung: Ø über alle bewerteten abgeschlossenen Aufgaben und Stacks (jeder Eintrag zählt gleich) */
+    const addRating = (ent) => { const a = parseFloat(getAvgRating(ent.rating)) || 0; if (a > 0) { ratedCount++; ratingSum += a; } };
     (appData.tasks || []).forEach(tk => {
         if (!taskIds.has(tk.id)) return;
-        if (isTaskDone(tk)) doneCount++;
+        if (isTaskDone(tk)) { doneCount++; addRating(tk); }
         else if (tk.isPaused) pausedCount++;
     });
     (appData.projectStacks || []).forEach(st => {
         if (!stackIds.has(st.id)) return;
-        if (st.status === 'completed') doneCount++;
+        if (st.status === 'completed') { doneCount++; addRating(st); }
         else if (st.status === 'paused') pausedCount++;
     });
-    return { doneCount, pausedCount };
+    return { doneCount, pausedCount, ratedCount, ratingAvg: ratedCount ? ratingSum / ratedCount : 0 };
 }
 
 /* Verbuchte Stunden je Woche (letzte vier Wochen) fuer eine Menge von Aufgaben-IDs. */
@@ -6369,7 +6414,17 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
         const hc = getGroupHiddenCounts(groupKey, targetGroupVal);
         const badge = (n, label, col) => `<span style="display:inline-flex; align-items:center; gap:5px; background:color-mix(in srgb, ${col} 14%, var(--surface-color)); color:${col}; border:1px solid ${col}; border-radius:999px; padding:2px 9px; font-size:11px; font-weight:600;">${n} ${label}</span>`;
         const parts = [];
-        if(appData.settings.globalHideCompleted && hc.doneCount > 0) parts.push(badge(hc.doneCount, t('hidden_done'), 'var(--success)'));
+        /* Abgeschlossene immer zählen (nicht nur wenn ausgeblendet) – direkt daneben die Ø-Bewertung */
+        if(hc.doneCount > 0) {
+            const hid = appData.settings.globalHideCompleted;
+            parts.push(`<span class="wk-grp-done"${hid ? ` title="${_t('grp_done_hidden')}"` : ''}><i class="fas ${hid ? 'fa-eye-slash' : 'fa-check'}"></i> ${hc.doneCount} ${t('hidden_done')}</span>`);
+            if (hc.ratedCount > 0) {
+                const tip = _tf('grp_rate_title', { v: rtFmt(hc.ratingAvg), n: hc.ratedCount, m: hc.doneCount });
+                parts.push(`<span class="wk-grp-rate" title="${tip}" aria-label="${tip}">${rtStaticStars(hc.ratingAvg, 'rt-sstars-sm')}<b>${rtFmt(hc.ratingAvg)}</b><small>Ø · ${_tf('grp_rated', { n: hc.ratedCount })}</small></span>`);
+            } else {
+                parts.push(`<span class="wk-grp-rate is-empty" title="${_t('grp_rate_none')}"><i class="far fa-star"></i> ${_t('grp_rate_none')}</span>`);
+            }
+        }
         if(appData.settings.globalHidePaused && hc.pausedCount > 0) parts.push(badge(hc.pausedCount, t('hidden_paused'), 'var(--warning)'));
         if(parts.length) hiddenBadges = `<div style="display:flex; gap:6px; flex-wrap:wrap; margin:0 0 10px 0;">${parts.join('')}</div>`;
     }
