@@ -190,6 +190,7 @@ let defaultData = {
         trashAutoDelete: { unit: 'days', value: 30 },
         globalHideCompleted: true,
         monthlyBudget: null,
+        budgetExclude: { task: [], stack: [], sh: [], bucket: [] },
         defaultHourlyRate: null,
         currency: 'EUR',
         globalHidePaused: false,
@@ -4453,6 +4454,7 @@ function getBudgetConsumptionByMonth() {
         if (!log || !log.date) return;
         const task = appData.tasks.find(x => x.id === log.taskId);
         if (!task) return;
+        if (bxTaskExcluded(task)) return;   /* aus der Budget-Berechnung genommen */
         const rate = getLogHourlyRate(log);
         if (rate <= 0) return;
         const cur = getTaskCurrency(task);
@@ -4469,6 +4471,7 @@ function getHoursByMonth() {
     const byMonth = {};
     (appData.timeLogs || []).forEach(log => {
         if (!log || !log.date) return;
+        if (bxLogExcluded(log)) return;
         const month = String(log.date).slice(0, 7);
         byMonth[month] = (byMonth[month] || 0) + (parseFloat(log.hours) || 0);
     });
@@ -4557,6 +4560,7 @@ function getMonthlyBudgetTrends(currency) {
             if (!log || log.date !== dayKey) return;
             const task = appData.tasks.find(x => x.id === log.taskId);
             if (!task || getTaskCurrency(task) !== currency) return;
+            if (bxTaskExcluded(task)) return;
             const rate = getLogHourlyRate(log);
             if (rate > 0) windowSpend += (parseFloat(log.hours) || 0) * rate;
         });
@@ -4576,12 +4580,140 @@ function getMonthlyBudgetTrends(currency) {
  * Zeigt IMMER Kennzahlen und Grafiken – auch wenn noch gar kein Zielbudget hinterlegt ist:
  * dann werden ersatzweise die erfassten Stunden bzw. die bereits angefallenen Kosten dargestellt.
  */
+/* ══════════════════════════════════════════════════════════════════
+   BUDGET – Posten aus der Berechnung nehmen (Aufgaben, Stacks, Stakeholder, Buckets)
+   Gespeichert in appData.settings.budgetExclude. Ein ausgeschlossener Stack, Stakeholder
+   oder Bucket nimmt alle zugehörigen Aufgaben (und deren Buchungen) mit heraus.
+   ══════════════════════════════════════════════════════════════════ */
+function bxGet() {
+    const s = appData.settings || (appData.settings = {});
+    let x = s.budgetExclude;
+    if (!x || typeof x !== 'object') x = s.budgetExclude = {};
+    ['task', 'stack', 'sh', 'bucket'].forEach(k => { if (!Array.isArray(x[k])) x[k] = []; });
+    return x;
+}
+function bxCount() { const x = bxGet(); return x.task.length + x.stack.length + x.sh.length + x.bucket.length; }
+/* Grund des Ausschlusses: null = einbezogen, sonst {kind, name, direct} */
+function bxStackReason(s) {
+    if (!s) return null; const x = bxGet();
+    if (x.stack.includes(s.id)) return { kind: 'stack', name: s.name, direct: true };
+    if (s.stakeholderId && x.sh.includes(s.stakeholderId)) { const sh = (appData.stakeholders || []).find(q => q.id === s.stakeholderId); return { kind: 'sh', name: sh ? sh.name : '' }; }
+    if (s.bucket && x.bucket.includes(s.bucket)) return { kind: 'bucket', name: s.bucket };
+    return null;
+}
+function bxTaskReason(tk) {
+    if (!tk) return null; const x = bxGet();
+    if (x.task.includes(tk.id)) return { kind: 'task', name: tk.projectName, direct: true };
+    if (tk.stakeholderId && x.sh.includes(tk.stakeholderId)) { const sh = (appData.stakeholders || []).find(q => q.id === tk.stakeholderId); return { kind: 'sh', name: sh ? sh.name : '' }; }
+    if (tk.bucket && x.bucket.includes(tk.bucket)) return { kind: 'bucket', name: tk.bucket };
+    if (tk.projectStackId) { const st = (appData.projectStacks || []).find(q => q.id === tk.projectStackId); const r = bxStackReason(st); if (r) return { kind: r.direct ? 'stack' : r.kind, name: r.direct ? (st && st.name) : r.name }; }
+    return null;
+}
+function bxTaskExcluded(tk) { return !!bxTaskReason(tk); }
+function bxStackExcluded(s) { return !!bxStackReason(s); }
+/* Buchung: Aufgabe – oder direkt auf einen Stack gebucht */
+function bxLogExcluded(log) {
+    if (!log || !bxCount()) return false;
+    let tk = (appData.tasks || []).find(q => q.id === log.taskId);
+    /* auch Buchungen gelöschter Aufgaben (Papierkorb) ihrem Stack/Stakeholder/Bucket zuordnen */
+    if (!tk) { const del = (appData.deletedItems || []).find(d => d && d.type === 'task' && d.data && d.data.id === log.taskId); if (del) tk = del.data; }
+    if (tk) return bxTaskExcluded(tk);
+    const st = (appData.projectStacks || []).find(q => q.id === log.taskId);
+    return st ? bxStackExcluded(st) : false;
+}
+function bxToggle(kind, id) {
+    const x = bxGet(); const arr = x[kind]; if (!arr) return;
+    const i = arr.indexOf(id);
+    if (i >= 0) arr.splice(i, 1); else arr.push(id);
+    saveToLocal(true); bxRerenderKeepScroll();
+}
+function bxReset() { const x = bxGet(); x.task = []; x.stack = []; x.sh = []; x.bucket = []; saveToLocal(true); bxRerenderKeepScroll(); showToast(_t('bx_reset_done'), 'success'); }
+function bxRerenderKeepScroll() {
+    const mc = document.getElementById('mainContainer'); const se = document.scrollingElement;
+    const a = mc ? mc.scrollTop : 0, b = se ? se.scrollTop : 0;
+    const bc = document.getElementById('tt_budgets_container'); const cIn = bc ? bc.scrollTop : 0;
+    ttRerender();
+    if (mc) mc.scrollTop = a; if (se) se.scrollTop = b;
+    const bc2 = document.getElementById('tt_budgets_container'); if (bc2) bc2.scrollTop = cIn;
+}
+let bxOpen = false, bxTab = 'task', bxQuery = '';
+function bxSetOpen(v) { bxOpen = v; bxRerenderKeepScroll(); if (v) setTimeout(() => { const q = document.getElementById('bx_q'); if (q) try { q.focus({ preventScroll: true }); } catch (e) {} }, 30); }
+function bxSetTab(tab) { bxTab = tab; bxQuery = ''; bxRerenderKeepScroll(); }
+function bxSearch(v) { bxQuery = v || ''; const box = document.getElementById('bx_list'); if (box) box.innerHTML = bxListHtml(); }
+function bxReasonText(r) {
+    if (!r || r.direct) return '';
+    const lbl = { stack: _t('bx_tab_stack_one'), sh: _t('bx_tab_sh_one'), bucket: _t('bx_tab_bucket_one'), task: _t('bx_tab_task_one') }[r.kind] || '';
+    return _tf('bx_via', { x: lbl + ' „' + escapeHtmlToday(r.name || '') + '“' });
+}
+function bxEntries(kind) {
+    if (kind === 'task') return (appData.tasks || []).map(tk => { const st = tk.projectStackId ? (appData.projectStacks || []).find(q => q.id === tk.projectStackId) : null; return { id: tk.id, name: tk.projectName || _t('unnamed'), meta: st ? st.name : '', done: isTaskDone(tk), reason: bxTaskReason(tk) }; });
+    if (kind === 'stack') return (appData.projectStacks || []).map(s => ({ id: s.id, name: s.name || _t('unnamed'), meta: '', done: s.status === 'completed', reason: bxStackReason(s) }));
+    if (kind === 'sh') return (appData.stakeholders || []).map(s => ({ id: s.id, name: s.name || _t('unnamed'), meta: '', color: s.color, reason: bxGet().sh.includes(s.id) ? { direct: true } : null }));
+    return (appData.buckets || []).map(b => ({ id: b, name: b, meta: '', color: (typeof getBucketColor === 'function') ? getBucketColor(b) : '', reason: bxGet().bucket.includes(b) ? { direct: true } : null }));
+}
+function bxListHtml() {
+    const q = bxQuery.trim().toLowerCase();
+    const list = bxEntries(bxTab).filter(it => !q || (it.name + ' ' + it.meta).toLowerCase().includes(q));
+    if (!list.length) return `<div class="bx-empty">${_t('bx_none')}</div>`;
+    const ic = { task: 'fa-tasks', stack: 'fa-folder', sh: 'fa-user-tie', bucket: 'fa-box-open' }[bxTab];
+    return list.map(it => {
+        const direct = !!(it.reason && it.reason.direct), implicit = !!(it.reason && !it.reason.direct);
+        const on = !it.reason;
+        const idEsc = String(it.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `<label class="bx-row${on ? '' : ' is-out'}${implicit ? ' is-implicit' : ''}${it.done ? ' is-done' : ''}">
+            <span class="bx-ic"${it.color ? ` style="color:${it.color}"` : ''}><i class="fas ${ic}"></i></span>
+            <span class="bx-txt"><b>${escapeHtmlToday(it.name)}</b>${it.meta ? `<small>${escapeHtmlToday(it.meta)}</small>` : ''}${implicit ? `<small class="bx-via">${bxReasonText(it.reason)}</small>` : ''}</span>
+            <span class="bx-state">${on ? _t('bx_in') : _t('bx_out')}</span>
+            <input type="checkbox" class="bx-switch" ${on ? 'checked' : ''} ${implicit ? 'disabled' : ''} onchange="bxToggle('${bxTab}','${idEsc}')" aria-label="${escapeHtmlToday(it.name)}: ${on ? _t('bx_exclude') : _t('bx_include')}">
+        </label>`;
+    }).join('');
+}
+function bxPanelHtml() {
+    const x = bxGet(); const n = bxCount();
+    const name = (kind, id) => {
+        if (kind === 'task') { const tk = (appData.tasks || []).find(q => q.id === id); return tk ? tk.projectName : null; }
+        if (kind === 'stack') { const s = (appData.projectStacks || []).find(q => q.id === id); return s ? s.name : null; }
+        if (kind === 'sh') { const s = (appData.stakeholders || []).find(q => q.id === id); return s ? s.name : null; }
+        return id;
+    };
+    const ic = { task: 'fa-tasks', stack: 'fa-folder', sh: 'fa-user-tie', bucket: 'fa-box-open' };
+    let chips = '';
+    ['stack', 'task', 'sh', 'bucket'].forEach(k => x[k].forEach(id => {
+        const nm = name(k, id); if (nm === null || nm === undefined) return;
+        const idEsc = String(id).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        chips += `<span class="bx-chip"><i class="fas ${ic[k]}"></i>${escapeHtmlToday(nm)}<button type="button" class="secondary bx-chip-x" onclick="bxToggle('${k}','${idEsc}')" title="${_t('bx_include')}" aria-label="${_t('bx_include')}: ${escapeHtmlToday(nm)}"><i class="fas fa-xmark"></i></button></span>`;
+    }));
+    const cnt = (k) => x[k].length ? ` <span class="bx-tab-n">${x[k].length}</span>` : '';
+    return `<div class="bx-panel${n ? ' has-out' : ''}">
+        <div class="bx-head">
+            <div class="bx-title"><i class="fas fa-filter-circle-xmark"></i><div><b>${_t('bx_title')}</b><span>${n ? _tf('bx_n_out', { n }) : _t('bx_all_in')}</span></div></div>
+            <div class="bx-head-acts">
+                ${n ? `<button type="button" class="secondary bx-link" onclick="bxReset()"><i class="fas fa-rotate-left"></i> ${_t('bx_reset')}</button>` : ''}
+                <button type="button" class="secondary bx-toggle" aria-expanded="${bxOpen}" onclick="bxSetOpen(${!bxOpen})"><i class="fas ${bxOpen ? 'fa-check' : 'fa-sliders'}"></i> ${bxOpen ? _t('bx_done') : _t('bx_adjust')}</button>
+            </div>
+        </div>
+        ${chips ? `<div class="bx-chips">${chips}</div>` : ''}
+        ${bxOpen ? `<div class="bx-body">
+            <div class="bx-tabs" role="tablist">
+                ${['task', 'stack', 'sh', 'bucket'].map(k => `<button type="button" role="tab" class="secondary bx-tab" aria-selected="${bxTab === k}" onclick="bxSetTab('${k}')"><i class="fas ${ic[k]}"></i> ${_t('bx_tab_' + k)}${cnt(k)}</button>`).join('')}
+            </div>
+            <div class="bx-search"><i class="fas fa-search"></i><input type="search" id="bx_q" value="${escapeHtmlToday(bxQuery)}" placeholder="${_t('bx_search')}" oninput="bxSearch(this.value)"></div>
+            <div class="bx-list" id="bx_list">${bxListHtml()}</div>
+            <p class="bx-hint"><i class="fas fa-circle-info"></i> ${_t('bx_hint')}</p>
+        </div>` : ''}
+    </div>`;
+}
+/* kleiner Knopf an Zeilen der Budget-Ansicht: direkt aus der Berechnung nehmen */
+function bxRowBtn(kind, id) {
+    return `<button type="button" class="secondary bx-row-btn" onclick="event.stopPropagation(); bxToggle('${kind}','${id}')" title="${_t('bx_exclude')}" aria-label="${_t('bx_exclude')}"><i class="fas fa-eye-slash"></i></button>`;
+}
+
 function renderBudgetsOverview(c) {
     if (!c) return;
 
     /* ── Datenbasis ── */
-    const stacksWithBudget = (appData.projectStacks || []).filter(s => parseFloat(s.targetBudget) > 0);
-    const standaloneTasksWithBudget = (appData.tasks || []).filter(t_obj => !t_obj.projectStackId && parseFloat(t_obj.targetBudget) > 0);
+    const stacksWithBudget = (appData.projectStacks || []).filter(s => parseFloat(s.targetBudget) > 0 && !bxStackExcluded(s));
+    const standaloneTasksWithBudget = (appData.tasks || []).filter(t_obj => !t_obj.projectStackId && parseFloat(t_obj.targetBudget) > 0 && !bxTaskExcluded(t_obj));
 
     const items = [];
     stacksWithBudget.forEach(s => items.push({
@@ -4600,6 +4732,7 @@ function renderBudgetsOverview(c) {
     const costByCurrency = {};
     let totalCostAll = 0;
     (appData.tasks || []).forEach(t_obj => {
+        if (bxTaskExcluded(t_obj)) return;
         const cost = getTaskCostInRange(t_obj);
         if (cost <= 0) return;
         const cur = getTaskCurrency(t_obj);
@@ -4608,7 +4741,7 @@ function renderBudgetsOverview(c) {
     });
 
     const rangeOn = ttRangeActive();
-    const totalHours = ttRangeLogs().reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
+    const totalHours = ttRangeLogs().filter(l => !bxLogExcluded(l)).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
     const consumptionByMonth = getBudgetConsumptionByMonth();
     const hoursByMonth = getHoursByMonth();
     /* Monate, die den gewählten Zeitraum berühren (Monatswerte selbst bleiben vollständig) */
@@ -4738,6 +4871,9 @@ function renderBudgetsOverview(c) {
         </section>`;
     }
 
+    /* ══ Posten aus der Berechnung nehmen ══ */
+    html += bxPanelHtml();
+
     /* ══ GRAFIKEN OBEN (Hub-Stil) – immer sichtbar ══ */
     let graphsHtml = '';
 
@@ -4842,7 +4978,7 @@ function renderBudgetsOverview(c) {
             html += `<div style="cursor:pointer; ${isDone ? 'opacity:0.6;' : ''}" onclick="${openFn}">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:10px;">
                     <span style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas ${icon}" style="color:var(--primary-color); margin-right:7px;"></i>${escapeHtmlToday(it.name)}</span>
-                    <span style="font-size:12px; color:${barColor}; font-weight:600; white-space:nowrap; flex-shrink:0;">${pct}%</span>
+                    <span style="display:inline-flex; align-items:center; gap:8px; flex-shrink:0;"><span style="font-size:12px; color:${barColor}; font-weight:600; white-space:nowrap;">${pct}%</span>${bxRowBtn(it.type, it.id)}</span>
                 </div>
                 <div class="pb-container" style="height:8px;"><div class="pb-fill" style="width:${Math.min(pct, 100)}%; background:${barColor};"></div></div>
                 <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-muted); margin-top:4px;">
@@ -4855,7 +4991,7 @@ function renderBudgetsOverview(c) {
     }
 
     /* Kostentreiber – immer, sofern Kosten oder Stunden vorhanden sind */
-    const drivers = (appData.tasks || []).map(t_obj => {
+    const drivers = (appData.tasks || []).filter(t_obj => !bxTaskExcluded(t_obj)).map(t_obj => {
         const cost = getTaskCostInRange(t_obj);
         const hours = ttRangeLogs().filter(l => l.taskId === t_obj.id).reduce((s, l) => s + (parseFloat(l.hours) || 0), 0);
         const st = t_obj.projectStackId ? (appData.projectStacks || []).find(x => x.id === t_obj.projectStackId) : null;
@@ -4874,7 +5010,7 @@ function renderBudgetsOverview(c) {
             html += `<div style="cursor:pointer; ${d.done ? 'opacity:0.6;' : ''}" onclick="openModal('${d.id}')">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
                     <span style="font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><i class="fas fa-tasks" style="color:var(--primary-color); margin-right:6px;"></i>${escapeHtmlToday(d.name)}${d.stackName ? `<span style="color:var(--text-muted); font-size:11px;"> · ${escapeHtmlToday(d.stackName)}</span>` : ''}</span>
-                    <span style="font-size:11.5px; color:var(--text-muted); white-space:nowrap; flex-shrink:0;"><b style="color:var(--text-main);">${ttNum(val)}</b> ${unit}${d.cost > 0 ? ' · ' + ttNum(d.hours) + ' h' : ''}</span>
+                    <span style="display:inline-flex; align-items:center; gap:8px; flex-shrink:0;"><span style="font-size:11.5px; color:var(--text-muted); white-space:nowrap;"><b style="color:var(--text-main);">${ttNum(val)}</b> ${unit}${d.cost > 0 ? ' · ' + ttNum(d.hours) + ' h' : ''}</span>${bxRowBtn('task', d.id)}</span>
                 </div>
                 <div class="pb-container" style="height:6px;"><div class="pb-fill" style="width:${w}%; background:#cca300;"></div></div>
             </div>`;
@@ -8730,7 +8866,7 @@ function getTaskCostInRange(task) {
 }
 function getStackCostInRange(stack) {
     if (!stack) return 0;
-    return appData.tasks.filter(x => x.projectStackId === stack.id).reduce((s, x) => s + getTaskCostInRange(x), 0);
+    return appData.tasks.filter(x => x.projectStackId === stack.id && !bxTaskExcluded(x)).reduce((s, x) => s + getTaskCostInRange(x), 0);
 }
 
 function ttRerender() { if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer')); }
