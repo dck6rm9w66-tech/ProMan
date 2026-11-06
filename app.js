@@ -551,7 +551,7 @@ function updateDepDisplay() {
    ============================================================ */
 const UI_MODES = ['basic', 'medium', 'pro'];
 const UI_MODE_VIEWS = {
-    basic:  ['kanban'],
+    basic:  ['kanban', 'stacks'],
     medium: ['today', 'kanban', 'stacks', 'list', 'schedule', 'notes', 'checklists', 'time']
 };
 function uiMode() { const m = appData && appData.settings && appData.settings.uiMode; return UI_MODES.includes(m) ? m : 'pro'; }
@@ -1041,7 +1041,7 @@ document.addEventListener('keydown', function(e) {
     }
     if(!isInput && !e.ctrlKey && !e.metaKey) {
         if(key === sc.newTask.toLowerCase()) { e.preventDefault(); openModal(); }
-        if(key === sc.newStack.toLowerCase() && uiAtLeast('medium')) { e.preventDefault(); openStackModal(); }
+        if(key === sc.newStack.toLowerCase()) { e.preventDefault(); openStackModal(); }
     }
 });
 
@@ -1500,7 +1500,7 @@ function initFilters() {
         </label>
         <div style="font-size:12px; font-weight:bold; color:var(--text-muted); margin-top:5px; margin-bottom:5px;" data-i18n="filter_by">${t('filter_by')}</div>
         <div class="ms-wrapper" data-ui-min="medium"><div class="ms-btn" id="btn_ms_users" onclick="toggleMS('ms_users', event)"><span data-i18n="btn_users">${t('btn_users')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_users">${buildMSHTML('users', appData.users, 'id', 'name')}</div></div>
-        <div class="ms-wrapper" data-ui-min="medium"><div class="ms-btn" id="btn_ms_stack" onclick="toggleMS('ms_stack', event)"><span data-i18n="btn_stacks">${t('btn_stacks')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_stack">${buildMSHTML('stack', appData.projectStacks, 'id', 'name')}</div></div>
+        <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_stack" onclick="toggleMS('ms_stack', event)"><span data-i18n="btn_stacks">${t('btn_stacks')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_stack">${buildMSHTML('stack', appData.projectStacks, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_sh" onclick="toggleMS('ms_sh', event)"><span data-i18n="btn_sh">${t('btn_sh')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_sh">${buildMSHTML('sh', appData.stakeholders, 'id', 'name')}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_bucket" onclick="toggleMS('ms_bucket', event)"><span data-i18n="btn_buckets">${t('btn_buckets')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_bucket">${buildMSHTML('bucket', appData.buckets, null, null)}</div></div>
         <div class="ms-wrapper"><div class="ms-btn" id="btn_ms_status" onclick="toggleMS('ms_status', event)"><span data-i18n="btn_status">${t('btn_status')}</span> <i class="fas fa-chevron-down"></i></div><div class="ms-dropdown" id="ms_status">${buildMSHTML('status', appData.statuses, 'id', 'title')}</div></div>
@@ -6039,7 +6039,7 @@ function createTaskCard(task) {
     } else {
         // Einheitliche Kachel für alle offenen Spalten
         let stackBadge = '';
-        if (task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if (stack) stackBadge = `<span class="wk-c-stack" data-ui-min="medium" style="--sc:${stack.color || 'var(--text-muted)'}"><i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}</span>`; }
+        if (task.projectStackId) { const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId); if (stack) stackBadge = `<span class="wk-c-stack" style="--sc:${stack.color || 'var(--text-muted)'}"><i class="fas fa-folder"></i> ${escapeHtmlToday(stack.name)}</span>`; }
         let shBadge = '';
         if (task.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === task.stakeholderId); if (sh) shBadge = `<span class="wk-c-sh" style="--shc:${sh.color}"><i class="fas fa-user-tie"></i> ${escapeHtmlToday(sh.name)}</span>`; }
         const bucketBadge = task.bucket ? `<span class="wk-c-bucket"><i class="fas fa-box-open"></i> ${escapeHtmlToday(task.bucket)}</span>` : '';
@@ -12259,8 +12259,6 @@ function ttHeuteBook(iso){
       const fab = ev.target.closest('#wkFab, .mobile-fab, #wkRailNew');
       if (fab) {
         ev.preventDefault(); ev.stopPropagation();
-        /* Basic kennt keine Stacks: „+" legt direkt eine Aufgabe an */
-        if (typeof uiAtLeast === 'function' && !uiAtLeast('medium')) { closeFab(); openModal(); return; }
         toggleFab(); return;
       }
       const opt = ev.target.closest('[data-wknew]');
