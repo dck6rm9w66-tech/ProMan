@@ -34,7 +34,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261106-71">
+    <link rel="stylesheet" href="styles.css?v=20261117-72">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -107,8 +107,8 @@
                             <a onclick="exportWord()"><i class="fas fa-file-word"></i> <span data-i18n="export_word">Word Dokument (.doc)</span></a>
                             <a onclick="exportICS()"><i class="fas fa-calendar-plus"></i> <span data-i18n="export_ics">Kalender (.ics) exportieren</span></a>
                             <hr style="border-top:1px solid var(--border-color); margin:5px 0;">
-                            <a onclick="exportJSON()"><i class="fas fa-download"></i> <span data-i18n="export_backup">Backup herunterladen</span></a>
-                            <a onclick="document.getElementById('importJsonFile').click()"><i class="fas fa-file-import"></i> <span data-i18n="import_backup">Backup / Geteilte Datei importieren</span></a>
+                            <a onclick="exportJSON()" data-ac-admin><i class="fas fa-download"></i> <span data-i18n="export_backup">Backup herunterladen</span></a>
+                            <a onclick="document.getElementById('importJsonFile').click()" data-ac-admin><i class="fas fa-file-import"></i> <span data-i18n="import_backup">Backup / Geteilte Datei importieren</span></a>
                             <input type="file" id="importJsonFile" style="display:none" accept=".json" onchange="importJSON(event)">
                         </div>
                     </div>
@@ -498,7 +498,7 @@
                 <button class="modal-tab-btn active" onclick="switchTaskTab('tab-general', this)" data-i18n="tab_gen">Allgemein</button>
                 <button class="modal-tab-btn" onclick="switchTaskTab('tab-planning', this)" data-i18n="tab_plan">Planung & Zeiten</button>
                 <button class="modal-tab-btn" onclick="switchTaskTab('tab-detail', this)"><span data-i18n="tab_detail" data-ui-min="medium">Checkliste & Dateien</span><span data-i18n="tab_detail_basic" data-ui-max="basic">Checkliste & Notizen</span></button>
-                <button class="modal-tab-btn" data-ui-min="pro" onclick="switchTaskTab('tab-rating', this)" data-i18n="tab_rating">Bewertung</button>
+                <button class="modal-tab-btn" data-ui-min="pro" data-ac="ratings" onclick="switchTaskTab('tab-rating', this)" data-i18n="tab_rating">Bewertung</button>
             </div>
             
             <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
@@ -556,7 +556,7 @@
                         <div data-ui-min="medium"><span class="form-label" data-i18n="t_spent">Bisheriger Aufwand (Std)</span><input type="number" id="t_spentTime" min="0" step="0.25"></div>
                     </div>
 
-                    <div data-ui-min="pro" style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
+                    <div data-ui-min="pro" data-ac="budget" style="border-top:1px solid var(--border-color); padding-top:20px; margin-top:20px;">
                         <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
                         <div class="form-grid-2" style="margin-top:10px;">
                             <div>
@@ -566,7 +566,7 @@
                                     <span id="t_currency_label" style="flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted); border:1px solid var(--border-color); border-radius:var(--radius); min-height:38px;">EUR</span>
                                 </div>
                             </div>
-                            <div>
+                            <div data-ac="wage">
                                 <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="rate_from_assignee">Lohn/h</span>
                                 <p style="font-size:11px; color:var(--text-muted); margin:0; line-height:1.5;" data-i18n="rate_from_assignee_hint">Richtet sich nach der zuständigen Person (Einstellungen → Team &amp; Profil).</p>
                             </div>
@@ -719,7 +719,7 @@
                 <button class="stack-tab-btn active" onclick="switchStackTab('stab-general', this)" data-i18n="tab_gen">Allgemein</button>
                 <button class="stack-tab-btn" onclick="switchStackTab('stab-detail', this)" data-i18n="ui_notes_milestones">Notizen & Milestones</button>
                 <button class="stack-tab-btn" onclick="switchStackTab('stab-tasks', this)" data-i18n="tasks">Aufgaben</button>
-                <button class="stack-tab-btn" data-ui-min="pro" onclick="switchStackTab('stab-rating', this)" data-i18n="tab_rating">Bewertung</button>
+                <button class="stack-tab-btn" data-ui-min="pro" data-ac="ratings" onclick="switchStackTab('stab-rating', this)" data-i18n="tab_rating">Bewertung</button>
             </div>
             <div class="modal-body" style="padding:0; overflow:hidden; display:flex; flex-direction:column; flex:1;">
                 <input type="hidden" id="s_id">
@@ -755,7 +755,7 @@
                         <div><span class="form-label" data-i18n="t_bucket">Bucket (Kategorie)</span><select id="s_bucket"></select></div>
                     </div>
 
-                    <div data-ui-min="pro" style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+                    <div data-ui-min="pro" data-ac="budget" style="border-top: 1px solid var(--border-color); padding-top: 15px;">
                         <span class="form-label" style="margin:0;" data-i18n="t_budget_section">Budget & Verrechnung</span>
                         <div class="form-grid-2" style="margin-top:10px;">
                             <div>
@@ -765,7 +765,7 @@
                                     <span id="s_currency_label" style="flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-muted); border:1px solid var(--border-color); border-radius:var(--radius); min-height:38px;">EUR</span>
                                 </div>
                             </div>
-                            <div>
+                            <div data-ac="wage">
                                 <span class="form-label" style="font-size:11px; font-weight:normal;" data-i18n="rate_from_assignee">Lohn/h</span>
                                 <p style="font-size:11px; color:var(--text-muted); margin:0; line-height:1.5;" data-i18n="rate_from_assignee_hint">Richtet sich nach der zuständigen Person (Einstellungen → Team &amp; Profil).</p>
                             </div>
@@ -892,7 +892,8 @@
                 <button class="modal-tab-btn active" onclick="switchSettingsTab('set-general', this)" data-i18n="set_gen">Allgemein & Layout</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-users', this)" data-i18n="set_team">Team & Profil</button>
                 <button class="modal-tab-btn" onclick="switchSettingsTab('set-data', this)" data-i18n="set_data">Stammdaten</button>
-                <button class="modal-tab-btn" data-ui-min="pro" onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
+                <button class="modal-tab-btn" data-ui-min="pro" data-ac-admin onclick="switchSettingsTab('set-workflows', this)" data-i18n="set_workflows"><i class="fas fa-magic"></i> Workflows</button>
+                <button class="modal-tab-btn" data-ac-admin onclick="switchSettingsTab('set-access', this); renderAccessPanel();"><i class="fas fa-user-shield"></i> <span data-i18n="ac_tab">Rechte</span></button>
                 <button class="modal-tab-btn" data-ui-min="medium" onclick="switchSettingsTab('set-presets', this); renderPresetsPanel();" data-i18n="set_presets"><i class="fas fa-copy"></i> Vorlagen</button>
             </div>
             <div class="modal-body-simple" style="padding-top:0;">
@@ -905,6 +906,7 @@
                         <p style="font-size:11px; color:var(--text-muted); margin:4px 0 10px;" data-i18n="ui_mode_hint">Bestimmt, wie viele Bereiche und Felder sichtbar sind. Daten bleiben in jedem Modus vollständig erhalten – du kannst jederzeit wechseln.</p>
                         <div id="set_ui_mode_cards"></div>
                     </div>
+                    <div id="set_nav_editor" data-ui-min="pro" data-ac-admin></div>
                     <div class="settings-grid">
                         <div>
                             <h4 data-i18n="set_intro"><i class="fas fa-compass"></i> Einführung</h4>
@@ -993,18 +995,22 @@
                                 <label style="font-size:12px; display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" value="0" class="workday-cb"> <span data-i18n="wd_so">So</span></label>
                             </div>
 
-                            <h4 style="margin-top:20px;" data-i18n="set_workhours"><i class="fas fa-clock"></i> Arbeitszeiten (Tagesansicht)</h4>
-                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_workhours_desc">Arbeitszeiten bestimmen die Anzeige in der Tagesansicht des Zeitplans.</p>
-                            <div class="onb-row2" style="background:var(--bg-color); padding:10px; border-radius:var(--radius);">
-                                <label><span data-i18n="lbl_from">Von</span><input type="time" id="set_wd_start"></label>
-                                <label><span data-i18n="lbl_to">Bis</span><input type="time" id="set_wd_end"></label>
-                            </div>
-
-                            <h4 data-ui-min="medium" style="margin-top:20px;"><i class="fas fa-calendar-check"></i> <span data-i18n="set_timeacct">Zeitkonto (Soll-Zeiten)</span></h4>
-                            <p data-ui-min="medium" style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="set_timeacct_desc">Legt fest, wie viele Stunden pro Arbeitstag gebucht sein müssen. Auf dieser Basis erkennt die Zeiterfassung unvollständig gebuchte Tage.</p>
-                            <div data-ui-min="medium" style="background:var(--bg-color); padding:10px; border-radius:var(--radius); display:flex; gap:10px; flex-wrap:wrap;">
-                                <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_target_h">Soll-Stunden / Arbeitstag</span> <input type="number" id="set_target_hours" step="0.25" min="0.25" max="24" style="width:80px; margin:0; padding:4px;"></label>
-                                <label style="font-size:12px; display:flex; align-items:center; gap:6px;"><span data-i18n="set_track_from">Prüfung ab</span> <input type="date" id="set_track_from" style="margin:0; padding:4px;"></label>
+                            <h4 style="margin-top:20px;"><i class="fas fa-clock"></i> <span data-i18n="wt_title">Arbeitszeit &amp; Pause</span></h4>
+                            <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="wt_desc">Daraus ergibt sich dein Soll pro Arbeitstag – für das Zeitkonto, den Hub und die Tagesansicht.</p>
+                            <div class="wt-box">
+                                <div class="wt-row">
+                                    <span class="wt-row-lbl"><i class="fas fa-briefcase"></i> <span data-i18n="wt_work">Arbeitszeit</span></span>
+                                    <label><span data-i18n="lbl_from">Von</span><input type="time" id="set_wd_start" oninput="wtUpdateSum()"></label>
+                                    <label><span data-i18n="lbl_to">Bis</span><input type="time" id="set_wd_end" oninput="wtUpdateSum()"></label>
+                                </div>
+                                <div class="wt-row">
+                                    <span class="wt-row-lbl"><i class="fas fa-mug-hot"></i> <span data-i18n="wt_break">Pause</span></span>
+                                    <label><span data-i18n="lbl_from">Von</span><input type="time" id="set_break_from" oninput="wtFormChanged('from')"></label>
+                                    <label><span data-i18n="lbl_to">Bis</span><input type="time" id="set_break_to" oninput="wtFormChanged('to')"></label>
+                                    <label class="wt-len"><span data-i18n="wt_len">Länge (Min.)</span><input type="number" id="set_break_min" min="0" max="480" step="5" oninput="wtFormChanged('len')"></label>
+                                </div>
+                                <div class="wt-sum" id="set_wt_sum" aria-live="polite"></div>
+                                <label class="wt-check" data-ui-min="medium"><span data-i18n="set_track_from">Prüfung ab</span> <input type="date" id="set_track_from"></label>
                             </div>
                         </div>
 
@@ -1135,8 +1141,9 @@
                         <h4 data-i18n="my_profile">Mein Profil</h4>
                         <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="my_profile_desc">Wähle den Nutzer aus, der dieses Gerät gerade bedient.</p>
                         <select id="set_current_user" style="max-width:300px; margin-top:0;" onchange="changeCurrentUser(this.value)"></select>
+                        <div id="set_my_access"></div>
                     </div>
-                    <div>
+                    <div data-ac-admin>
                         <h4 data-i18n="team_mgmt">Team Mitglieder verwalten</h4>
                         <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="team_mgmt_desc">Füge Kollegen hinzu, um ihnen Aufgaben zuzuordnen.</p>
                         <div style="overflow-x:auto;">
@@ -1150,12 +1157,15 @@
                         </div>
                     </div>
 
-                    <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);">
+                    <div data-ac-admin style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border-color);">
                         <h4 data-i18n="default_rate_title">Standard Lohn/h</h4>
                         <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;" data-i18n="default_rate_desc">Wird für Checkpunkte, Milestones, Aufgaben und Stacks verwendet, wenn keine zuständige Person hinterlegt ist.</p>
                         <input type="number" id="set_default_hourly_rate" min="0" step="0.5" placeholder="0.00" onchange="updateDefaultHourlyRate(this.value)" style="max-width:200px; text-align:right;">
                     </div>
                 </div>
+
+                <!-- TAB: Rechte (Admin-Modus) -->
+                <div id="set-access" class="modal-tab-content" style="padding:20px 0; display:none;"><div id="ac_panel"></div></div>
 
                 <!-- TAB: Stammdaten -->
                 <div id="set-data" class="modal-tab-content" style="padding:20px 0; display:none;">
@@ -1340,8 +1350,8 @@
     <!-- Eigenes JavaScript -->
     <!-- Motion (Framer-Motion-Engine als Vanilla-JS) für die UI-Animationen -->
     <script src="https://cdn.jsdelivr.net/npm/motion@12.23.24/dist/motion.js"></script>
-    <script src="i18n.js?v=20261106-71"></script>
-    <script src="app.js?v=20261106-71"></script>
+    <script src="i18n.js?v=20261117-72"></script>
+    <script src="app.js?v=20261117-72"></script>
 
 </body>
 </html>

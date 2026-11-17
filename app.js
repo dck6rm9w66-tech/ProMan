@@ -210,6 +210,9 @@ let defaultData = {
         tlPixelsPerDay: 30,
         workDayStart: '08:00',
         workDayEnd: '17:00',
+        breakMinutes: 60,
+        breakStart: '12:00',
+        breakEnd: '13:00',
         notificationChannels: {
             overdue:   { bell: true,  toast: false, modal: false, push: false, email: false },
             dueToday:  { bell: true,  toast: false, modal: false, push: false, email: false },
@@ -264,6 +267,22 @@ if(loadedData) {
     if(appData.settings.timeTrackFrom === undefined) appData.settings.timeTrackFrom = '';
     if(!appData.settings.workDayStart) appData.settings.workDayStart = '08:00';
     if(!appData.settings.workDayEnd) appData.settings.workDayEnd = '17:00';
+    /* Altlast: das Onboarding schrieb Uhrzeiten in timeTrackFrom/timeTrackTo, die Einstellungen
+       nutzen timeTrackFrom aber als Datum („Prüfung ab"). Uhrzeiten → Arbeitsbeginn/-ende. */
+    {
+        const _st = appData.settings, _hm = /^\d{1,2}:\d{2}$/;
+        if (_hm.test(_st.timeTrackFrom || '')) { if (_st.workDayStart === '08:00') _st.workDayStart = _st.timeTrackFrom; _st.timeTrackFrom = ''; }
+        if (_hm.test(_st.timeTrackTo || '')) { if (_st.workDayEnd === '17:00') _st.workDayEnd = _st.timeTrackTo; delete _st.timeTrackTo; }
+        /* Pause (neu): aus bisheriger Arbeitszeit minus Soll-Stunden ableiten, damit das Soll gleich bleibt */
+        if (_st.breakMinutes === undefined) {
+            const span = timeToMinutes(_st.workDayEnd) - timeToMinutes(_st.workDayStart);
+            const tgt = parseFloat(_st.targetHoursPerDay);
+            const diff = (!isNaN(span) && !isNaN(tgt) && tgt > 0) ? Math.round(span - tgt * 60) : 0;
+            _st.breakMinutes = (diff > 0 && diff <= 240) ? diff : 0;
+            if (_st.breakStart === undefined) _st.breakStart = '';
+            if (_st.breakEnd === undefined) _st.breakEnd = '';
+        }
+    }
 
     if(!appData.settings.notificationChannels) {
         appData.settings.notificationChannels = JSON.parse(JSON.stringify(defaultData.settings.notificationChannels));
@@ -556,21 +575,409 @@ const UI_MODE_VIEWS = {
 };
 function uiMode() { const m = appData && appData.settings && appData.settings.uiMode; return UI_MODES.includes(m) ? m : 'pro'; }
 function uiAtLeast(m) { return UI_MODES.indexOf(uiMode()) >= UI_MODES.indexOf(m); }
-function uiViewAllowed(v) { const list = UI_MODE_VIEWS[uiMode()]; return !list || list.includes(v); }
+function uiViewAllowed(v) { const list = UI_MODE_VIEWS[uiMode()]; return (!list || list.includes(v)) && acViewAllowed(v); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ADMIN-MODUS / BENUTZERRECHTE
+   appData.access = {
+     enabled: bool, version: 1,
+     users: { <userId>: { role: 'admin'|'member', pin: '<sha256>'|null,
+                          views: null | ['kanban','time:budgets',…],   // null = alle Ansichten
+                          fields: { budget, wage, foreign, ratings } } } // false = ausgeblendet
+   }
+   Bewusst als reine Datenstruktur + reine Prüffunktion (acPolicy) gebaut: eine Server-Version
+   kann dieselbe Struktur speichern und dieselben Regeln serverseitig durchsetzen.
+   Im Browser allein ist es ein Schutz der Oberfläche (die Daten liegen lokal im Browser).
+   ══════════════════════════════════════════════════════════════════════════ */
+const AC_FIELDS = ['budget', 'wage', 'foreign', 'ratings'];
+const AC_VIEW_IDS = ['today', 'kanban', 'stacks', 'list', 'schedule', 'timeline', 'notes', 'checklists', 'milestones', 'stakeholder', 'buckets', 'dependencies', 'time', 'time:budgets'];
+const AC_MEMBER_DEFAULT_FIELDS = { budget: false, wage: false, foreign: false, ratings: true };
+function acData() {
+    if (!appData.access || typeof appData.access !== 'object') appData.access = { enabled: false, version: 1, users: {} };
+    if (!appData.access.users || typeof appData.access.users !== 'object') appData.access.users = {};
+    return appData.access;
+}
+function acEnabled() { try { return !!(appData && appData.access && appData.access.enabled); } catch (e) { return false; } }
+function acCurUid() { return (appData && appData.settings) ? appData.settings.currentUserId : null; }
+function acEntry(uid) {
+    const a = acData();
+    if (!a.users[uid]) a.users[uid] = { role: 'member', pin: null, views: null, fields: Object.assign({}, AC_MEMBER_DEFAULT_FIELDS) };
+    const u = a.users[uid];
+    if (!u.fields) u.fields = Object.assign({}, AC_MEMBER_DEFAULT_FIELDS);
+    return u;
+}
+/* Reine Regel: was darf Benutzer uid? (auch serverseitig verwendbar) */
+function acPolicy(access, uid) {
+    const all = { admin: true, views: null, fields: { budget: true, wage: true, foreign: true, ratings: true } };
+    if (!access || !access.enabled) return all;
+    const u = (access.users || {})[uid];
+    if (!u) return { admin: false, views: null, fields: Object.assign({}, AC_MEMBER_DEFAULT_FIELDS) };
+    if (u.role === 'admin') return all;
+    const f = Object.assign({}, AC_MEMBER_DEFAULT_FIELDS, u.fields || {});
+    return { admin: false, views: Array.isArray(u.views) ? u.views.slice() : null, fields: f };
+}
+function acMe() { return acPolicy(appData && appData.access, acCurUid()); }
+function acIsAdmin() { return acMe().admin; }
+function acCan(field) { return acMe().fields[field] !== false; }
+function acBudgetViewAllowed() { const p = acMe(); return p.fields.budget !== false && (!p.views || p.views.includes('time:budgets')); }
+/* Ansicht erlaubt? (Zeit gilt als erlaubt, wenn Zeiterfassung ODER Budget freigegeben ist) */
+function acViewAllowed(v) {
+    if (!acEnabled()) return true;
+    const p = acMe(); if (p.admin || !p.views) return true;
+    if (v === 'planner') return p.views.includes('schedule') || p.views.includes('timeline');
+    if (v === 'time') return p.views.includes('time') || (p.views.includes('time:budgets') && p.fields.budget !== false);
+    return p.views.includes(v);
+}
+function acLensAllowed(l) {
+    if (!acEnabled()) return true;
+    const p = acMe(); if (p.admin) return true;
+    if (l.v === 'time' && l.sub === 'budgets') return acBudgetViewAllowed();
+    if (l.v === 'time' && l.sub === 'tracking') return !p.views || p.views.includes('time');
+    return acViewAllowed(l.v);
+}
+/* Zeitbuchung sichtbar? Fremde Buchungen nur mit Recht „foreign".
+   Besitzer: log.userId, sonst die zuständige Person der Aufgabe; ohne Besitzer → sichtbar. */
+function acLogOwner(l) {
+    if (!l) return null;
+    if (l.userId) return l.userId;
+    const tk = (appData.tasks || []).find(x => x.id === l.taskId);
+    return tk && tk.assigneeId ? tk.assigneeId : null;
+}
+function acLogVisible(l) {
+    if (!acEnabled() || acCan('foreign')) return true;
+    const o = acLogOwner(l); return !o || o === acCurUid();
+}
+function acAbsVisible(a) {
+    if (!acEnabled() || acCan('foreign')) return true;
+    return !a || !a.userId || a.userId === acCurUid();
+}
+/* Klassen auf <html>: steuern das Ausblenden per CSS ([data-ac~="budget"] usw.) */
+function acApply() {
+    const r = document.documentElement; const on = acEnabled(); const p = acMe();
+    r.classList.toggle('ac-on', on);
+    r.classList.toggle('ac-member', on && !p.admin);
+    AC_FIELDS.forEach(f => r.classList.toggle('ac-no-' + f, on && p.fields[f] === false));
+}
+/* Daten für Weitergabe (Einzel-Export) um verborgene Felder bereinigen */
+function acRedact(obj) {
+    if (!acEnabled() || acIsAdmin() || !obj || typeof obj !== 'object') return obj;
+    const o = JSON.parse(JSON.stringify(obj));
+    const strip = (x) => {
+        if (!x || typeof x !== 'object') return;
+        if (!acCan('budget')) { delete x.targetBudget; }
+        if (!acCan('wage')) { delete x.hourlyRate; delete x.rate; }
+        if (!acCan('ratings')) { delete x.rating; delete x.ratingHistory; }
+    };
+    (Array.isArray(o) ? o : [o]).forEach(x => { strip(x); (x.checklist || []).forEach(strip); });
+    return o;
+}
+
+/* ── PIN ─────────────────────────────────────────────────────────── */
+async function acHashPin(uid, pin) {
+    const txt = 'proman:' + uid + ':' + String(pin);
+    try {
+        if (window.crypto && crypto.subtle) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+            return 'sha256:' + Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    } catch (e) {}
+    let h = 2166136261; for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return 'fnv:' + (h >>> 0).toString(16);
+}
+async function acCheckPin(uid, pin) {
+    const u = acData().users[uid]; if (!u || !u.pin) return true;
+    return (await acHashPin(uid, pin)) === u.pin;
+}
+function acHasPin(uid) { const u = acData().users[uid]; return !!(u && u.pin); }
+const AC_SESSION_KEY = 'proman_ac_unlocked';
+function acSessionUid() { try { return sessionStorage.getItem(AC_SESSION_KEY); } catch (e) { return null; } }
+function acSetSession(uid) { try { if (uid) sessionStorage.setItem(AC_SESSION_KEY, uid); else sessionStorage.removeItem(AC_SESSION_KEY); } catch (e) {} }
+
+/* ── Sperrbildschirm / Benutzer wechseln ─────────────────────────── */
+let acLockPick = null;
+function acNeedsUnlock() {
+    if (!acEnabled()) return false;
+    const uid = acCurUid();
+    return acHasPin(uid) && acSessionUid() !== uid;
+}
+function acOpenLock(preselect, opts = {}) {
+    let ov = document.getElementById('acLock');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'acLock'; ov.className = 'ac-lock'; document.body.appendChild(ov); }
+    acLockPick = preselect || acCurUid();
+    ov.dataset.cancel = opts.cancelable ? '1' : '';
+    acRenderLock();
+    ov.classList.add('open');
+    setTimeout(() => { const i = document.getElementById('ac_pin'); if (i) try { i.focus(); } catch (e) {} }, 60);
+}
+function acCloseLock() { const ov = document.getElementById('acLock'); if (ov) ov.classList.remove('open'); }
+function acRenderLock(msg) {
+    const ov = document.getElementById('acLock'); if (!ov) return;
+    const users = appData.users || [];
+    const sel = users.find(u => u.id === acLockPick) || users[0];
+    if (sel) acLockPick = sel.id;
+    const needPin = sel && acHasPin(sel.id);
+    const role = (id) => acPolicy(appData.access, id).admin ? _t('ac_role_admin') : _t('ac_role_member');
+    ov.innerHTML = `<div class="ac-lock-card" role="dialog" aria-modal="true" aria-labelledby="acLockTitle">
+        <span class="wk-logo ac-lock-logo" aria-hidden="true">pm</span>
+        <h2 id="acLockTitle">${_t('ac_lock_title')}</h2>
+        <p class="ac-lock-sub">${_t('ac_lock_sub')}</p>
+        <div class="ac-lock-users" role="radiogroup" aria-label="${_t('ac_lock_who')}">
+            ${users.map(u => `<button type="button" class="secondary ac-lock-user${u.id === acLockPick ? ' on' : ''}" role="radio" aria-checked="${u.id === acLockPick}" onclick="acLockPick='${u.id}'; acRenderLock()">
+                ${getAvatarHtml(u.id, 'avatar-md', u.name)}<span><b>${escapeHtmlToday(u.name)}</b><small>${role(u.id)}${acHasPin(u.id) ? ' · <i class="fas fa-lock"></i>' : ''}</small></span></button>`).join('')}
+        </div>
+        <form class="ac-lock-form" onsubmit="event.preventDefault(); acUnlock();">
+            ${needPin ? `<input type="password" id="ac_pin" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="${_t('ac_pin_ph')}" aria-label="${_t('ac_pin_ph')}">` : `<p class="ac-lock-nopin"><i class="fas fa-lock-open"></i> ${_t('ac_no_pin')}</p>`}
+            ${msg ? `<p class="ac-lock-err" role="alert"><i class="fas fa-triangle-exclamation"></i> ${msg}</p>` : ''}
+            <button type="submit" class="ac-lock-go"><i class="fas fa-arrow-right-to-bracket"></i> ${_t('ac_unlock')}</button>
+            ${ov.dataset.cancel ? `<button type="button" class="secondary ac-lock-cancel" onclick="acCloseLock()">${_t('cancel')}</button>` : ''}
+        </form>
+    </div>`;
+}
+async function acUnlock() {
+    const uid = acLockPick; if (!uid) return;
+    const pinEl = document.getElementById('ac_pin');
+    if (acHasPin(uid)) {
+        const ok = await acCheckPin(uid, pinEl ? pinEl.value : '');
+        if (!ok) { acRenderLock(_t('ac_pin_wrong')); setTimeout(() => { const i = document.getElementById('ac_pin'); if (i) i.focus(); }, 30); return; }
+    }
+    const changed = uid !== acCurUid();
+    appData.settings.currentUserId = uid;
+    acSetSession(uid);
+    saveToLocal(true);
+    acCloseLock();
+    acAfterUserChange(changed);
+}
+function acAfterUserChange(changed) {
+    applyUiMode();
+    try { if (window.Shell) window.Shell.rebuildNav(); } catch (e) {}
+    try { if (typeof renderSettings === 'function' && document.getElementById('settingsModal').classList.contains('active')) renderSettings(); } catch (e) {}
+    try { if (typeof updateActiveUserIcon === 'function') updateActiveUserIcon(); } catch (e) {}
+    if (!uiViewAllowed(currentView)) switchView(uiResolveView(currentView)); else renderView();
+    if (changed) { const u = (appData.users || []).find(x => x.id === acCurUid()); showToast(_tf('ac_now_user', { n: u ? u.name : '' }), 'success'); }
+}
+function acLockNow() { acSetSession(null); acOpenLock(acCurUid()); }
+
+/* ── Einstellungen › Rechte (Admin-Modus) ────────────────────────── */
+let acPinEdit = null, acOpenUser = null;
+function acViewLabel(id) {
+    const c = window.Shell ? window.Shell.LENS_CATALOG.find(x => x.id === id) : null;
+    return c ? window.Shell.lensLabel(c) : id;
+}
+function acViewGroups() {
+    if (!window.Shell) return [];
+    return window.Shell.PLACES.map(p => ({ name: window.Shell.placeLabel(p), items: window.Shell.LENS_CATALOG.filter(c => c.group === p.k) }));
+}
+const AC_FIELD_META = {
+    budget:  { icon: 'fa-coins',        key: 'ac_f_budget' },
+    wage:    { icon: 'fa-money-bill-wave', key: 'ac_f_wage' },
+    foreign: { icon: 'fa-user-clock',   key: 'ac_f_foreign' },
+    ratings: { icon: 'fa-star',         key: 'ac_f_ratings' }
+};
+function acAdmins() { const a = acData(); return (appData.users || []).filter(u => a.users[u.id] && a.users[u.id].role === 'admin'); }
+function renderMyAccess() {
+    const host = document.getElementById('set_my_access'); if (!host) return;
+    const sel = document.getElementById('set_current_user');
+    if (!acEnabled()) { host.innerHTML = ''; if (sel) sel.style.display = ''; return; }
+    if (sel) sel.style.display = 'none';
+    const me = (appData.users || []).find(u => u.id === acCurUid());
+    const p = acMe();
+    host.innerHTML = `<div class="ac-me">
+        ${getAvatarHtml(acCurUid(), 'avatar-md', me ? me.name : '')}
+        <div class="ac-me-txt"><b>${escapeHtmlToday(me ? me.name : '')}</b><small>${p.admin ? _t('ac_role_admin') : _t('ac_role_member')} · ${acHasPin(acCurUid()) ? _t('ac_pin_set') : _t('ac_pin_none')}</small></div>
+        <div class="ac-me-acts">
+            <button type="button" class="secondary" onclick="acOpenLock(null, { cancelable: true })"><i class="fas fa-user-group"></i> ${_t('ac_switch_user')}</button>
+            <button type="button" class="secondary" onclick="acPinEdit='${acCurUid()}'; renderMyAccess()"><i class="fas fa-key"></i> ${acHasPin(acCurUid()) ? _t('ac_pin_change') : _t('ac_pin_create')}</button>
+            ${acHasPin(acCurUid()) ? `<button type="button" class="secondary" onclick="closeSettings(); acLockNow()"><i class="fas fa-lock"></i> ${_t('ac_lock_now')}</button>` : ''}
+        </div>
+        ${acPinEdit === acCurUid() ? acPinFormHtml(acCurUid(), 'renderMyAccess') : ''}
+    </div>`;
+}
+function acPinFormHtml(uid, rerender) {
+    return `<form class="ac-pin-form" onsubmit="event.preventDefault(); acSavePin('${uid}', '${rerender}')">
+        <input type="password" id="ac_new_pin" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="12" placeholder="${_t('ac_pin_new_ph')}" aria-label="${_t('ac_pin_new_ph')}">
+        <input type="password" id="ac_new_pin2" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="12" placeholder="${_t('ac_pin_rep_ph')}" aria-label="${_t('ac_pin_rep_ph')}">
+        <button type="submit"><i class="fas fa-check"></i> ${_t('save')}</button>
+        <button type="button" class="secondary" onclick="acPinEdit=null; ${rerender}()">${_t('cancel')}</button>
+    </form>`;
+}
+async function acSavePin(uid, rerender) {
+    const a = (document.getElementById('ac_new_pin') || {}).value || '', b = (document.getElementById('ac_new_pin2') || {}).value || '';
+    if (!/^\d{4,12}$/.test(a)) return showToast(_t('ac_pin_rule'), 'error');
+    if (a !== b) return showToast(_t('ac_pin_mismatch'), 'error');
+    acEntry(uid).pin = await acHashPin(uid, a);
+    if (uid === acCurUid()) acSetSession(uid);
+    acPinEdit = null; saveToLocal(true); showToast(_t('ac_pin_saved'), 'success');
+    if (typeof window[rerender] === 'function') window[rerender]();
+}
+function acRemovePin(uid) {
+    const u = acData().users[uid]; if (!u) return;
+    if (u.role === 'admin' && acEnabled()) return showToast(_t('ac_admin_needs_pin'), 'error');
+    u.pin = null; saveToLocal(true); renderAccessPanel();
+}
+async function acEnable() {
+    const a = (document.getElementById('ac_new_pin') || {}).value || '', b = (document.getElementById('ac_new_pin2') || {}).value || '';
+    if (!/^\d{4,12}$/.test(a)) return showToast(_t('ac_pin_rule'), 'error');
+    if (a !== b) return showToast(_t('ac_pin_mismatch'), 'error');
+    const acc = acData(); const me = acCurUid();
+    (appData.users || []).forEach(u => { acEntry(u.id); });
+    const mine = acEntry(me); mine.role = 'admin'; mine.pin = await acHashPin(me, a);
+    acc.enabled = true; acc.version = 1;
+    acSetSession(me); saveToLocal(true); applyUiMode();
+    try { window.Shell.rebuildNav(); } catch (e) {}
+    showToast(_t('ac_enabled'), 'success'); renderAccessPanel(); renderMyAccess();
+}
+function acDisable() {
+    if (!confirm(_t('ac_disable_confirm'))) return;
+    acData().enabled = false; acSetSession(null); saveToLocal(true); applyUiMode();
+    try { window.Shell.rebuildNav(); } catch (e) {}
+    showToast(_t('ac_disabled')); renderAccessPanel(); renderMyAccess();
+}
+function acSetRole(uid, role) {
+    const u = acEntry(uid);
+    if (u.role === 'admin' && role !== 'admin' && acAdmins().length <= 1) return showToast(_t('ac_last_admin'), 'error');
+    if (role === 'admin' && !u.pin) { acPinEdit = uid; acOpenUser = uid; renderAccessPanel(); return showToast(_t('ac_admin_needs_pin'), 'info'); }
+    u.role = role; saveToLocal(true); applyUiMode(); try { window.Shell.rebuildNav(); } catch (e) {} renderAccessPanel();
+}
+function acToggleView(uid, id) {
+    const u = acEntry(uid);
+    let v = Array.isArray(u.views) ? u.views.slice() : AC_VIEW_IDS.slice();
+    v = v.includes(id) ? v.filter(x => x !== id) : v.concat(id);
+    u.views = AC_VIEW_IDS.every(x => v.includes(x)) ? null : v;
+    saveToLocal(true); renderAccessPanel();
+}
+function acSetAllViews(uid, on) { acEntry(uid).views = on ? null : []; saveToLocal(true); renderAccessPanel(); }
+function acToggleField(uid, f) { const u = acEntry(uid); u.fields[f] = u.fields[f] === false; saveToLocal(true); renderAccessPanel(); }
+function acToggleOpen(uid) { acOpenUser = acOpenUser === uid ? null : uid; acPinEdit = null; renderAccessPanel(); }
+/* Server-Version: Rechte als JSON (ohne PINs – dort übernimmt die Anmeldung des Servers) */
+function acExportPolicy() {
+    const a = acData();
+    const out = { schema: 'proman-access/1', exportedAt: new Date().toISOString(), enabled: !!a.enabled,
+        fields: AC_FIELDS, views: AC_VIEW_IDS,
+        users: (appData.users || []).map(u => { const e = a.users[u.id] || {}; return { id: u.id, name: u.name, role: e.role || 'member', views: Array.isArray(e.views) ? e.views : null, fields: Object.assign({}, AC_MEMBER_DEFAULT_FIELDS, e.fields || {}) }; }) };
+    triggerDownloadJSON(out, 'proman_rechte.json');
+}
+function acImportPolicy(ev) {
+    const f = ev.target.files && ev.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+        try {
+            const d = JSON.parse(r.result);
+            if (!d || d.schema !== 'proman-access/1' || !Array.isArray(d.users)) throw new Error('schema');
+            let n = 0;
+            d.users.forEach(x => { if (!(appData.users || []).some(u => u.id === x.id)) return; const u = acEntry(x.id);
+                if (x.role === 'admin' || x.role === 'member') { if (x.role === 'admin' && !u.pin && x.id !== acCurUid()) { /* Admin ohne PIN bleibt Mitglied */ } else u.role = x.role; }
+                u.views = Array.isArray(x.views) ? x.views.filter(v => AC_VIEW_IDS.includes(v)) : null;
+                u.fields = Object.assign({}, AC_MEMBER_DEFAULT_FIELDS, x.fields || {}); n++; });
+            if (!acAdmins().length) acEntry(acCurUid()).role = 'admin';
+            saveToLocal(true); renderAccessPanel(); showToast(_tf('ac_import_done', { n }), 'success');
+        } catch (e) { showToast(_t('ac_import_bad'), 'error'); }
+        ev.target.value = '';
+    };
+    r.readAsText(f);
+}
+function renderAccessPanel() {
+    const host = document.getElementById('ac_panel'); if (!host) return;
+    const on = acEnabled();
+    const me = (appData.users || []).find(u => u.id === acCurUid());
+    let html = `<div class="ac-intro">
+        <h4><i class="fas fa-user-shield"></i> ${_t('ac_title')}</h4>
+        <p>${_t('ac_intro')}</p>
+        <p class="ac-note"><i class="fas fa-circle-info"></i> ${_t('ac_local_note')}</p>
+    </div>`;
+    if (!on) {
+        html += `<div class="ac-enable">
+            <div><b>${_t('ac_off_title')}</b><p>${_tf('ac_off_text', { n: escapeHtmlToday(me ? me.name : '') })}</p></div>
+            <form class="ac-pin-form" onsubmit="event.preventDefault(); acEnable()">
+                <input type="password" id="ac_new_pin" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="12" placeholder="${_t('ac_pin_admin_ph')}" aria-label="${_t('ac_pin_admin_ph')}">
+                <input type="password" id="ac_new_pin2" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="12" placeholder="${_t('ac_pin_rep_ph')}" aria-label="${_t('ac_pin_rep_ph')}">
+                <button type="submit"><i class="fas fa-shield-halved"></i> ${_t('ac_enable')}</button>
+            </form>
+        </div>`;
+        host.innerHTML = html; return;
+    }
+    const groups = acViewGroups();
+    html += `<div class="ac-users">`;
+    (appData.users || []).forEach(u => {
+        const e = acEntry(u.id), isAdmin = e.role === 'admin', open = acOpenUser === u.id;
+        const pol = acPolicy(appData.access, u.id);
+        const nViews = pol.views ? pol.views.length : AC_VIEW_IDS.length;
+        const hidden = AC_FIELDS.filter(f => pol.fields[f] === false).map(f => _t(AC_FIELD_META[f].key));
+        const summary = isAdmin ? _t('ac_sum_admin') : `${_tf('ac_sum_views', { n: nViews, m: AC_VIEW_IDS.length })}${hidden.length ? ' · ' + _tf('ac_sum_hidden', { f: hidden.join(', ') }) : ' · ' + _t('ac_sum_all_fields')}`;
+        html += `<div class="ac-user${open ? ' open' : ''}${isAdmin ? ' is-admin' : ''}">
+            <button type="button" class="secondary ac-user-head" onclick="acToggleOpen('${u.id}')" aria-expanded="${open}">
+                ${getAvatarHtml(u.id, 'avatar-md', u.name)}
+                <span class="ac-user-txt"><b>${escapeHtmlToday(u.name)}${u.id === acCurUid() ? ` <em>${_t('ac_you')}</em>` : ''}</b><small>${summary}</small></span>
+                <span class="ac-role-badge ${isAdmin ? 'admin' : ''}">${isAdmin ? _t('ac_role_admin') : _t('ac_role_member')}</span>
+                <span class="ac-pin-badge ${e.pin ? 'on' : ''}" title="${e.pin ? _t('ac_pin_set') : _t('ac_pin_none')}"><i class="fas ${e.pin ? 'fa-lock' : 'fa-lock-open'}"></i></span>
+                <i class="fas fa-chevron-down ac-chev"></i>
+            </button>
+            ${open ? `<div class="ac-user-body">
+                <div class="ac-row">
+                    <span class="ac-row-lbl">${_t('ac_role')}</span>
+                    <div class="ac-seg" role="radiogroup">
+                        <button type="button" class="secondary${isAdmin ? ' on' : ''}" role="radio" aria-checked="${isAdmin}" onclick="acSetRole('${u.id}','admin')"><i class="fas fa-crown"></i> ${_t('ac_role_admin')}</button>
+                        <button type="button" class="secondary${!isAdmin ? ' on' : ''}" role="radio" aria-checked="${!isAdmin}" onclick="acSetRole('${u.id}','member')"><i class="fas fa-user"></i> ${_t('ac_role_member')}</button>
+                    </div>
+                </div>
+                <div class="ac-row">
+                    <span class="ac-row-lbl">PIN</span>
+                    <div class="ac-pin-acts">
+                        <span class="ac-pin-state">${e.pin ? `<i class="fas fa-lock"></i> ${_t('ac_pin_set')}` : `<i class="fas fa-lock-open"></i> ${_t('ac_pin_none')}`}</span>
+                        <button type="button" class="secondary" onclick="acPinEdit='${u.id}'; renderAccessPanel()"><i class="fas fa-key"></i> ${e.pin ? _t('ac_pin_reset') : _t('ac_pin_create')}</button>
+                        ${e.pin && !isAdmin ? `<button type="button" class="secondary ac-link" onclick="acRemovePin('${u.id}')">${_t('ac_pin_remove')}</button>` : ''}
+                    </div>
+                </div>
+                ${acPinEdit === u.id ? acPinFormHtml(u.id, 'renderAccessPanel') : ''}
+                ${isAdmin ? `<p class="ac-admin-all"><i class="fas fa-crown"></i> ${_t('ac_admin_all')}</p>` : `
+                <div class="ac-block">
+                    <div class="ac-block-head"><span class="ac-row-lbl">${_t('ac_views')}</span>
+                        <span><button type="button" class="secondary ac-link" onclick="acSetAllViews('${u.id}', true)">${_t('ac_all')}</button> · <button type="button" class="secondary ac-link" onclick="acSetAllViews('${u.id}', false)">${_t('ac_none')}</button></span></div>
+                    <div class="ac-view-groups">${groups.map(g => `<div class="ac-vg"><small>${escapeHtmlToday(g.name)}</small><div class="ac-vg-items">${g.items.map(c => {
+                        const allowed = !pol.views || pol.views.includes(c.id);
+                        const blockedByField = c.id === 'time:budgets' && pol.fields.budget === false;
+                        return `<button type="button" class="secondary ac-view${allowed && !blockedByField ? ' on' : ''}${blockedByField ? ' blocked' : ''}" aria-pressed="${allowed}" onclick="acToggleView('${u.id}','${c.id}')" ${blockedByField ? `title="${_t('ac_needs_budget')}"` : ''}><i class="fas ${c.i}"></i> ${escapeHtmlToday(acViewLabel(c.id))}</button>`; }).join('')}</div></div>`).join('')}</div>
+                </div>
+                <div class="ac-block">
+                    <span class="ac-row-lbl">${_t('ac_fields')}</span>
+                    <div class="ac-fields">${AC_FIELDS.map(f => { const allowed = pol.fields[f] !== false; return `<label class="ac-field${allowed ? '' : ' off'}">
+                        <span class="ac-field-ic"><i class="fas ${AC_FIELD_META[f].icon}"></i></span>
+                        <span class="ac-field-txt"><b>${_t(AC_FIELD_META[f].key)}</b><small>${_t(AC_FIELD_META[f].key + '_d')}</small></span>
+                        <input type="checkbox" class="bx-switch" ${allowed ? 'checked' : ''} onchange="acToggleField('${u.id}','${f}')" aria-label="${_t(AC_FIELD_META[f].key)}"></label>`; }).join('')}</div>
+                </div>`}
+            </div>` : ''}
+        </div>`;
+    });
+    html += `</div>
+    <div class="ac-server">
+        <div><b><i class="fas fa-server"></i> ${_t('ac_server_title')}</b><p>${_t('ac_server_text')}</p></div>
+        <div class="ac-server-acts">
+            <button type="button" class="secondary" onclick="acExportPolicy()"><i class="fas fa-file-export"></i> ${_t('ac_export')}</button>
+            <button type="button" class="secondary" onclick="document.getElementById('ac_import_file').click()"><i class="fas fa-file-import"></i> ${_t('ac_import')}</button>
+            <input type="file" id="ac_import_file" accept=".json" style="display:none" onchange="acImportPolicy(event)">
+        </div>
+    </div>
+    <div class="ac-off"><button type="button" class="secondary ac-link danger" onclick="acDisable()"><i class="fas fa-power-off"></i> ${_t('ac_disable')}</button></div>`;
+    host.innerHTML = html;
+}
+
 function uiDefaultView() { return uiMode() === 'basic' ? 'kanban' : 'today'; }
 /* Nicht erlaubte Ansicht → nächstliegende erlaubte (z. B. Gantt → Kalender in Medium) */
 function uiResolveView(v) {
     if (uiViewAllowed(v)) return v;
     if ((v === 'planner' || v === 'timeline') && uiViewAllowed('schedule')) return 'schedule';
     if (v === 'milestones' && uiViewAllowed('checklists')) return 'checklists';
-    return uiDefaultView();
+    if (uiViewAllowed(uiDefaultView())) return uiDefaultView();
+    /* Benutzerrechte: erste erlaubte Ansicht */
+    const order = ['today', 'kanban', 'stacks', 'list', 'schedule', 'timeline', 'notes', 'checklists', 'milestones', 'stakeholder', 'buckets', 'dependencies', 'time'];
+    return order.find(x => uiViewAllowed(x)) || 'kanban';
 }
 function applyUiMode() {
     const r = document.documentElement; const m = uiMode();
     UI_MODES.forEach(x => r.classList.toggle('ui-' + x, x === m));
     r.dataset.uiMode = m;
     try { renderUiQuick(); } catch (e) {}
-    if (!uiAtLeast('pro') && typeof timeSubView !== 'undefined' && timeSubView === 'budgets') timeSubView = 'tracking';
+    if ((!uiAtLeast('pro') || !acBudgetViewAllowed()) && typeof timeSubView !== 'undefined' && timeSubView === 'budgets') timeSubView = 'tracking';
+    try { acApply(); } catch (e) {}
 }
 function setUiMode(m, opts = {}) {
     if (!UI_MODES.includes(m)) return;
@@ -607,8 +1014,85 @@ function uiModeCardsHtml(selected, onPick) {
 function renderUiModeCards() {
     const host = document.getElementById('set_ui_mode_cards');
     if (host) host.innerHTML = uiModeCardsHtml(uiMode(), 'uiModePickSettings');
+    try { renderNavEditor(); } catch (e) {}
 }
 function uiModePickSettings(m) { if (m !== uiMode()) setUiMode(m); }
+
+/* ══════════════════════════════════════════════════════════════════
+   Pro: Navigationsleiste frei belegen (links am Desktop, unten am Handy)
+   appData.settings.customNav = [{ k, label, icon, lenses: [lensId, …] }] – null = Standard
+   ══════════════════════════════════════════════════════════════════ */
+let nvIconOpen = -1;
+function nvDefaultList() {
+    return (window.Shell ? window.Shell.PLACES : []).map(p => ({ k: p.k, label: '', icon: p.icon, lenses: p.lenses.map(l => l.v) }));
+}
+function nvList() {
+    const cn = appData.settings.customNav;
+    return (Array.isArray(cn) && cn.length ? cn : nvDefaultList()).map(it => ({ k: it.k, label: it.label || '', icon: it.icon || 'fa-circle', lenses: (it.lenses || []).slice() }));
+}
+function nvCommit(list) {
+    appData.settings.customNav = list;
+    saveToLocal(true);
+    try { if (window.Shell) { window.Shell.rebuildNav(); } } catch (e) {}
+    renderNavEditor();
+}
+function nvLensById(id) { return (window.Shell ? window.Shell.LENS_CATALOG : []).find(c => c.id === id); }
+function nvDefLabel(k) { const p = (window.Shell ? window.Shell.PLACES : []).find(x => x.k === k); return p ? window.Shell.placeLabel(p) : ''; }
+function nvRename(i, v) { const l = nvList(); if (!l[i]) return; l[i].label = v.trim(); appData.settings.customNav = l; saveToLocal(true); try { window.Shell.rebuildNav(); } catch (e) {} }
+function nvMove(i, d) { const l = nvList(); const j = i + d; if (!l[i] || j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; nvIconOpen = -1; nvCommit(l); }
+function nvRemove(i) {
+    const l = nvList(); if (l.length <= 1) return showToast(_t('nv_keep_one'), 'error');
+    l.splice(i, 1); nvIconOpen = -1; nvCommit(l);
+}
+function nvAddItem() { const l = nvList(); l.push({ k: 'c_' + Math.random().toString(36).slice(2, 8), label: _t('nv_new_item'), icon: 'fa-star', lenses: [] }); nvIconOpen = -1; nvCommit(l); }
+function nvSetIcon(i, ic) { const l = nvList(); if (!l[i]) return; l[i].icon = ic; nvIconOpen = -1; nvCommit(l); }
+function nvToggleIcons(i) { nvIconOpen = nvIconOpen === i ? -1 : i; renderNavEditor(); }
+function nvAddLens(i, id) { if (!id) return; const l = nvList(); if (!l[i]) return; if (!l[i].lenses.includes(id)) l[i].lenses.push(id); nvCommit(l); }
+function nvLensMove(i, j, d) { const l = nvList(); const a = l[i] && l[i].lenses; if (!a) return; const k = j + d; if (k < 0 || k >= a.length) return; [a[j], a[k]] = [a[k], a[j]]; nvCommit(l); }
+function nvLensRemove(i, j) { const l = nvList(); if (!l[i]) return; l[i].lenses.splice(j, 1); nvCommit(l); }
+function nvReset() { appData.settings.customNav = null; nvIconOpen = -1; saveToLocal(true); try { window.Shell.rebuildNav(); } catch (e) {} renderNavEditor(); showToast(_t('nv_reset_done'), 'success'); }
+function renderNavEditor() {
+    const host = document.getElementById('set_nav_editor'); if (!host || !window.Shell) return;
+    const list = nvList(), custom = window.Shell.customNavActive();
+    const cat = window.Shell.LENS_CATALOG, lbl = window.Shell.lensLabel;
+    const groups = window.Shell.PLACES.map(p => ({ k: p.k, name: window.Shell.placeLabel(p), items: cat.filter(c => c.group === p.k) }));
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const items = list.map((it, i) => {
+        const chips = it.lenses.map((id, j) => { const c = nvLensById(id); if (!c) return ''; return `<span class="nv-chip"><i class="fas ${c.i}"></i><span>${esc(lbl(c))}</span>
+            <button type="button" class="secondary nv-mini" onclick="nvLensMove(${i},${j},-1)" ${j === 0 ? 'disabled' : ''} title="${_t('nv_left')}" aria-label="${_t('nv_left')}"><i class="fas fa-chevron-left"></i></button>
+            <button type="button" class="secondary nv-mini" onclick="nvLensMove(${i},${j},1)" ${j === it.lenses.length - 1 ? 'disabled' : ''} title="${_t('nv_right')}" aria-label="${_t('nv_right')}"><i class="fas fa-chevron-right"></i></button>
+            <button type="button" class="secondary nv-mini nv-x" onclick="nvLensRemove(${i},${j})" title="${_t('nv_remove_view')}" aria-label="${_t('nv_remove_view')}"><i class="fas fa-xmark"></i></button></span>`; }).join('');
+        const opts = groups.map(g => `<optgroup label="${esc(g.name)}">${g.items.map(c => `<option value="${c.id}" ${it.lenses.includes(c.id) ? 'disabled' : ''}>${esc(lbl(c))}</option>`).join('')}</optgroup>`).join('');
+        return `<div class="nv-item${it.lenses.length ? '' : ' is-empty'}">
+            <div class="nv-head">
+                <button type="button" class="secondary nv-icon" onclick="nvToggleIcons(${i})" title="${_t('nv_icon')}" aria-label="${_t('nv_icon')}" aria-expanded="${nvIconOpen === i}"><i class="fas ${it.icon}"></i></button>
+                <input type="text" class="nv-name" value="${esc(it.label)}" placeholder="${esc(nvDefLabel(it.k) || _t('nv_new_item'))}" maxlength="24" onchange="nvRename(${i}, this.value)" aria-label="${_t('nv_name')}">
+                <div class="nv-acts">
+                    <button type="button" class="secondary nv-mini" onclick="nvMove(${i},-1)" ${i === 0 ? 'disabled' : ''} title="${_t('nv_up')}" aria-label="${_t('nv_up')}"><i class="fas fa-arrow-up"></i></button>
+                    <button type="button" class="secondary nv-mini" onclick="nvMove(${i},1)" ${i === list.length - 1 ? 'disabled' : ''} title="${_t('nv_down')}" aria-label="${_t('nv_down')}"><i class="fas fa-arrow-down"></i></button>
+                    <button type="button" class="secondary nv-mini nv-x" onclick="nvRemove(${i})" title="${_t('nv_remove_item')}" aria-label="${_t('nv_remove_item')}"><i class="fas fa-trash-can"></i></button>
+                </div>
+            </div>
+            ${nvIconOpen === i ? `<div class="nv-icons">${window.Shell.NAV_ICONS.map(ic => `<button type="button" class="secondary nv-icon-opt${ic === it.icon ? ' on' : ''}" onclick="nvSetIcon(${i},'${ic}')" aria-label="${ic}"><i class="fas ${ic}"></i></button>`).join('')}</div>` : ''}
+            <div class="nv-lenses">${chips || `<span class="nv-empty">${_t('nv_no_views')}</span>`}
+                <select class="nv-add" onchange="nvAddLens(${i}, this.value)" aria-label="${_t('nv_add_view')}"><option value="">+ ${_t('nv_add_view')}</option>${opts}</select>
+            </div>
+        </div>`;
+    }).join('');
+    const used = new Set(); list.forEach(it => it.lenses.forEach(id => used.add(id)));
+    const unused = cat.filter(c => !used.has(c.id));
+    host.innerHTML = `<div class="nv-section">
+        <h4><i class="fas fa-bars-staggered"></i> <span>${_t('nv_title')}</span>${custom ? `<span class="nv-badge">${_t('nv_custom')}</span>` : ''}</h4>
+        <p class="nv-hint">${_t('nv_hint')}</p>
+        <div class="nv-list">${items}</div>
+        ${unused.length ? `<p class="nv-unused"><i class="fas fa-eye-slash"></i> ${_tf('nv_unused', { v: unused.map(c => esc(lbl(c))).join(', ') })}</p>` : ''}
+        ${list.filter(it => it.lenses.length).length > 5 ? `<p class="nv-unused"><i class="fas fa-mobile-screen"></i> ${_t('nv_many')}</p>` : ''}
+        <div class="nv-foot">
+            <button type="button" class="secondary" onclick="nvAddItem()"><i class="fas fa-plus"></i> ${_t('nv_add_item')}</button>
+            ${custom ? `<button type="button" class="secondary nv-reset" onclick="nvReset()"><i class="fas fa-rotate-left"></i> ${_t('nv_reset')}</button>` : ''}
+        </div>
+    </div>`;
+}
 /* Schnellwechsler oben in der Mitte der Kopfzeile: EIN unauffälliger Knopf.
    Jeder Klick schaltet weiter: Basic → Medium → Pro → Basic … */
 function renderUiQuick() {
@@ -631,6 +1115,8 @@ let plannerSubView = 'schedule';
 let timeSubView = 'tracking';
 let sidebarMgmtOpen = false;
 applyUiMode();
+/* Admin-Modus: beim Start PIN des aktiven Benutzers abfragen (einmal pro Browser-Tab) */
+if (acNeedsUnlock()) { const _acLockStart = () => acOpenLock(acCurUid()); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _acLockStart); else setTimeout(_acLockStart, 0); }
 let currentTempFiles = []; 
 
 let listSort = { key: 'dueDate', desc: false };
@@ -1979,7 +2465,7 @@ function rtStaticStars(val, cls = '') {
    Bewertet: Sterne + Ø-Wert; unbewertet: dezenter „Bewerten"-Chip. Klick öffnet die Bewertung.
    mini = nur Stern + Wert (für enge Zeilen, z. B. Aufgaben innerhalb eines Stacks). */
 function doneRatingHtml(type, ent, mini = false) {
-    if (!ent) return '';
+    if (!ent || !acCan('ratings')) return '';
     const done = type === 'task' ? isTaskDone(ent) : ent.status === 'completed';
     if (!done) return '';
     const avg = parseFloat(getAvgRating(ent.rating)) || 0;
@@ -2266,8 +2752,8 @@ function openSettings() {
     document.getElementById('set_wd_start').value = appData.settings.workDayStart || '08:00';
     document.getElementById('set_wd_end').value = appData.settings.workDayEnd || '17:00';
 
-    const _thEl = document.getElementById('set_target_hours');
-    if(_thEl) _thEl.value = appData.settings.targetHoursPerDay !== undefined ? appData.settings.targetHoursPerDay : 8;
+    { const st = appData.settings; const bf = document.getElementById('set_break_from'), bt = document.getElementById('set_break_to'), bm = document.getElementById('set_break_min');
+      if (bf) bf.value = st.breakStart || ''; if (bt) bt.value = st.breakEnd || ''; if (bm) bm.value = Math.round(wtBreakMinutes(st)) || 0; wtUpdateSum(); }
     const _tfEl = document.getElementById('set_track_from');
     if(_tfEl) _tfEl.value = appData.settings.timeTrackFrom || '';
 
@@ -2313,8 +2799,9 @@ function closeSettings() {
     appData.settings.workDayStart = document.getElementById('set_wd_start').value || '08:00';
     appData.settings.workDayEnd = document.getElementById('set_wd_end').value || '17:00';
 
-    const _thSave = document.getElementById('set_target_hours');
-    if(_thSave) { const _thVal = parseFloat(_thSave.value); appData.settings.targetHoursPerDay = (isNaN(_thVal) || _thVal <= 0) ? 8 : _thVal; }
+    { const st = appData.settings; const f = wtReadForm();
+      st.breakStart = f.breakStart; st.breakEnd = f.breakEnd; st.breakMinutes = f.breakMinutes;
+      st.targetHoursPerDay = ttTargetHours();   /* Altfeld synchron halten */ }
     const _tfSave = document.getElementById('set_track_from');
     if(_tfSave) appData.settings.timeTrackFrom = _tfSave.value || '';
     
@@ -2362,9 +2849,42 @@ function saveInlineSetting(input, type, id, oldText) {
 }
 function updateShColor(id, color) { const sh = appData.stakeholders.find(s => s.id === id); if(sh) { sh.color = color; saveToLocal(); } }
 function updateUserAvatar(id, val) { const u = appData.users.find(s => s.id === id); if(u) { u.avatar = val; saveToLocal(); renderSettings(); } }
-function changeCurrentUser(id) { appData.settings.currentUserId = id; saveToLocal(); showToast(t('toast_saved')); }
+/* Einstellungen: Arbeitszeit & Pause – Formular lesen, Länge ↔ von/bis abgleichen, Summe anzeigen */
+function wtReadForm() {
+    const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+    const bf = v('set_break_from'), bt = v('set_break_to');
+    const len = parseFloat(v('set_break_min'));
+    return { workDayStart: v('set_wd_start') || '08:00', workDayEnd: v('set_wd_end') || '17:00',
+             breakStart: bf, breakEnd: bt, breakMinutes: (!isNaN(len) && len > 0) ? Math.round(len) : 0 };
+}
+function wtMinToHM(m) { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+function wtFormChanged(src) {
+    const bf = document.getElementById('set_break_from'), bt = document.getElementById('set_break_to'), bm = document.getElementById('set_break_min');
+    if (bf && bt && bm) {
+        const a = wtHM(bf.value), b = wtHM(bt.value), len = parseFloat(bm.value);
+        if ((src === 'from' || src === 'to') && !isNaN(a) && !isNaN(b) && b > a) bm.value = b - a;
+        else if (src === 'from' && !isNaN(a) && isNaN(b) && len > 0) bt.value = wtMinToHM(a + len);
+        else if (src === 'len' && !isNaN(a) && len > 0) bt.value = wtMinToHM(a + len);
+        else if (src === 'len' && !(len > 0)) { bf.value = ''; bt.value = ''; }
+    }
+    wtUpdateSum();
+}
+function wtUpdateSum() {
+    const el = document.getElementById('set_wt_sum'); if (!el) return;
+    const f = wtReadForm();
+    const tgt = wtTargetMinutes(f);
+    const brk = wtBreakMinutes(f);
+    const hrs = isNaN(tgt) || tgt <= 0 ? null : tgt / 60;
+    el.classList.toggle('is-bad', hrs === null);
+    el.innerHTML = hrs === null
+        ? `<i class="fas fa-triangle-exclamation"></i> ${_t('wt_sum_bad')}`
+        : `<span class="wt-sum-lbl">${_t('wt_sum_lbl')}</span><b>${ttNum(hrs)} h</b><span class="wt-sum-calc">${_tf(brk > 0 ? 'wt_sum_calc' : 'wt_sum_calc_nb', { a: f.workDayStart, b: f.workDayEnd, m: Math.round(brk) })}</span>`;
+}
+function changeCurrentUser(id) {
+    if (acEnabled()) { const sel = document.getElementById('set_current_user'); if (sel) sel.value = acCurUid(); acOpenLock(id, { cancelable: true }); return; } appData.settings.currentUserId = id; saveToLocal(); showToast(t('toast_saved')); }
 
 function renderSettings() {
+    try { renderMyAccess(); const _sa = document.getElementById('set-access'); if (_sa && _sa.classList.contains('active')) renderAccessPanel(); } catch (e) {}
     let vHtml = `<tr><th width="40">${_t('set_views_show')}</th><th>${_t('set_views_name')}</th><th width="100">${_t('set_views_order')}</th></tr>`;
     const settingsViews = appData.settings.views.filter(v => v.id !== 'schedule' && v.id !== 'timeline');
     settingsViews.forEach((v, i) => {
@@ -3475,6 +3995,7 @@ function checkTaskCompletion(taskId, newStatusId) {
    Ein Tipp auf den Gesamteindruck setzt alle Kategorien; „Einzeln bewerten" klappt sie auf. */
 const RATE_CATS = ['comm', 'time', 'qual', 'team', 'crea', 'satis'];
 function openRatingModal(type, id) {
+    if (!acCan('ratings')) return;
     const ent = type === 'task' ? (appData.tasks || []).find(x => x.id === id) : (appData.projectStacks || []).find(x => x.id === id);
     if (!ent) return;
     const m = document.getElementById('ratingModal'); if (!m) return;
@@ -6570,7 +7091,8 @@ function buildGroupCard(name, color, arr, showTimeStats, groupKey, targetGroupVa
         if(hc.doneCount > 0) {
             const hid = appData.settings.globalHideCompleted;
             parts.push(`<span class="wk-grp-done"${hid ? ` title="${_t('grp_done_hidden')}"` : ''}><i class="fas ${hid ? 'fa-eye-slash' : 'fa-check'}"></i> ${hc.doneCount} ${t('hidden_done')}</span>`);
-            if (hc.ratedCount > 0) {
+            if (!acCan('ratings')) { /* Bewertungen ausgeblendet */ }
+            else if (hc.ratedCount > 0) {
                 const tip = _tf('grp_rate_title', { v: rtFmt(hc.ratingAvg), n: hc.ratedCount, m: hc.doneCount });
                 parts.push(`<span class="wk-grp-rate" title="${tip}" aria-label="${tip}">${rtStaticStars(hc.ratingAvg, 'rt-sstars-sm')}<b>${rtFmt(hc.ratingAvg)}</b><small>Ø · ${_tf('grp_rated', { n: hc.ratedCount })}</small></span>`);
             } else {
@@ -7101,6 +7623,14 @@ function renderSchedule(c) {
 
             if (grayWidth > 0) {
                 html += `<div style="position:absolute; left:0; top:0; bottom:0; width:${grayWidth}%; background:var(--text-main); opacity:0.05; z-index:0; pointer-events:none;"></div>`;
+            }
+            /* Pause als schraffiertes Band */
+            {
+                const bw = wtBreakWindow();
+                if (bw && bw.e > startMins && bw.s < endMins) {
+                    const bs = Math.max(startMins, bw.s), be = Math.min(endMins, bw.e);
+                    html += `<div class="sched-break-band" style="left:${((bs - startMins) / totalMins) * 100}%; width:${((be - bs) / totalMins) * 100}%;" title="${_tf('wt_break_mark', { a: appData.settings.breakStart, b: appData.settings.breakEnd })}"><span><i class="fas fa-mug-hot"></i> ${_t('wt_break')}</span></div>`;
+                }
             }
             if (showRedLine) {
                 html += `<div style="position:absolute; left:${redLinePct}%; top:0; bottom:0; width:2px; background:var(--danger); z-index:15; transform:translateX(-50%); pointer-events:none; opacity:0.5;"></div>`;
@@ -8267,7 +8797,7 @@ function stopTimer(taskId) {
     pauseTimer(taskId); let ms = activeTimers[taskId].accum; let hours = ms / 3600000; let rH = Math.max(0.25, Math.ceil(hours * 4) / 4);
     const nInput = document.getElementById(`timer_note_${taskId}`); const note = nInput ? nInput.value.trim() : activeTimers[taskId].note;
     const date = new Date().toISOString().split('T')[0];
-    appData.timeLogs.push({ id: generateId(), taskId, hours: rH, date, note, ts: Date.now() });
+    appData.timeLogs.push({ id: generateId(), taskId, hours: rH, date, note, ts: Date.now(), userId: appData.settings.currentUserId || null });
     { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(rH)).replace('{n}', _tk ? _tk.projectName : '')); }
     
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
@@ -8312,7 +8842,45 @@ function ttFmtDate(iso) { return ttParse(iso).toLocaleDateString(ttLocale(), { d
 function ttFmtShort(iso) { return ttParse(iso).toLocaleDateString(ttLocale(), { weekday: 'short', day: '2-digit', month: '2-digit' }); }
 function ttNum(n) { const v = Math.round((parseFloat(n) || 0) * 100) / 100; return ttLang() === 'en' ? String(v) : String(v).replace('.', ','); }
 
-function ttTargetHours() { const v = parseFloat(appData.settings.targetHoursPerDay); return (isNaN(v) || v <= 0) ? 8 : v; }
+/* ── Arbeitszeit & Pause ──────────────────────────────────────────────
+   Soll pro Arbeitstag = Arbeitsende − Arbeitsbeginn − Pause.
+   Pause: Uhrzeit von–bis (dann ergibt sich die Länge daraus) oder nur eine Länge in Minuten. */
+function wtHM(s) { return /^\d{1,2}:\d{2}$/.test(s || '') ? timeToMinutes(s) : NaN; }
+function wtBreakWindow(st) {
+    st = st || appData.settings || {};
+    const a = wtHM(st.breakStart), b = wtHM(st.breakEnd);
+    return (!isNaN(a) && !isNaN(b) && b > a) ? { s: a, e: b } : null;
+}
+function wtBreakMinutes(st) {
+    st = st || appData.settings || {};
+    const w = wtBreakWindow(st);
+    if (w) return w.e - w.s;
+    const m = parseFloat(st.breakMinutes);
+    return (!isNaN(m) && m > 0) ? m : 0;
+}
+function wtTargetMinutes(st) {
+    st = st || appData.settings || {};
+    const s = wtHM(st.workDayStart || '08:00'), e = wtHM(st.workDayEnd || '17:00');
+    if (isNaN(s) || isNaN(e) || e <= s) return NaN;
+    return (e - s) - wtBreakMinutes(st);
+}
+/* Bis zur Minute `nowMins` geleistete Arbeitszeit (ohne Pause), gedeckelt auf das Soll */
+function wtWorkedMinutesUntil(nowMins, st) {
+    st = st || appData.settings || {};
+    const s = wtHM(st.workDayStart || '08:00'), e = wtHM(st.workDayEnd || '17:00');
+    if (isNaN(s) || isNaN(e) || e <= s) return 0;
+    const upTo = Math.max(s, Math.min(e, nowMins));
+    let worked = upTo - s;
+    const w = wtBreakWindow(st);
+    if (w) worked -= Math.max(0, Math.min(upTo, w.e) - Math.max(s, w.s));
+    const tgt = wtTargetMinutes(st);
+    return Math.max(0, isNaN(tgt) ? worked : Math.min(tgt, worked));
+}
+function ttTargetHours() {
+    const m = wtTargetMinutes();
+    if (!isNaN(m) && m > 0) return m / 60;
+    const v = parseFloat(appData.settings.targetHoursPerDay); return (isNaN(v) || v <= 0) ? 8 : v;
+}
 function ttIsWorkDay(iso) { const wd = appData.settings.workDays || [1,2,3,4,5]; return wd.includes(ttParse(iso).getDay()); }
 
 function ttTrackFromIso() {
@@ -8330,8 +8898,8 @@ function ttTrackFromIso() {
 function ttDayInfo(iso) {
     const target = ttIsWorkDay(iso) ? ttTargetHours() : 0;
     let booked = 0;
-    (appData.timeLogs || []).forEach(l => { if (l.date === iso) booked += parseFloat(l.hours) || 0; });
-    const abs = (appData.absences || []).filter(a => a.date === iso);
+    (appData.timeLogs || []).forEach(l => { if (l.date === iso && acLogVisible(l)) booked += parseFloat(l.hours) || 0; });
+    const abs = (appData.absences || []).filter(a => a.date === iso && acAbsVisible(a));
     let absHours = 0, compHours = 0;
     abs.forEach(a => { const h = parseFloat(a.hours) || 0; absHours += h; if (a.type === 'other') compHours += h; });
     const total = booked + absHours;   /* deckt das Tagessoll ab (Status / offene Tage) */
@@ -8719,7 +9287,7 @@ function renderTimeAccount() {
         let detailHtml = `<div class="tt-detail" data-pm-key="tt-detail"><h4><i class="fas fa-list-check"></i> ${t('tt_detail_title')} (${ttSelectedDays.length})</h4>`;
         sortedSel.forEach(iso => {
             const info = ttDayInfo(iso);
-            const logs = (appData.timeLogs || []).filter(l => l.date === iso);
+            const logs = (appData.timeLogs || []).filter(l => l.date === iso && acLogVisible(l));
             const abs = (appData.absences || []).filter(a => a.date === iso);
             if (!logs.length && !abs.length) return;
             anyEntry = true;
@@ -8828,7 +9396,7 @@ function ttInRange(iso) {
     if (b.to && d > b.to) return false;
     return true;
 }
-function ttRangeLogs() { return (appData.timeLogs || []).filter(l => l && ttInRange(l.date)); }
+function ttRangeLogs() { return (appData.timeLogs || []).filter(l => l && ttInRange(l.date) && acLogVisible(l)); }
 function ttRangeLabel() {
     const b = ttRangeBounds();
     if (!b.from && !b.to) return t('tr_all_time');
@@ -8975,7 +9543,7 @@ function renderTimeRangeReport() {
 
     html += `<div class="tt-kpis">
         ${ttKpi(t('tr_hours'), ttNum(totalH) + ' h', `${logs.length} ${t('tr_bookings')}`, 'var(--primary-color)')}
-        ${ttKpi(t('tr_costs'), totalC > 0 ? ttNum(totalC) + ' ' + cur : '–', anyNoRate ? t('tr_partly_no_rate') : t('tr_costs_sub'))}
+        ${acCan('wage') ? ttKpi(t('tr_costs'), totalC > 0 ? ttNum(totalC) + ' ' + cur : '–', anyNoRate ? t('tr_partly_no_rate') : t('tr_costs_sub')) : ''}
         ${ttKpi(t('tr_tasks'), String(taskKeys.size), t('tr_tasks_sub'))}
         ${ttKpi(t('tr_stacks'), String(stackKeys.size), t('tr_stacks_sub'))}
     </div>`;
@@ -8991,7 +9559,7 @@ function renderTimeRangeReport() {
                 <i class="fas ${g.isStack ? 'fa-folder' : 'fa-tasks'} tt-rg-icon"></i>
                 <span class="tt-rg-name">${ttEsc(g.name)}<small>${tasks.length} ${tasks.length === 1 ? t('task') : t('tr_tasks')}</small></span>
                 <span class="tt-rg-bar" aria-hidden="true"><span style="width:${Math.max(2, share)}%"></span></span>
-                <span class="tt-rg-num"><b>${ttNum(g.hours)} h</b>${g.cost > 0 ? `<small>${ttNum(g.cost)} ${cur}</small>` : ''}</span>
+                <span class="tt-rg-num"><b>${ttNum(g.hours)} h</b>${g.cost > 0 && acCan('wage') ? `<small>${ttNum(g.cost)} ${cur}</small>` : ''}</span>
                 <span class="tt-rg-share">${share}%</span>
             </summary>
             <div class="tt-rg-rows">`;
@@ -9004,7 +9572,7 @@ function renderTimeRangeReport() {
                     ${tk.deleted ? `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:1px 6px;">${t('tr_deleted')}</span>` : ''}
                     <small>${tk.count} ${tk.count === 1 ? t('tr_booking') : t('tr_bookings')} · ${period}</small>
                 </span>
-                <span class="tt-rg-num"><b>${ttNum(tk.hours)} h</b>${tk.cost > 0 ? `<small>${ttNum(tk.cost)} ${cur}</small>` : ''}</span>
+                <span class="tt-rg-num"><b>${ttNum(tk.hours)} h</b>${tk.cost > 0 && acCan('wage') ? `<small>${ttNum(tk.cost)} ${cur}</small>` : ''}</span>
             </div>`;
         });
         html += `</div></details>`;
@@ -9020,6 +9588,7 @@ function renderTimeRangeReport() {
 function switchTimeSubView(view) {
     timeSubView = view;
     if (currentView === 'time') renderTimeTracking(document.getElementById('mainContainer'));
+    try { if (window.Shell) window.Shell.sync(); } catch (e) {}
 }
 
 /* Positioniert den gelben Magneten der lokalen Linsenschiene (Zeit-Unteransichten) */
@@ -9038,7 +9607,8 @@ function buildTimeSubTabsHtml() {
     const lenses = [
         { v: 'tracking', l: t('view_time'), i: 'fa-stopwatch' },
         { v: 'budgets',  l: t('time_budgets_tab'), i: 'fa-coins' }
-    ].filter(l => l.v !== 'budgets' || uiAtLeast('pro'));
+    ].filter(l => l.v !== 'budgets' || (uiAtLeast('pro') && acBudgetViewAllowed()))
+     .filter(l => l.v !== 'tracking' || acViewAllowed('time') && (!acEnabled() || acIsAdmin() || !acMe().views || acMe().views.includes('time')));
     if (lenses.length < 2) return '';
     return `<div class="wk-lensrail" id="ttLensrail" style="margin:0 0 20px;">
         <span class="wk-magnet" id="ttMagnet"></span>
@@ -9047,7 +9617,9 @@ function buildTimeSubTabsHtml() {
 }
 
 function renderTimeTracking(c) {
-    if (timeSubView === 'budgets' && !uiAtLeast('pro')) timeSubView = 'tracking';
+    if (timeSubView === 'budgets' && (!uiAtLeast('pro') || !acBudgetViewAllowed())) timeSubView = 'tracking';
+    /* nur Budget freigegeben, Zeiterfassung nicht → direkt Budget */
+    if (timeSubView === 'tracking' && acEnabled() && !acIsAdmin() && acMe().views && !acMe().views.includes('time') && acBudgetViewAllowed() && uiAtLeast('pro')) timeSubView = 'budgets';
     const subTabsHtml = buildTimeSubTabsHtml();
 
     if (timeSubView === 'budgets') {
@@ -9137,7 +9709,7 @@ function addManualTimeLog() {
     const taskId = document.getElementById('tt_task').value; const hours = parseFloat(document.getElementById('tt_hours').value); const date = document.getElementById('tt_date').value; const note = document.getElementById('tt_note').value.trim();
     if(!taskId || !hours || !date) return showToast(_t('tt_need_fields'), 'error');
     
-    appData.timeLogs.push({ id: generateId(), taskId, hours, date, note, ts: Date.now() });
+    appData.timeLogs.push({ id: generateId(), taskId, hours, date, note, ts: Date.now(), userId: appData.settings.currentUserId || null });
     { const _tk = appData.tasks.find(x => x.id === taskId); logActivity('fa-stopwatch', t('act_time_booked').replace('{h}', ttNum(hours)).replace('{n}', _tk ? _tk.projectName : '')); }
     const task = appData.tasks.find(t_obj => t_obj.id === taskId);
     if(task) { 
@@ -9219,7 +9791,7 @@ function triggerDownloadJSON(obj, filename) {
 }
 
 function exportSharedData(tasksToShare, stacksToShare, filename = "proman_shared.json") {
-    const shareData = buildSharePackage(tasksToShare, stacksToShare); triggerDownloadJSON(shareData, filename); showToast(_t('share_created'));
+    const shareData = buildSharePackage(acRedact(tasksToShare), acRedact(stacksToShare)); triggerDownloadJSON(shareData, filename); showToast(_t('share_created'));
 }
 
 function exportSingleTaskJSON() {
@@ -9244,6 +9816,7 @@ function stripObsoleteThemeData(obj) {
 }
 
 function exportJSON() { 
+    if (acEnabled() && !acIsAdmin()) return showToast(_t('ac_admin_only'), 'error');
     let exportData = JSON.parse(JSON.stringify(appData));
     stripObsoleteThemeData(exportData);
     exportData.tasks.forEach(t_obj => { if(t_obj.files) t_obj.files.forEach(f => { if(f.type === 'blob') { f.type = 'missing-blob'; delete f.data; } }); });
@@ -9251,6 +9824,7 @@ function exportJSON() {
 }
 
 function importJSON(event) { 
+    if (acEnabled() && !acIsAdmin()) { try { event.target.value = ''; } catch (e) {} return showToast(_t('ac_admin_only'), 'error'); }
     const file = event.target.files[0]; if (!file) return; 
     const reader = new FileReader(); 
     reader.onload = function(e) { 
@@ -10719,7 +11293,7 @@ const HW_OPT_ORDER = ['range', 'metric', 'load', 'agg', 'group', 'stack', 'user'
 function hwOptDef(name) {
     switch (name) {
         case 'range':  return { label: _t('tr_title'), values: HW_RANGES.map(v => [v, hwRangeName(v)]) };
-        case 'metric': return { label: _t('hw_o_metric'), values: [['hours', _t('hw_m_hours')], ['cost', _t('hw_m_cost') + ' (' + getGlobalCurrency() + ')']] };
+        case 'metric': return { label: _t('hw_o_metric'), values: [['hours', _t('hw_m_hours')]].concat(acCan('wage') ? [['cost', _t('hw_m_cost') + ' (' + getGlobalCurrency() + ')']] : []) };
         case 'load':   return { label: _t('hw_o_metric'), values: [['count', _t('hw_m_count')], ['remaining', _t('hw_m_remaining')]] };
         case 'agg':    return { label: _t('hw_o_agg'), values: [['avg', _t('hw_m_avg')], ['sum', _t('hw_m_sum')]] };
         case 'group':  return { label: _t('hw_o_group'), values: [['priority', _t('hw_g_priority')], ['bucket', _t('bucket')], ['stack', _t('hw_g_stack')], ['person', _t('hw_g_person')]] };
@@ -10768,7 +11342,7 @@ function hwTaskPass(task, c) {
 /* Zeitbuchungen im Zeitraum inkl. zugehöriger Aufgabe (auch gelöschte) */
 function hwLogs(c) {
     const b = hwRangeBounds(c.range);
-    return (appData.timeLogs || []).filter(l => l && hwIn(b, l.date)).map(l => ({ l, task: ttTaskOrDeleted(l.taskId).task, h: parseFloat(l.hours) || 0, date: String(l.date || '').slice(0, 10) }))
+    return (appData.timeLogs || []).filter(l => l && hwIn(b, l.date) && acLogVisible(l)).map(l => ({ l, task: ttTaskOrDeleted(l.taskId).task, h: parseFloat(l.hours) || 0, date: String(l.date || '').slice(0, 10) }))
         .filter(x => x.h > 0 && hwTaskPass(x.task, c));
 }
 function hwLogValue(x, metric) {
@@ -11537,8 +12111,16 @@ function hwCardHtml(w, mode) {
     </div>`;
 }
 
+/* Benutzerrechte: Budget-Widget nur mit „Budget", Stunden je Person nur mit „Fremde Zeitbuchungen",
+   Kosten-Kennzahl nur mit „Lohn & Kosten" */
+function hwTypeAllowed(type) {
+    if (type === 'budget_stack') return acCan('budget');
+    if (type === 'hours_person') return acCan('foreign');
+    return true;
+}
+function hwWidgetAllowed(w) { return w && hwTypeAllowed(w.type) && !(w.opts && w.opts.metric === 'cost' && !acCan('wage')); }
 function hwRenderSection() {
-    const list = hwGetLayout();
+    const list = hwGetLayout().filter(hwWidgetAllowed);
     let html = `<div class="wk-strip-h hw-head"><b>${_t('hw_title')}</b>${list.length ? `<span class="wk-count">${list.length}</span>` : ''}<span class="wk-rule"></span>`;
     if (hwEdit) {
         html += `<button type="button" class="wk-linkbtn hw-hbtn" onclick="hwReset()"><i class="fas fa-rotate-left"></i> ${_t('hw_reset')}</button>
@@ -11688,7 +12270,7 @@ function hwRenderConfig() {
     const m = document.getElementById('hwModal'); if (!m || !hwDraft) return;
     const d = hwDraft; const def = HW_TYPES[d.type];
     m.querySelector('.hw-modal-title').textContent = d.isNew ? _t('hw_new_widget') : _t('hw_edit_widget');
-    const typeTiles = Object.keys(HW_TYPES).map(k => { const td = HW_TYPES[k]; return `<button type="button" class="secondary hw-type${k === d.type ? ' on' : ''}" aria-pressed="${k === d.type}" onclick="hwSetType('${k}')"><i class="fas ${td.icon}"></i><span><b>${hwEsc(_t(td.key))}</b><u>${hwEsc(_t(td.desc))}</u></span></button>`; }).join('');
+    const typeTiles = Object.keys(HW_TYPES).filter(hwTypeAllowed).map(k => { const td = HW_TYPES[k]; return `<button type="button" class="secondary hw-type${k === d.type ? ' on' : ''}" aria-pressed="${k === d.type}" onclick="hwSetType('${k}')"><i class="fas ${td.icon}"></i><span><b>${hwEsc(_t(td.key))}</b><u>${hwEsc(_t(td.desc))}</u></span></button>`; }).join('');
     const viewTiles = def.views.map(v => `<button type="button" class="secondary hw-viewbtn${v === d.view ? ' on' : ''}" aria-pressed="${v === d.view}" onclick="hwSetView('${v}')" title="${hwEsc(_t(HW_VIEWS[v].key))}"><i class="fas ${HW_VIEWS[v].icon}"></i><span>${hwEsc(_t(HW_VIEWS[v].key))}</span></button>`).join('');
     const opts = HW_OPT_ORDER.filter(k => k in def.opts).map(k => {
         const od = hwOptDef(k);
@@ -11804,13 +12386,21 @@ function renderToday(c) {
 
     /* Bisher vergangene Arbeitszeit heute: vom Arbeitsbeginn bis jetzt, gedeckelt auf das Tagessoll. */
     const _target = info.target || ttTargetHours();
+    /* vergangene Arbeitszeit seit Arbeitsbeginn – die Pause zählt nicht mit */
     let _elapsed = 0;
+    const _nowMins = _now.getHours() * 60 + _now.getMinutes();
+    if (info.target > 0) _elapsed = Math.min(_target, wtWorkedMinutesUntil(_nowMins) / 60);
+    /* Markierung der Pause auf der Schiene (Position = Arbeitszeit vor der Pause) */
+    let _breakMark = '', _breakNote = '';
     {
-        const startStr = appData.settings.timeTrackFrom || '08:00';
-        const m = /^(\d{1,2}):(\d{2})$/.exec(startStr);
-        const startH = m ? (parseInt(m[1], 10) + parseInt(m[2], 10) / 60) : 8;
-        const nowH = _now.getHours() + _now.getMinutes() / 60;
-        _elapsed = Math.max(0, Math.min(_target, nowH - startH));
+        const bw = wtBreakWindow(); const ws = wtHM(getWorkDayStart());
+        if (bw && info.target > 0 && !isNaN(ws) && bw.s > ws) {
+            const before = wtWorkedMinutesUntil(bw.s) / 60;
+            const pos = _target ? Math.min(100, before / _target * 100) : 0;
+            const inBreak = _nowMins >= bw.s && _nowMins < bw.e;
+            if (pos > 0 && pos < 100) _breakMark = `<b class="wk-break-mark${inBreak ? ' is-now' : ''}" style="left:${pos}%" title="${_tf('wt_break_mark', { a: appData.settings.breakStart, b: appData.settings.breakEnd })}"></b>`;
+            _breakNote = `<span class="wk-hero-break${inBreak ? ' is-now' : ''}"><i class="fas fa-mug-hot"></i> ${_tf('wt_break_mark', { a: appData.settings.breakStart, b: appData.settings.breakEnd })}</span>`;
+        }
     }
     const _booked = info.total || 0;
     const _openToTarget = Math.max(0, _target - _booked);   /* noch offen bis zum Tagessoll */
@@ -11826,11 +12416,12 @@ function renderToday(c) {
     html += `<section class="wk-hero compact${hubPro ? '' : ' wk-hero-lean'}">
         <div class="wk-hero-left">
             <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
-            <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
+            <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small>${_breakNote}</div>
             <div class="wk-hero-track" title="${_tf('hub_track_title', { a: ttNum(_booked), b: ttNum(_elapsed), c: ttNum(_target) })}">
                 <span class="wk-elapsed" style="width:${_elapsedPct}%"></span>
                 <i class="wk-booked" style="width:${_bookedPct}%"></i>
                 <span class="wk-track-label">${_tf('hub_open_of', { a: ttNum(_openToTarget), b: ttNum(_target) })}</span>
+                ${_breakMark}
             </div>
             <p class="wk-hero-note">${info.missing > 0.01
                 ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
@@ -12124,10 +12715,46 @@ function ttHeuteBook(iso){
     ]}
   ];
 
-  /* Ansicht-Modus (Basic/Medium/Pro): nur erlaubte Linsen, Orte ohne Linse entfallen */
+  /* Katalog aller frei belegbaren Ansichten inkl. Unteransichten (Zeit → Zeiterfassung | Budget).
+     id = Schlüssel in appData.settings.customNav[].lenses */
+  const LENS_CATALOG = [];
+  PLACES.forEach(p => p.lenses.forEach(l => {
+    if (l.v === 'time') {
+      LENS_CATALOG.push({ id: 'time', v: 'time', sub: 'tracking', i: 'fa-stopwatch', l: 'Zeiterfassung', tk: 'view_time', group: p.k });
+      LENS_CATALOG.push({ id: 'time:budgets', v: 'time', sub: 'budgets', i: 'fa-coins', l: 'Budget', tk: 'time_budgets_tab', group: p.k });
+    } else LENS_CATALOG.push(Object.assign({ id: l.v, group: p.k }, l));
+  }));
+  const NAV_ICONS = ['fa-sun', 'fa-columns', 'fa-sticky-note', 'fa-sliders-h', 'fa-clock', 'fa-folder-open', 'fa-list', 'fa-calendar-alt', 'fa-stream',
+    'fa-check-square', 'fa-flag', 'fa-users', 'fa-box-open', 'fa-project-diagram', 'fa-coins', 'fa-star', 'fa-briefcase', 'fa-bolt', 'fa-heart', 'fa-rocket', 'fa-chart-line', 'fa-layer-group'];
+
+  /* Pro: eigene Belegung der Navigationsleiste (links am Desktop, unten am Handy) */
+  function customNavActive() {
+    try { return (typeof uiMode === 'function' && uiMode() === 'pro') && Array.isArray(appData.settings.customNav) && appData.settings.customNav.length > 0; } catch (e) { return false; }
+  }
+  function basePlaces() {
+    if (!customNavActive()) return PLACES;
+    return appData.settings.customNav.map(it => ({
+      k: it.k, label: it.label || '', icon: it.icon || 'fa-circle', custom: true,
+      lenses: (it.lenses || []).map(id => LENS_CATALOG.find(c => c.id === id)).filter(Boolean).map(c => Object.assign({}, c))
+    }));
+  }
+  /* Ansicht-Modus (Basic/Medium/Pro) + Benutzerrechte: nur erlaubte Linsen, Orte ohne Linse entfallen */
   function modePlaces() {
-    return PLACES.map(p => Object.assign({}, p, { lenses: p.lenses.filter(l => (typeof uiViewAllowed !== 'function') || uiViewAllowed(l.v)) }))
+    return basePlaces().map(p => Object.assign({}, p, { lenses: p.lenses.filter(l =>
+                  ((typeof uiViewAllowed !== 'function') || uiViewAllowed(l.v)) &&
+                  ((typeof acLensAllowed !== 'function') || acLensAllowed(l))) }))
                  .filter(p => p.lenses.length);
+  }
+  function curSub(view) { return (view === 'time' && typeof timeSubView !== 'undefined') ? timeSubView : ''; }
+  function lensFor(p, view, sub) {
+    if (!p) return null;
+    return p.lenses.find(l => l.v === view && l.sub && l.sub === sub) || p.lenses.find(l => l.v === view && !l.sub) || p.lenses.find(l => l.v === view) || null;
+  }
+  function lensId(l) { return l ? (l.id || l.v) : ''; }
+  function activateLens(l) {
+    if (!l) return;
+    if (l.v === 'time' && l.sub && typeof timeSubView !== 'undefined') timeSubView = l.sub;
+    switchView(l.v);
   }
   function railItemsHtml() {
     return modePlaces().map(p => `<button class="wk-rail-item" data-wkplace="${p.k}">
@@ -12163,6 +12790,7 @@ function ttHeuteBook(iso){
   /* Beschriftung: eigene Namen aus den Einstellungen haben Vorrang,
      sonst die Übersetzung, sonst der Rückfallwert aus dieser Datei. */
   function lensLabel(l) {
+    if (l.tk) { try { const tr = t(l.tk); if (tr && tr !== l.tk) return tr; } catch (e) {} return l.l; }
     try {
       const v = (appData.settings.views || []).find(x => x.id === l.v);
       const def = (typeof defaultViews !== 'undefined') ? defaultViews.find(d => d.id === l.v) : null;
@@ -12173,8 +12801,10 @@ function ttHeuteBook(iso){
     return l.l;
   }
   function placeLabel(p) {
+    if (p.custom && p.label) return p.label;
     try { const tr = t('wk_place_' + p.k); if (tr && tr !== 'wk_place_' + p.k) return tr; } catch (e) {}
-    return p.label;
+    const def = PLACES.find(x => x.k === p.k);
+    return p.label || (def ? def.label : '');
   }
 
   /* ── Aufbau ─────────────────────────────────────────────────── */
@@ -12254,7 +12884,7 @@ function ttHeuteBook(iso){
       const b = ev.target.closest('[data-wkplace]');
       if (b) { closeFab(); goPlace(b.dataset.wkplace); return; }
       const l = ev.target.closest('[data-wklens]');
-      if (l) { switchView(l.dataset.wklens); return; }
+      if (l) { if (l.dataset.wklens === 'time' && l.dataset.wksub && typeof timeSubView !== 'undefined') timeSubView = l.dataset.wksub; switchView(l.dataset.wklens); return; }
 
       const fab = ev.target.closest('#wkFab, .mobile-fab, #wkRailNew');
       if (fab) {
@@ -12316,7 +12946,17 @@ function ttHeuteBook(iso){
     if (!p) return;
     state.place = key;
     const last = state.lastLens[key];
-    switchView(p.lenses.some(l => l.v === last) ? last : p.lenses[0].v);
+    activateLens(p.lenses.find(l => lensId(l) === last) || p.lenses[0]);
+  }
+  /* Ort zur aktuellen Ansicht: der aktuelle Ort gewinnt, wenn er die Ansicht enthält
+     (dieselbe Ansicht darf in mehreren Menüpunkten liegen) */
+  function placeOf(view, sub) {
+    const places = modePlaces();
+    const cur = places.find(p => p.k === state.place);
+    const exact = (p) => p.lenses.some(l => l.v === view && (!l.sub || l.sub === sub));
+    if (cur && exact(cur)) return cur.k;
+    const hit = places.find(exact) || places.find(p => p.lenses.some(l => l.v === view));
+    return hit ? hit.k : (VIEW2PLACE[view] || state.place);
   }
 
   /* ── Abgleich nach jedem Ansichtswechsel ────────────────────── */
@@ -12324,9 +12964,9 @@ function ttHeuteBook(iso){
     let view = (typeof currentView !== 'undefined') ? currentView : 'kanban';
     if (view === 'planner') view = (typeof plannerSubView !== 'undefined' ? plannerSubView : 'schedule');
 
-    const place = VIEW2PLACE[view] || state.place;
+    const sub = curSub(view);
+    const place = placeOf(view, sub);
     state.place = place;
-    state.lastLens[place] = view;
 
     document.querySelectorAll('[data-wkplace]').forEach(b => {
       const on = b.dataset.wkplace === place;
@@ -12334,6 +12974,10 @@ function ttHeuteBook(iso){
     });
 
     const p = modePlaces().find(x => x.k === place);
+    const act = lensFor(p, view, sub);
+    if (act) state.lastLens[place] = lensId(act);
+    /* Liegen Zeiterfassung und Budget als eigene Linsen im Menüpunkt, braucht die Zeit-Ansicht ihre eigenen Reiter nicht */
+    document.documentElement.classList.toggle('wk-time-split', !!(p && p.lenses.some(l => l.v === 'time' && l.sub === 'budgets') && p.lenses.some(l => l.v === 'time' && l.sub !== 'budgets')));
     const rail = $('#wkLensrail');
     if (rail && p) {
       /* Eine einzelne Linse braucht keine Schiene */
@@ -12341,7 +12985,7 @@ function ttHeuteBook(iso){
       else {
         rail.hidden = false;
         rail.innerHTML = `<span class="wk-magnet" id="wkMagnet"></span>` + p.lenses.map(l =>
-          `<button class="wk-lens" role="tab" data-wklens="${l.v}" aria-selected="${l.v === view}">
+          `<button class="wk-lens" role="tab" data-wklens="${l.v}" data-wksub="${l.sub || ''}" aria-selected="${l === act}">
              <i class="fas ${l.i}"></i>${lensLabel(l)}</button>`).join('');
         requestAnimationFrame(moveMagnet);
       }
@@ -12502,7 +13146,7 @@ function ttHeuteBook(iso){
     if (fab) fab.classList.remove('wk-fab-open');
   }
 
-  window.Shell = { sync, relabel, paintCards, goPlace, moveMagnet, rebuildNav, modePlaces, PLACES };
+  window.Shell = { sync, relabel, paintCards, goPlace, moveMagnet, rebuildNav, modePlaces, PLACES, LENS_CATALOG, NAV_ICONS, lensLabel, placeLabel, customNavActive };
 })();
 
 /* ============================================================
@@ -13046,13 +13690,15 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         {
             key: 'hours', icon: 'fa-business-time', get title() { return _t('onb_s_hours_t'); }, get hint() { return _t('onb_s_hours_h'); },
-            render: () => `<div class="onb-row2"><label>${_t('tr_from')}<input type="time" id="onb_from" value="${collected.from || appData.settings.timeTrackFrom || '08:00'}"></label><label>${_t('tr_to')}<input type="time" id="onb_to" value="${collected.to || appData.settings.timeTrackTo || '17:00'}"></label></div>`,
+            render: () => `<div class="onb-row2"><label>${_t('tr_from')}<input type="time" id="onb_from" value="${collected.from || appData.settings.workDayStart || '08:00'}"></label><label>${_t('tr_to')}<input type="time" id="onb_to" value="${collected.to || appData.settings.timeTrackTo || '17:00'}"></label></div>`,
             save: () => { collected.from = document.getElementById('onb_from').value; collected.to = document.getElementById('onb_to').value; }
         },
         {
-            key: 'target', icon: 'fa-hourglass-half', get title() { return _t('onb_s_target_t'); }, get hint() { return _t('onb_s_target_h'); },
-            render: () => `<input type="number" id="onb_target" min="0" max="24" step="0.25" placeholder="8" value="${collected.target != null ? collected.target : (appData.settings.targetHoursPerDay || 8)}">`,
-            save: () => { const v = parseFloat(document.getElementById('onb_target').value); if (!isNaN(v) && v > 0) collected.target = v; }
+            key: 'break', icon: 'fa-mug-hot', get title() { return _t('onb_s_break_t'); }, get hint() { return _t('onb_s_break_h'); },
+            render: () => { const st = appData.settings; const bf = collected.breakStart != null ? collected.breakStart : (st.breakStart || '12:00'); const bt = collected.breakEnd != null ? collected.breakEnd : (st.breakEnd || '13:00');
+                return `<div class="onb-row2"><label>${_t('tr_from')}<input type="time" id="onb_bfrom" value="${bf}"></label><label>${_t('tr_to')}<input type="time" id="onb_bto" value="${bt}"></label></div><p class="onb-break-sum" id="onb_bsum"></p>`; },
+            after: () => { const upd = () => { const a = wtHM(document.getElementById('onb_bfrom').value), b = wtHM(document.getElementById('onb_bto').value); const s = wtHM(collected.from || appData.settings.workDayStart), e = wtHM(collected.to || appData.settings.workDayEnd); const brk = (!isNaN(a) && !isNaN(b) && b > a) ? b - a : 0; const tgt = (!isNaN(s) && !isNaN(e) && e > s) ? (e - s - brk) / 60 : null; const el = document.getElementById('onb_bsum'); if (el) el.innerHTML = tgt !== null && tgt > 0 ? _tf('onb_break_sum', { h: ttNum(tgt) }) : ''; }; ['onb_bfrom', 'onb_bto'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('input', upd); }); upd(); },
+            save: () => { collected.breakStart = document.getElementById('onb_bfrom').value || ''; collected.breakEnd = document.getElementById('onb_bto').value || ''; }
         },
         {
             key: 'email', icon: 'fa-envelope', get title() { return _t('onb_s_email_t'); }, get hint() { return _t('onb_s_email_h'); },
@@ -13170,9 +13816,10 @@ document.addEventListener('DOMContentLoaded', () => {
             appData.users.push({ id: generateId(), name: collected.name, avatar: '' });
         }
         if (collected.workDays) st.workDays = collected.workDays.map(Number).filter(n => !isNaN(n));
-        if (collected.from !== undefined) st.timeTrackFrom = collected.from;
-        if (collected.to !== undefined) st.timeTrackTo = collected.to;
-        if (collected.target != null) st.targetHoursPerDay = collected.target;
+        if (collected.from) st.workDayStart = collected.from;
+        if (collected.to) st.workDayEnd = collected.to;
+        if (collected.breakStart !== undefined) { st.breakStart = collected.breakStart; st.breakEnd = collected.breakEnd || ''; st.breakMinutes = wtBreakMinutes({ breakStart: st.breakStart, breakEnd: st.breakEnd, breakMinutes: 0 }); }
+        st.targetHoursPerDay = ttTargetHours();
         if (collected.email) st.notificationEmail = collected.email;
         if (collected.currency) st.currency = collected.currency;
         if (collected.logo !== undefined) st.companyLogo = collected.logo;
