@@ -13450,11 +13450,16 @@ function ttHeuteBook(iso){
         const task = appData.tasks.find(t => t.id === taskId);
         if (!task) return;
         if (task.status === newStatus) {
-            if (!beforeId || beforeId === taskId) return;
+            if (beforeId === taskId) return;
             const from = appData.tasks.findIndex(t => t.id === taskId);
             if (from < 0) return;
+            /* Kein Nachfolger = an die letzte Stelle der Spalte (vorher: Abbruch, Karte blieb stehen) */
+            if (!beforeId) {
+                const lastSame = appData.tasks.map(t => t.status === newStatus && t.id !== taskId).lastIndexOf(true);
+                if (lastSame < from) return;   /* ist bereits die letzte Karte */
+            }
             const [mv] = appData.tasks.splice(from, 1);
-            const to = appData.tasks.findIndex(t => t.id === beforeId);
+            const to = beforeId ? appData.tasks.findIndex(t => t.id === beforeId) : -1;
             appData.tasks.splice(to < 0 ? appData.tasks.length : to, 0, mv);
             saveToLocal(); renderView(); return;
         }
@@ -13474,6 +13479,10 @@ function ttHeuteBook(iso){
         } else if (newStatus === 'done') {
             const i = appData.tasks.findIndex(t => t.id === taskId);
             if (i > -1) { const [mv] = appData.tasks.splice(i, 1); appData.tasks.unshift(mv); }
+        } else {
+            /* in eine andere Spalte ganz unten abgelegt → dort an die letzte Stelle */
+            const i = appData.tasks.findIndex(t => t.id === taskId);
+            if (i > -1) { const [mv] = appData.tasks.splice(i, 1); appData.tasks.push(mv); }
         }
         saveToLocal(); renderView();
     }
