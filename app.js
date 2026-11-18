@@ -8678,10 +8678,11 @@ function renderTimeline(c) {
             <div class="timeline-track-container" style="position: relative;">
                 <div style="min-width: ${trackWidth + 220}px; position: relative;">
                     
-                    ${absBandsHtml ? `<div class="gantt-abs-strip" style="display:flex; height:24px; position:relative; z-index:31; border-bottom:1px solid var(--border-color);"><div class="timeline-header-col" style="display:flex; align-items:center; padding:0 15px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);"><i class="fas fa-plane-departure" style="margin-right:5px;"></i>${_t('absence')}</div><div style="position:relative; width:${trackWidth}px;">${absBandsHtml}</div></div>` : ''}
+                    ${absBandsHtml ? `<div class="gantt-abs-strip" style="display:flex; height:24px; position:relative; z-index:31; border-bottom:1px solid var(--border-color);"><div class="timeline-header-col" style="display:flex; align-items:center; padding:0 15px; font-size:9px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);"><i class="fas fa-plane-departure" style="margin-right:5px;"></i>${_t('absence')}</div><div style="position:relative; width:${trackWidth}px; z-index:1;">${absBandsHtml}</div></div>` : ''}
                     <div style="display: flex; height: 35px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 30; background: var(--surface-color);">
                         <div class="timeline-header-col" style="display: flex; align-items: flex-end; padding: 5px 15px; font-weight: bold; font-size:11px;">${_t('gantt_project_task')}</div>
-                        <div style="position: relative; width: ${trackWidth}px;">
+                        <!-- eigener Stapelkontext (z-index:1): Marker bleiben beim Scrollen UNTER der klebenden Spaltenbeschriftung -->
+                        <div style="position: relative; width: ${trackWidth}px; z-index: 1;">
                             ${kwHtml}
                             ${dayHtml}
                             ${markerPinsHtml}
@@ -12390,22 +12391,31 @@ function renderToday(c) {
     let _elapsed = 0;
     const _nowMins = _now.getHours() * 60 + _now.getMinutes();
     if (info.target > 0) _elapsed = Math.min(_target, wtWorkedMinutesUntil(_nowMins) / 60);
-    /* Markierung der Pause auf der Schiene (Position = Arbeitszeit vor der Pause) */
-    let _breakMark = '', _breakNote = '';
-    {
-        const bw = wtBreakWindow(); const ws = wtHM(getWorkDayStart());
-        if (bw && info.target > 0 && !isNaN(ws) && bw.s > ws) {
-            const before = wtWorkedMinutesUntil(bw.s) / 60;
-            const pos = _target ? Math.min(100, before / _target * 100) : 0;
-            const inBreak = _nowMins >= bw.s && _nowMins < bw.e;
-            if (pos > 0 && pos < 100) _breakMark = `<b class="wk-break-mark${inBreak ? ' is-now' : ''}" style="left:${pos}%" title="${_tf('wt_break_mark', { a: appData.settings.breakStart, b: appData.settings.breakEnd })}"></b>`;
-            _breakNote = `<span class="wk-hero-break${inBreak ? ' is-now' : ''}"><i class="fas fa-mug-hot"></i> ${_tf('wt_break_mark', { a: appData.settings.breakStart, b: appData.settings.breakEnd })}</span>`;
-        }
-    }
+    /* Schiene = gesamte Arbeitszeitspanne (z. B. 07:30–16:30 = 9 h), unabhängig von der Pause.
+       Die Pause liegt als schraffierte Spanne an ihrer Uhrzeit im Balken. Gebuchte Zeit füllt die
+       Arbeitszeit von links und überspringt dabei die Pause; „vergangen" ist die Uhrzeit seit Arbeitsbeginn. */
+    const _ws = wtHM(getWorkDayStart()), _we = wtHM(getWorkDayEnd());
+    const _spanOk = !isNaN(_ws) && !isNaN(_we) && _we > _ws;
+    const _span = _spanOk ? (_we - _ws) : _target * 60;              /* Minuten */
+    const _bw = _spanOk ? wtBreakWindow() : null;
+    const _brk = _bw ? { s: Math.max(_ws, _bw.s), e: Math.min(_we, _bw.e) } : null;
+    const _hasBrk = !!(_brk && _brk.e > _brk.s);
+    const _pct = (m) => _span ? Math.max(0, Math.min(100, m / _span * 100)) : 0;
+    /* gebuchte Minuten → Position auf der Uhr (Pause wird übersprungen) */
+    const _clockPosOfWork = (min) => {
+        if (!_hasBrk) return min;
+        const before = _brk.s - _ws;
+        return min <= before ? min : min + (_brk.e - _brk.s);
+    };
     const _booked = info.total || 0;
     const _openToTarget = Math.max(0, _target - _booked);   /* noch offen bis zum Tagessoll */
-    const _elapsedPct = _target ? Math.min(100, Math.round(_elapsed / _target * 100)) : 0;
-    const _bookedPct = _target ? Math.min(100, Math.round(_booked / _target * 100)) : 0;
+    const _elapsedClock = _spanOk ? Math.max(0, Math.min(_span, _nowMins - _ws)) : _elapsed * 60;
+    const _elapsedPct = info.target > 0 ? _pct(_elapsedClock) : 0;
+    const _bookedPct = _pct(_clockPosOfWork(_booked * 60));
+    const _inBreak = _hasBrk && _nowMins >= _brk.s && _nowMins < _brk.e;
+    const _brkTitle = _hasBrk ? _tf('wt_break_mark', { a: wtMinToHM(_brk.s), b: wtMinToHM(_brk.e) }) : '';
+    const _breakSpan = _hasBrk ? `<b class="wk-break-span${_inBreak ? ' is-now' : ''}" style="left:${_pct(_brk.s - _ws)}%; width:${_pct(_brk.e - _brk.s)}%" title="${_brkTitle}"></b>` : '';
+    const _trackScale = _spanOk ? `<div class="wk-track-scale"><span>${wtMinToHM(_ws)}</span>${_hasBrk ? `<span class="wk-track-scale-brk${_inBreak ? ' is-now' : ''}" style="left:${Math.max(22, Math.min(78, _pct((_brk.s + _brk.e) / 2 - _ws)))}%"><i class="fas fa-mug-hot"></i> ${wtMinToHM(_brk.s)}–${wtMinToHM(_brk.e)}</span>` : ''}<span>${wtMinToHM(_we)} · ${ttNum(_span / 60)} h</span></div>` : '';
 
     let html = `<div class="wk-today">`;
 
@@ -12416,12 +12426,15 @@ function renderToday(c) {
     html += `<section class="wk-hero compact${hubPro ? '' : ' wk-hero-lean'}">
         <div class="wk-hero-left">
             <span class="wk-hero-eyebrow">${greeting}${userName ? ', ' + escapeHtmlToday(userName) : ''} · ${ttFmtFull(todayIso)}</span>
-            <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small>${_breakNote}</div>
-            <div class="wk-hero-track" title="${_tf('hub_track_title', { a: ttNum(_booked), b: ttNum(_elapsed), c: ttNum(_target) })}">
+            <div class="wk-hero-num">${ttNum(info.total)}<small>${t('today_of')} ${ttNum(info.target || 0)} h</small></div>
+            <div class="wk-hero-trackwrap">
+            <div class="wk-hero-track" title="${_tf('hub_track_title', { a: ttNum(_booked), b: ttNum(_elapsed), c: ttNum(_target) })}${_hasBrk ? ' · ' + _brkTitle : ''}">
                 <span class="wk-elapsed" style="width:${_elapsedPct}%"></span>
                 <i class="wk-booked" style="width:${_bookedPct}%"></i>
+                ${_breakSpan}
                 <span class="wk-track-label">${_tf('hub_open_of', { a: ttNum(_openToTarget), b: ttNum(_target) })}</span>
-                ${_breakMark}
+            </div>
+            ${_trackScale}
             </div>
             <p class="wk-hero-note">${info.missing > 0.01
                 ? t('today_missing_pre') + ' ' + ttNum(info.missing) + ' ' + t('today_missing_post').replace('{n}', overdue.length + dueToday.length)
