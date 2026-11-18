@@ -3930,3 +3930,36 @@ button.ac-view.secondary.blocked{ border-style:dashed !important; }
 .sched-ev-rz .sched-ev-time{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @container (max-width: 110px){ .sched-ev-rz .cl-book-abs{ display:none !important; } }
 #schedClModal .modal-footer button:disabled{ opacity:.45; cursor:not-allowed; }
+
+/* ===== Jahresabschluss: Vorjahre als Akkordeon ===== */
+.ya-acc{ border:1px solid var(--border-color); border-radius:var(--radius); background:color-mix(in srgb, var(--bg-color) 60%, var(--surface-color)); margin:10px 0 0; overflow:hidden; }
+.ya-sum{ display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; list-style:none; font-size:12.5px; color:var(--text-main); user-select:none; }
+.ya-sum::-webkit-details-marker{ display:none; }
+.ya-sum:hover{ background:var(--primary-lightest); }
+.ya-sum:focus-visible{ outline:2px solid var(--primary-color); outline-offset:-2px; }
+.ya-ic{ width:26px; height:26px; border-radius:8px; display:grid; place-items:center; background:var(--surface-color); border:1px solid var(--border-color); color:var(--text-muted); font-size:11px; flex-shrink:0; }
+.ya-year{ font-family:var(--ff-data); font-size:14px; }
+.ya-lbl{ flex:1; min-width:0; color:var(--text-muted); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ya-chev{ color:var(--text-muted); font-size:11px; transition:transform .2s; }
+.ya-acc[open] > .ya-sum .ya-chev, .ya-tb.open .ya-chev{ transform:rotate(180deg); }
+.ya-acc[open] > .ya-sum{ border-bottom:1px solid var(--border-color); }
+.ya-body{ padding:10px; }
+.ya-cards{ display:flex; flex-direction:column; gap:10px; }
+.ya-stack{ display:flex; flex-direction:column; gap:0; }
+.ya-span{ grid-column:1 / -1; }
+.ya-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:20px; padding:16px; }
+.kanban-cards > .ya-acc{ margin-top:6px; }
+.kanban-cards .ya-body{ padding:8px; }
+.notes-left-pane .ya-acc{ margin:8px 0 6px; }
+.notes-left-pane .ya-body{ padding:6px; }
+/* Tabellen (Liste, Buchungs-Historie) */
+.ya-tb:not(.open) > tr:not(.ya-head){ display:none !important; }
+.ya-tb .ya-head > td{ padding:8px 0 0 !important; border:none !important; background:transparent !important; }
+button.ya-sum-btn.secondary{ width:100% !important; border-radius:var(--radius) !important; border:1px solid var(--border-color) !important; background:color-mix(in srgb, var(--bg-color) 60%, var(--surface-color)) !important; justify-content:flex-start !important; font-weight:normal !important; height:auto !important; box-shadow:none !important; text-align:left; }
+.ya-tb.open button.ya-sum-btn.secondary{ border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+@media (max-width:1088px){
+  .ya-tb .ya-head{ display:block; }
+  .ya-tb .ya-head > td{ display:block !important; width:100% !important; }
+  .ya-tb .ya-head > td::before{ display:none !important; }
+}
+@media (max-width:599px){ .ya-grid{ grid-template-columns:1fr; padding:10px; gap:12px; } }

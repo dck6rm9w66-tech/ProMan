@@ -1,6 +1,12 @@
 // --- 1. STATE, DATA MODEL & TRANSLATION ---
 const i18n = {
     de: {
+        ya_done_one: "1 abgeschlossener Eintrag",
+        ya_done_n: "{n} abgeschlossene Einträge",
+        ya_stacks_one: "1 abgeschlossener Projekt-Stack",
+        ya_stacks_n: "{n} abgeschlossene Projekt-Stacks",
+        ya_logs_one: "1 Buchung · {h} h",
+        ya_logs_n: "{n} Buchungen · {h} h",
         scm_apply0: "Einplanen",
         scm_title: "Checklistenpunkte einplanen",
         scm_title_ms: "Meilensteine einplanen",
@@ -165,6 +171,12 @@ const i18n = {
         wf_act_send_email: "Sende E-Mail mit Infos..."
     },
     en: {
+        ya_done_one: "1 completed item",
+        ya_done_n: "{n} completed items",
+        ya_stacks_one: "1 completed project stack",
+        ya_stacks_n: "{n} completed project stacks",
+        ya_logs_one: "1 entry · {h} h",
+        ya_logs_n: "{n} entries · {h} h",
         scm_apply0: "Schedule",
         scm_title: "Schedule checklist items",
         scm_title_ms: "Schedule milestones",
@@ -331,6 +343,12 @@ const i18n = {
         wf_act_set_stat: "Set Status to...", wf_act_set_prio: "Set Priority to...", wf_act_set_ass: "Assign User...", wf_act_set_buck: "Move to Bucket...", wf_act_set_sh: "Assign Stakeholder...", wf_act_add_note: "Add Note...", wf_act_notif_bell: "Create Notification (Bell)...", wf_act_notif_toast: "Create Notification (Toast)...", wf_act_notif_modal: "Create Notification (Modal)...", wf_act_notif_push: "Create Notification (Push)...", wf_act_set_due_rel: "Shift Due Date by X Days", wf_act_set_start_tdy: "Set Start Date to Today", wf_act_clear_due: "Remove Due Date", wf_act_add_est: "Increase Estimated Time by X Hrs", wf_act_set_est: "Set Estimated Time to X Hrs", wf_hours: "Hours", wf_days_from_now: "Days from today", wf_no_val_needed: "(No value needed)", wf_act_send_email: "Send Email with info..."
     },
     fr: {
+        ya_done_one: "1 élément terminé",
+        ya_done_n: "{n} éléments terminés",
+        ya_stacks_one: "1 stack terminé",
+        ya_stacks_n: "{n} stacks terminés",
+        ya_logs_one: "1 saisie · {h} h",
+        ya_logs_n: "{n} saisies · {h} h",
         scm_apply0: "Planifier",
         scm_title: "Planifier des points de checklist",
         scm_title_ms: "Planifier des jalons",

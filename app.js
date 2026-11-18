@@ -6207,7 +6207,9 @@ function renderNotesView(c) {
 
     if(items.length === 0) { html += `<p style="color:var(--text-muted); text-align:center; font-size:12px; margin-top:20px;">${_t('notes_no_entries')}</p>`; } 
     else {
+        const _yaN = yaBuckets();
         items.forEach(item => {
+            const _yaStart = html.length, _yaY = yaPastYear(item.type, item.obj);
             const isTask = item.type === 'task'; const icon = isTask ? 'fa-tasks' : 'fa-folder'; const isActive = item.id === activeNoteId;
             const color = isTask ? 'var(--primary-color)' : 'var(--primary-color)'; const bg = isActive ? 'var(--primary-lightest)' : 'var(--surface-color)';
             const border = '';
@@ -6217,7 +6219,9 @@ function renderNotesView(c) {
             html += `<div class="draggable-item wk-sstrip${isActive ? ' is-active' : ''}" draggable="${notessortKey === 'manual'}" ondragstart="event.dataTransfer.setData('text/plain', '${item.id}'); event.dataTransfer.setData('type', 'note-card');" ondrop="handleNoteCardDrop(event, this, '${item.id}')" ondragover="handleCardDragOver(event, this, false)" ondragleave="handleCardDragLeave(this)" onclick="selectNoteItem('${item.id}')" style="--card-strip:${entityStripColor(isTask ? 'task' : 'stack', item.obj)}; padding:10px; margin-bottom:6px; background:${bg}; ${border} border-radius:var(--radius); border-top:1px solid var(--border-color); border-right:1px solid var(--border-color); border-bottom:1px solid var(--border-color); cursor:pointer; display:flex; justify-content:space-between; align-items:center; ${compOpacity}">
                         <div style="font-weight:${isActive?'bold':'normal'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;" title="${item.name}"><i class="fas ${icon}" style="color:${color}; margin-right:8px;"></i>${pausedIcon}${item.name}</div>${doneRatingHtml(item.type === 'task' ? 'task' : 'stack', item.obj, true)}
                      </div>`;
+            if (_yaY && !isActive) { _yaN.add(_yaY, html.slice(_yaStart)); html = html.slice(0, _yaStart); }
         });
+        _yaN.years().forEach(y => { const b = _yaN.get(y); html += yaDetailsHtml('notes', y, yaLabelDone(b.n), b.html, 'ya-stack'); });
     }
     html += `</div><div class="notes-right-pane">`;
     
@@ -6404,7 +6408,14 @@ function renderChecklists(c, mode = 'checklists') {
     if (clSortKey === 'dueDate' || clSortKey === 'today') { renderItems.sort((a,b) => { if(!a.dueDate && !b.dueDate) return 0; if(!a.dueDate) return 1; if(!b.dueDate) return -1; return new Date(a.dueDate) - new Date(b.dueDate); }); } 
     else if (clSortKey === 'priority') { const pMap = { high: 3, medium: 2, low: 1 }; renderItems.sort((a,b) => (pMap[b.priority] || 0) - (pMap[a.priority] || 0)); }
 
-    renderItems.forEach(item => { html += renderGroup(item.name, item.type, item.id, item.cl, item.isDone, item.isPaused, item.stackName, item.priority, item.dueDate, item.assigneeId); });
+    const _yaC = yaBuckets();
+    renderItems.forEach(item => {
+        const g = renderGroup(item.name, item.type, item.id, item.cl, item.isDone, item.isPaused, item.stackName, item.priority, item.dueDate, item.assigneeId);
+        const ent = item.type === 'stack' ? (appData.projectStacks || []).find(x => x.id === item.id) : (appData.tasks || []).find(x => x.id === item.id);
+        const y = yaPastYear(item.type === 'stack' ? 'stack' : 'task', ent);
+        if (y) _yaC.add(y, g); else html += g;
+    });
+    _yaC.years().forEach(y => { const b = _yaC.get(y); html += yaDetailsHtml(mode === 'milestones' ? 'milestones' : 'checklists', y, yaLabelDone(b.n), b.html, 'ya-stack'); });
     if(renderItems.length === 0 && !hasItems) { html += `<p style="color:var(--text-muted); margin-top:20px; text-align:center;">${_onlyStacks ? t('milestones_empty') : t('checklists_empty')}</p>`; }
     c.innerHTML = html + `</div>`;
     updateDepDisplay();
@@ -6498,6 +6509,70 @@ function clUndoDelete(btn) {
 
 
 // KANBAN
+/* ══════════════════════════════════════════════════════════════════
+   JAHRESABSCHLUSS: Abgeschlossenes und Gebuchtes aus Vorjahren wird pro Jahr
+   in einem Akkordeon gebündelt (Kanban „Abgeschlossen", Liste, Projekt-Stacks,
+   Notizen, Checklisten, Meilensteine, Buchungs-Historie). Standard: zugeklappt;
+   der Auf-/Zu-Zustand wird pro Ansicht und Jahr im Browser gemerkt.
+   ══════════════════════════════════════════════════════════════════ */
+const YA_STORE = 'proman_ya_open';
+function yaCurYear() { return new Date().getFullYear(); }
+function yaYearOfTs(ts) { const n = Number(ts); if (!n) return null; const y = new Date(n).getFullYear(); return isNaN(y) ? null : y; }
+/* Jahr eines abgeschlossenen Eintrags, falls aus einem Vorjahr – sonst null */
+function yaPastYear(type, ent) {
+    if (!ent) return null;
+    const done = type === 'stack' ? ent.status === 'completed' : isTaskDone(ent);
+    if (!done) return null;
+    const y = yaYearOfTs(ent.completedAt);
+    return (y && y < yaCurYear()) ? y : null;
+}
+function yaLogPastYear(log) { const y = parseInt(String(log && log.date || '').slice(0, 4), 10); return (y && y < yaCurYear()) ? y : null; }
+function yaOpenMap() { try { return JSON.parse(localStorage.getItem(YA_STORE) || '{}') || {}; } catch (e) { return {}; } }
+function yaIsOpen(key) { return !!yaOpenMap()[key]; }
+function yaSetOpen(key, on) { try { const m = yaOpenMap(); if (on) m[key] = 1; else delete m[key]; localStorage.setItem(YA_STORE, JSON.stringify(m)); } catch (e) {} }
+function yaRemember(el) {
+    if (!el || !el.dataset.ya) return;
+    yaSetOpen(el.dataset.ya, el.open);
+    if (el.open) el.querySelectorAll('.ya-body > *').forEach(x => { if (x.style.opacity === '0') { x.style.opacity = ''; x.style.transform = ''; } });
+}
+/* Sammelbehälter: Jahr → HTML/Elemente + Zähler */
+function yaBuckets() {
+    const m = new Map();
+    return {
+        add(year, html, n = 1, hours = 0) { const b = m.get(year) || { html: '', n: 0, hours: 0, els: [] }; b.html += html || ''; b.n += n; b.hours += hours; m.set(year, b); },
+        addEl(year, el) { const b = m.get(year) || { html: '', n: 0, hours: 0, els: [] }; b.els.push(el); b.n += 1; m.set(year, b); },
+        years() { return Array.from(m.keys()).sort((a, b) => b - a); },
+        get(y) { return m.get(y); },
+        size() { return m.size; }
+    };
+}
+function yaSummaryInner(year, label) {
+    return `<span class="ya-ic"><i class="fas fa-box-archive"></i></span><b class="ya-year">${year}</b><span class="ya-lbl">${label}</span><i class="fas fa-chevron-down ya-chev"></i>`;
+}
+/* Akkordeon für Listen/Kacheln (div-basiert) */
+function yaDetailsHtml(scope, year, label, bodyHtml, bodyClass = '') {
+    const key = scope + ':' + year;
+    return `<details class="ya-acc" data-ya="${key}" ${yaIsOpen(key) ? 'open' : ''} ontoggle="yaRemember(this)"><summary class="ya-sum">${yaSummaryInner(year, label)}</summary><div class="ya-body ${bodyClass}">${bodyHtml}</div></details>`;
+}
+function yaDetailsEl(scope, year, label, els, bodyClass = '') {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = yaDetailsHtml(scope, year, label, '', bodyClass);
+    const det = wrap.firstElementChild; const body = det.querySelector('.ya-body');
+    els.forEach(x => body.appendChild(x));
+    return det;
+}
+/* Akkordeon für Tabellen: eigener <tbody> pro Jahr mit Kopfzeile */
+function yaTbodyHtml(scope, year, label, colspan, rowsHtml) {
+    const key = scope + ':' + year; const open = yaIsOpen(key);
+    return `<tbody class="ya-tb${open ? ' open' : ''}" data-ya="${key}"><tr class="ya-head"><td colspan="${colspan}"><button type="button" class="secondary ya-sum ya-sum-btn" aria-expanded="${open}" onclick="yaToggleTb(this)">${yaSummaryInner(year, label)}</button></td></tr>${rowsHtml}</tbody>`;
+}
+function yaToggleTb(btn) {
+    const tb = btn.closest('.ya-tb'); if (!tb) return;
+    const on = !tb.classList.contains('open'); tb.classList.toggle('open', on); btn.setAttribute('aria-expanded', on);
+    yaSetOpen(tb.dataset.ya, on);
+}
+function yaLabelDone(n) { return _tf(n === 1 ? 'ya_done_one' : 'ya_done_n', { n }); }
+
 function renderKanban(c) {
     const board = document.createElement('div'); board.className = 'kanban-board'; const tasks = getFilteredTasks();
     appData.statuses.forEach(col => {
@@ -6539,7 +6614,14 @@ function renderKanban(c) {
         } else {
             colTasks = tasks.filter(t_obj => t_obj.status === col.id);
         }
-        colTasks.forEach(task => { cardsDiv.appendChild(createTaskCard(task)); });
+        if (col.id === 'done') {
+            /* Jahresabschluss: Erledigtes aus Vorjahren pro Jahr zugeklappt unten in der Spalte */
+            const ya = yaBuckets();
+            colTasks.forEach(task => { const y = yaPastYear('task', task); if (y) ya.addEl(y, createTaskCard(task)); else cardsDiv.appendChild(createTaskCard(task)); });
+            ya.years().forEach(y => { const b = ya.get(y); cardsDiv.appendChild(yaDetailsEl('kanban', y, yaLabelDone(b.n), b.els, 'ya-cards')); });
+        } else {
+            colTasks.forEach(task => { cardsDiv.appendChild(createTaskCard(task)); });
+        }
 
         colDiv.appendChild(cardsDiv); board.appendChild(colDiv);
     });
@@ -6849,7 +6931,9 @@ function renderStacks(c) {
     let stacks = getFilteredStacks(); stacks = applySort(stacks, stackssortKey);
     if(stacks.length === 0) html += `<p>${_t('no_stacks_filter')}</p>`;
     
+    const _yaSt = yaBuckets();
     stacks.forEach(stack => {
+        const _yaStart = html.length, _yaY = yaPastYear('stack', stack);
         const sp = getStackProgress(stack.id); const isCompleted = stack.status === 'completed'; const isPaused = stack.status === 'paused';
         let badgeHtml = ''; if(isCompleted) badgeHtml = `<span class="badge low">${t('col_completed')}</span>`;
         const ratingHtml = doneRatingHtml('stack', stack);
@@ -6921,7 +7005,9 @@ function renderStacks(c) {
             ${checklistHtml}
             ${tasksListHtml}
         </div>`;
+        if (_yaY) { _yaSt.add(_yaY, html.slice(_yaStart)); html = html.slice(0, _yaStart); }
     });
+    _yaSt.years().forEach(y => { const b = _yaSt.get(y); html += `<div class="ya-span">${yaDetailsHtml('stacks', y, _tf(b.n === 1 ? 'ya_stacks_one' : 'ya_stacks_n', { n: b.n }), b.html, 'ya-grid')}</div>`; });
     c.innerHTML = html + `</div>`;
 }
 
@@ -7003,7 +7089,9 @@ function renderList(c) {
     let middleColSpan = 0; if(cols.stakeholder) middleColSpan++; if(cols.bucket) middleColSpan++; if(cols.status) middleColSpan++; if(cols.priority) middleColSpan++; if(cols.startDate) middleColSpan++; if(cols.dueDate) middleColSpan++; if(cols.recurrence) middleColSpan++;
     let endColSpan = 0; if(cols.timeSpent) endColSpan++; if(cols.progress) endColSpan++; if(cols.description) endColSpan++; if(cols.checklist) endColSpan++; if(cols.files) endColSpan++; if(cols.notes) endColSpan++;
 
+    const _yaList = yaBuckets();
     stacks.forEach(stack => {
+        const _yaStart = html.length, _yaY = yaPastYear('stack', stack);
         let sTasks = filteredTasks.filter(t_obj => t_obj.projectStackId === stack.id);
         const sp = getStackProgress(stack.id); const sh = appData.stakeholders.find(s => s.id === stack.stakeholderId);
         const shBadge = sh ? `<span class="stakeholder-badge" style="background:${sh.color}; margin-left:10px; margin-bottom:0;">${sh.name}</span>` : '';
@@ -7027,15 +7115,21 @@ function renderList(c) {
         html += `<td data-c="acts" data-label="">${wkActsHtml('stack', stack.id)}</td>`;
         html += `</tr>`;
         if(sTasks.length > 0) sortArray(sTasks).forEach(task => { html += generateListRow(task, true); });
+        if (_yaY) { _yaList.add(_yaY, html.slice(_yaStart)); html = html.slice(0, _yaStart); }
     });
     
-    const standalone = sortArray(filteredTasks.filter(t_obj => !t_obj.projectStackId));
+    const _yaAllStandalone = sortArray(filteredTasks.filter(t_obj => !t_obj.projectStackId));
+    _yaAllStandalone.filter(tk => yaPastYear('task', tk)).forEach(tk => _yaList.add(yaPastYear('task', tk), generateListRow(tk, false)));
+    const standalone = _yaAllStandalone.filter(tk => !yaPastYear('task', tk));
+    const _yaTotalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan + 1;
     if(standalone.length > 0) { 
         let totalCols = 1 + (cols.assignee?1:0) + middleColSpan + endColSpan + 1;
         html += `<tr class="table-row-group wk-list-group"><td data-c="group" data-label="${_t('dl_gruppierung')}" colspan="${totalCols}"><b><i class="fas fa-layer-group"></i> ${t('standalone_tasks')}</b></td></tr>`; 
         standalone.forEach(task => { html += generateListRow(task, false); }); 
     }
-    c.innerHTML = html + `</tbody></table></div>`;
+    html += `</tbody>`;
+    _yaList.years().forEach(y => { const b = _yaList.get(y); html += yaTbodyHtml('list', y, yaLabelDone(b.n), _yaTotalCols, b.html); });
+    c.innerHTML = html + `</table></div>`;
     
     document.addEventListener('click', function closeListFilter(e) {
         if(!e.target.closest('.dropdown.click-only')) { const dd = document.querySelector('.dropdown.click-only .dropdown-content'); if(dd) dd.style.display = 'none'; document.removeEventListener('click', closeListFilter); }
@@ -9924,7 +10018,9 @@ function renderTimeTracking(c) {
             <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;"><i class="fas fa-calendar-days"></i> ${ttRangeLabel()} · ${t('tr_total')}: <b style="color:var(--text-main);">${ttNum(sortedLogsTotal)} h</b></div>
             <div style="overflow-x:auto;"><table class="data-table tt-log-table"><thead><tr><th class="tt-log-date">${t('date')}</th><th>${t('task')}</th><th>${t('duration')}</th><th>${_t('x_note')}</th><th width="80"></th></tr></thead><tbody>`;
     if(sortedLogs.length === 0) html += `<tr><td colspan="5">${ttRangeActive() ? t('tr_empty') : _t('tt_no_entries')}</td></tr>`;
+    const _yaH = yaBuckets();
     sortedLogs.forEach((log) => {
+        const _yaStart = html.length, _yaY = yaLogPastYear(log);
         const { task, deleted } = getTaskOrDeleted(log.taskId);
         const isPaused = task && task.isPaused && !isTaskDone(task); 
         const pausedIcon = isPaused && !deleted ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;" title="' + _t('paused') + '"></i>' : '';
@@ -9936,8 +10032,11 @@ function renderTimeTracking(c) {
         const openFn = (task && !deleted) ? `openModal('${task.id}')` : (_stk ? `openStackModal('${_stk.id}')` : '');
         const rowName = _stk ? _stk.name : taskName;
         html += `<tr${openFn ? ` class="tt-log-row" tabindex="0" role="button" title="${_t('tt_log_open')}" onclick="${openFn}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${openFn}}"` : ''}><td class="tt-log-date" data-label="${_t('dl_datum')}">${log.date}</td><td data-label="${_t('dl_aufgabe')}"><b>${pausedIcon}${_stk ? '<i class="fas fa-layer-group" style="color:var(--text-muted); margin-right:5px;"></i>' + rowName : taskName}${_stk ? '' : deletedPill}</b></td><td data-label="${_t('dl_dauer')}"><span class="badge" style="background:rgba(0,0,0,0.05); color:var(--text-main); font-size:12px;">${parseFloat(log.hours).toFixed(2)}h</span></td><td data-label="${_t('dl_notiz')}">${log.note || '-'}</td><td style="flex-direction:row;"><button class="secondary icon-btn" onclick="event.stopPropagation(); openEditTimeLog('${log.id}')"><i class="fas fa-pen"></i></button> <button class="secondary icon-btn" style="color:var(--danger);" onclick="event.stopPropagation(); deleteTimeLog('${log.id}')"><i class="fas fa-trash"></i></button></td></tr>`;
+        if (_yaY) { _yaH.add(_yaY, html.slice(_yaStart), 1, parseFloat(log.hours) || 0); html = html.slice(0, _yaStart); }
     });
-    html += `</tbody></table></div></div></div>`;
+    html += `</tbody>`;
+    _yaH.years().forEach(y => { const b = _yaH.get(y); html += yaTbodyHtml('hist', y, _tf(b.n === 1 ? 'ya_logs_one' : 'ya_logs_n', { n: b.n, h: ttNum(b.hours) }), 5, b.html); });
+    html += `</table></div></div></div>`;
     c.innerHTML = html; updateTimerDisplays(); requestAnimationFrame(() => { positionTimeLensMagnet(); ttRevealActiveRangeChip(); });
 }
 
@@ -13584,7 +13683,8 @@ function ttHeuteBook(iso){
         drag.mergeWith = null;
 
         /* Einsortieren über Mittelpunkte der echten Karten (stabil, kein Zittern) */
-        const cards = Array.from(host.querySelectorAll('.task-card')).filter(c => c !== drag.srcCard && c.style.display !== 'none');
+        /* nur direkte Karten der Spalte (nicht die im Jahres-Akkordeon) */
+        const cards = Array.from(host.querySelectorAll(':scope > .task-card')).filter(c => c !== drag.srcCard && c.style.display !== 'none');
         let before = null;
         for (const c of cards) {
             const rc = c.getBoundingClientRect();
