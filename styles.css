@@ -3884,3 +3884,49 @@ button.ac-view.secondary.blocked{ border-style:dashed !important; }
 @media (max-width:899px){ .wk-hero-trackwrap{ max-width:none; } }
 .wk-track-scale{ position:relative; }
 .wk-track-scale-brk{ position:absolute; top:0; transform:translateX(-50%); }
+
+/* ===== Tagesverlauf: Checklistenpunkte einplanen (Modal) ===== */
+.scm{ width:520px; max-width:100%; }
+.scm-sub{ margin:2px 0 0; font-size:12px; color:var(--text-muted); }
+.scm-body{ display:flex; flex-direction:column; gap:10px; max-height:min(64vh, 620px); overflow-y:auto; }
+.scm-hint{ font-size:12px; color:var(--text-muted); margin:0; line-height:1.5; }
+.scm-start{ display:flex; align-items:center; gap:10px; font-size:12px; font-weight:700; margin:0; }
+.scm-start input{ width:130px; margin:0 !important; }
+.scm-sec{ font-size:10.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--text-muted); margin-top:4px; }
+.scm-list{ display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:var(--radius); overflow:hidden; }
+.scm-item{ display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border-color); cursor:pointer; margin:0 !important; font-weight:normal !important; }
+.scm-item:last-child{ border-bottom:none; }
+.scm-item:hover{ background:var(--primary-lightest); }
+.scm-item.on{ background:color-mix(in srgb, var(--primary-color) 9%, var(--surface-color)); }
+.scm-item input{ width:16px; height:16px; margin:0 !important; flex-shrink:0; }
+.scm-item-txt{ display:flex; flex-direction:column; min-width:0; }
+.scm-item-txt b{ font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.scm-item-txt small{ font-size:11px; color:var(--text-muted); }
+.scm-empty{ padding:14px; font-size:12px; color:var(--text-muted); text-align:center; }
+.scm-new-row{ display:flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border-radius:10px; background:var(--bg-color); }
+.scm-new-row > i{ color:var(--success); }
+.scm-new-row span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.scm-new-row small{ color:var(--text-muted); font-size:11px; }
+.scm-add{ display:flex; gap:6px; align-items:center; }
+.scm-add input{ flex:1; min-width:0; margin:0 !important; }
+.scm-add select{ width:96px; margin:0 !important; }
+.scm-plan{ border-top:1px dashed var(--border-color); padding-top:8px; display:flex; flex-direction:column; gap:4px; }
+.scm-plan-row{ display:flex; gap:10px; align-items:baseline; font-size:12.5px; }
+.scm-plan-time{ font-family:var(--ff-data); font-size:11.5px; color:var(--primary-color); font-weight:700; white-space:nowrap; min-width:92px; }
+.scm-plan-row em{ font-style:normal; font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; background:color-mix(in srgb, var(--success) 15%, transparent); color:var(--success); }
+
+/* Zeitblöcke im Tagesverlauf: Griffe links/rechts zum Verschieben von Start/Ende */
+.sched-ev-rz{ padding-left:14px !important; padding-right:14px !important; }
+.sched-rz{ position:absolute; top:0; bottom:0; width:10px; cursor:ew-resize; z-index:3; touch-action:none; }
+.sched-rz.l{ left:0; border-radius:inherit; }
+.sched-rz.r{ right:0; }
+.sched-rz::after{ content:''; position:absolute; top:50%; left:50%; width:3px; height:18px; transform:translate(-50%,-50%); border-radius:2px;
+  background:currentColor; opacity:.35; transition:opacity .15s, height .15s; }
+.sched-ev-rz:hover .sched-rz::after, .sched-ev-rz.is-resizing .sched-rz::after{ opacity:.85; height:24px; }
+.sched-ev-rz.is-resizing{ z-index:20 !important; box-shadow:0 6px 18px rgba(0,0,0,.18) !important; outline:2px solid currentColor; outline-offset:1px; }
+@media (hover:none){ .sched-rz{ width:16px; } .sched-rz::after{ opacity:.6; } }
+.sched-ev-rz .cl-book-abs{ right:14px !important; }
+.sched-ev-rz{ container-type:inline-size; overflow:hidden; }
+.sched-ev-rz .sched-ev-time{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@container (max-width: 110px){ .sched-ev-rz .cl-book-abs{ display:none !important; } }
+#schedClModal .modal-footer button:disabled{ opacity:.45; cursor:not-allowed; }

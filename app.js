@@ -1115,6 +1115,7 @@ let plannerSubView = 'schedule';
 let timeSubView = 'tracking';
 let sidebarMgmtOpen = false;
 applyUiMode();
+try { undoInit(); } catch (e) {}
 /* Admin-Modus: beim Start PIN des aktiven Benutzers abfragen (einmal pro Browser-Tab) */
 if (acNeedsUnlock()) { const _acLockStart = () => acOpenLock(acCurUid()); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _acLockStart); else setTimeout(_acLockStart, 0); }
 let currentTempFiles = []; 
@@ -1461,7 +1462,90 @@ function recordEntityChanges() {
     } catch (err) { console.error('Änderungshistorie fehlgeschlagen', err); }
 }
 
-function saveToLocal(skipRender = false) { try { ensureFixedStatuses(); migratePausedTasks(); } catch (e) {} recordEntityChanges(); localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
+
+/* ══════════════════════════════════════════════════════════════════
+   RÜCKGÄNGIG (Strg/Cmd+Z) / WIEDERHOLEN (Strg+Y bzw. Strg+Umschalt+Z)
+   Bis zu 20 Schritte. Jede gespeicherte Datenänderung wird ein Schritt; schnell aufeinander
+   folgende Speichervorgänge (< 0,7 s, z. B. Drag & Drop mit Folgeänderungen) bilden einen Schritt.
+   Nicht rückgängig gemacht werden technische Zustände (Benachrichtigungen, Workflow-Merkliste,
+   aktiver Benutzer, Admin-Rechte, Ansicht-Modus) – sie bleiben beim Zurückgehen wie sie sind.
+   ══════════════════════════════════════════════════════════════════ */
+const UNDO_MAX = 20;
+const UNDO_VOL_TOP = ['activityLog', 'mailOutbox', 'customBellNotifs', 'access'];
+const UNDO_VOL_SET = ['wfBgState', 'dismissedNotifs', 'pushedNotifs', 'firedNotifChannels', 'snoozedNotifs', 'currentUserId', 'onboardingCompleted', 'uiMode', 'mailCatchupDone', 'pushNotifications', 'pushSystemMessages'];
+let _undoStack = [], _redoStack = [], _undoBase = null, _undoOpen = false, _undoTimer = null, _undoSuspend = false;
+function undoSemantic() {
+    const top = appData, set = appData && appData.settings;
+    try {
+        return JSON.stringify(appData, function (k, v) {
+            if (this === top && UNDO_VOL_TOP.includes(k)) return undefined;
+            if (this === set && UNDO_VOL_SET.includes(k)) return undefined;
+            return v;
+        });
+    } catch (e) { return null; }
+}
+function undoInit() { _undoBase = undoSemantic(); _undoStack = []; _redoStack = []; }
+/* aus saveToLocal: Änderung gegenüber dem letzten Stand merken */
+function undoNoteChange() {
+    if (_undoSuspend || !appData) return;
+    const sem = undoSemantic(); if (sem === null) return;
+    if (_undoBase === null) { _undoBase = sem; return; }
+    if (sem === _undoBase) return;
+    if (!_undoOpen) {
+        _undoStack.push(_undoBase);
+        if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+        _redoStack = [];
+        _undoOpen = true;
+    }
+    _undoBase = sem;
+    clearTimeout(_undoTimer);
+    _undoTimer = setTimeout(() => { _undoOpen = false; }, 700);
+}
+function undoApply(snapshot) {
+    const next = JSON.parse(snapshot);
+    UNDO_VOL_TOP.forEach(k => { if (appData[k] !== undefined) next[k] = appData[k]; else delete next[k]; });
+    if (!next.settings) next.settings = {};
+    UNDO_VOL_SET.forEach(k => { if (appData.settings && appData.settings[k] !== undefined) next.settings[k] = appData.settings[k]; });
+    appData = next;
+    _undoSuspend = true;
+    try { saveToLocal(); } finally { _undoSuspend = false; }
+    _undoBase = undoSemantic(); _undoOpen = false; clearTimeout(_undoTimer);
+    try { _histSnap = histBuildSnapshot(); } catch (e) {}
+    try { applyUiMode(); if (window.Shell) window.Shell.rebuildNav(); } catch (e) {}
+}
+function undoModalOpen() { return !!document.querySelector('.modal-overlay.active, .modal.active, #acLock.open'); }
+function undoStep() {
+    if (undoModalOpen()) return false;
+    if (_undoOpen) { _undoOpen = false; clearTimeout(_undoTimer); }
+    if (!_undoStack.length) { _rawToast(_t('undo_empty'), 'info'); return true; }
+    _redoStack.push(_undoBase);
+    undoApply(_undoStack.pop());
+    _rawToast(`${_tf('undo_done', { n: _undoStack.length })} <button type="button" class="secondary toast-undo" onclick="redoStep(); this.closest('.toast') && this.closest('.toast').remove();">${_t('redo')}</button>`, 'success');
+    return true;
+}
+function redoStep() {
+    if (undoModalOpen()) return false;
+    if (!_redoStack.length) { _rawToast(_t('redo_empty'), 'info'); return true; }
+    _undoStack.push(_undoBase);
+    if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+    undoApply(_redoStack.pop());
+    _rawToast(_tf('redo_done', { n: _redoStack.length }), 'success');
+    return true;
+}
+document.addEventListener('keydown', function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = (e.key || '').toLowerCase();
+    if (k !== 'z' && k !== 'y') return;
+    const ae = document.activeElement;
+    const tag = ae ? ae.tagName : '';
+    /* in Textfeldern bleibt das normale Rückgängig des Browsers */
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable)) return;
+    const redo = k === 'y' || (k === 'z' && e.shiftKey);
+    const handled = redo ? redoStep() : undoStep();
+    if (handled) e.preventDefault();
+});
+
+function saveToLocal(skipRender = false) { try { ensureFixedStatuses(); migratePausedTasks(); } catch (e) {} recordEntityChanges(); try { undoNoteChange(); } catch (e) {} localStorage.setItem('proman_v2_data', JSON.stringify(appData)); if(!skipRender){ renderFilterChips(); renderView(); updateNotificationsBadge(); updateActiveUserIcon(); syncMobileFilterMenu(); } }
 function toggleSidebar() { document.getElementById('app-sidebar').classList.toggle('collapsed'); }
 
 function _rawToast(msg, type='success') {
@@ -7249,10 +7333,11 @@ function formatTimeFromMinutes(mins) {
 }
 
 // --- DRAG & DROP: Aufgaben/Stacks aus "Ganztägig" oder "Backlog / Ungeplant" in die Tages-, Wochen-, Monats- oder Jahresplanung ziehen ---
-function handleSchedDragStart(e, type, id) {
+function handleSchedDragStart(e, type, id, parentId) {
     e.stopPropagation();
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.setData('type', type);
+    if (parentId) e.dataTransfer.setData('parent', parentId);
     e.dataTransfer.effectAllowed = 'move';
 }
 function handleSchedDragOver(e, el) {
@@ -7301,7 +7386,153 @@ function handleSchedDropTimeline(e, el) {
     mins = Math.round(mins / 15) * 15; // Auf 15 Minuten runden
     const timeStr = formatTimeFromMinutes(mins);
     const dateStr = el.dataset.date;
+    /* Checklistenpunkt / Meilenstein direkt einplanen (Dauer bleibt, sonst 60 Min.) */
+    if (type === 'task-checklist' || type === 'milestone') {
+        const parentId = e.dataTransfer.getData('parent');
+        schedSetClTime(type === 'milestone' ? 'stack' : 'task', parentId, id, dateStr, mins, null);
+        return;
+    }
+    /* Aufgabe/Stack: nicht mehr die ganze Planung ändern – Checklistenpunkte für diesen Zeitblock wählen */
+    if (type === 'task' || type === 'stack') { openSchedClModal(type, id, dateStr, mins); return; }
     scheduleAssignDate(type, id, dateStr, timeStr);
+}
+
+/* ══ Tagesverlauf: Zeitblöcke aus Checklistenpunkten ══════════════════════════ */
+function schedParent(kind, pid) { return kind === 'stack' ? (appData.projectStacks || []).find(x => x.id === pid) : (appData.tasks || []).find(x => x.id === pid); }
+function schedClDuration(cl) { const d = parseInt(cl && cl.duration, 10); return d > 0 ? d : 60; }
+/* Zeit eines Checklistenpunkts setzen: Start (Minuten) + Dauer (Minuten) */
+function schedSetClTime(kind, pid, clId, dateStr, startMin, durMin, opts = {}) {
+    const p = schedParent(kind, pid); const cl = p && (p.checklist || []).find(x => x.id === clId);
+    if (!cl) return;
+    const dur = Math.max(15, Math.round(durMin != null ? durMin : schedClDuration(cl)));
+    const sched = computeChecklistSchedule(dateStr, formatTimeFromMinutes(startMin), dur);
+    cl.startDate = sched.startDate; cl.dueDate = sched.dueDate; cl.duration = sched.duration; cl.allDay = false;
+    if (!opts.silent) { saveToLocal(); safeRenderSchedule(); showToast(_tf('sched_cl_planned', { n: cl.title || _t('unnamed'), a: formatTimeFromMinutes(startMin), b: formatTimeFromMinutes(startMin + dur) })); }
+}
+let _schedCl = null;
+function openSchedClModal(kind, id, dateStr, startMin) {
+    const p = schedParent(kind, id); if (!p) return;
+    _schedCl = { kind, id, dateStr, startMin, sel: new Set(), news: [] };
+    let ov = document.getElementById('schedClModal');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'schedClModal'; ov.className = 'modal-overlay'; document.body.appendChild(ov);
+        ov.addEventListener('mousedown', (ev) => { if (ev.target === ov) closeSchedClModal(); }); }
+    renderSchedClModal();
+    ov.classList.add('active');
+    setTimeout(() => { const i = document.getElementById('scm_new'); if (i && !(p.checklist || []).some(c => !c.done)) i.focus(); }, 60);
+}
+function closeSchedClModal() { const ov = document.getElementById('schedClModal'); if (ov) ov.classList.remove('active'); _schedCl = null; }
+function schedClToggle(clId) { if (!_schedCl) return; _schedCl.sel.has(clId) ? _schedCl.sel.delete(clId) : _schedCl.sel.add(clId); renderSchedClModal(); }
+function schedClAddNew() {
+    const i = document.getElementById('scm_new'), d = document.getElementById('scm_new_dur');
+    const title = (i && i.value || '').trim(); if (!title || !_schedCl) return;
+    const dur = Math.max(15, parseInt(d && d.value, 10) || 60);
+    _schedCl.news.push({ title, dur });
+    renderSchedClModal();
+    setTimeout(() => { const n = document.getElementById('scm_new'); if (n) n.focus(); }, 20);
+}
+function schedClRemoveNew(i) { if (!_schedCl) return; _schedCl.news.splice(i, 1); renderSchedClModal(); }
+function schedClSetStart(v) { if (!_schedCl) return; const m = wtHM(v); if (!isNaN(m)) _schedCl.startMin = m; renderSchedClModal(true); }
+function renderSchedClModal(keepFocus) {
+    const ov = document.getElementById('schedClModal'); if (!ov || !_schedCl) return;
+    const s = _schedCl, p = schedParent(s.kind, s.id); if (!p) return;
+    const name = s.kind === 'stack' ? p.name : p.projectName;
+    const isStack = s.kind === 'stack';
+    const open = (p.checklist || []).filter(c => !c.done);
+    const [y, mo, da] = s.dateStr.split('-');
+    /* Vorschau: ausgewählte Punkte nacheinander ab der Startzeit */
+    let cur = s.startMin; const plan = [];
+    open.filter(c => s.sel.has(c.id)).forEach(c => { const d = schedClDuration(c); plan.push({ t: c.title, a: cur, b: cur + d }); cur += d; });
+    s.news.forEach(n => { plan.push({ t: n.title, a: cur, b: cur + n.dur, isNew: true }); cur += n.dur; });
+    const fmtWhen = (c) => { const sd = (c.startDate || c.dueDate || ''); if (!sd) return _t('scm_unplanned'); const dd = sd.split('T')[0].split('-'); const tm = sd.includes('T') ? ' ' + sd.split('T')[1].slice(0, 5) : ''; return `${dd[2]}.${dd[1]}.${tm}`; };
+    const startVal = formatTimeFromMinutes(s.startMin);
+    const focusedId = keepFocus && document.activeElement ? document.activeElement.id : null;
+    ov.innerHTML = `<div class="modal-content bottom-sheet-mobile scm" role="dialog" aria-modal="true" aria-labelledby="scmTitle">
+        <div class="modal-header">
+            <div><h3 id="scmTitle">${_t(isStack ? 'scm_title_ms' : 'scm_title')}</h3>
+                <p class="scm-sub"><i class="fas ${isStack ? 'fa-folder' : 'fa-tasks'}"></i> ${escapeHtmlToday(name)} · ${da}.${mo}.${y}</p></div>
+            <button class="secondary icon-btn modal-close-btn" onclick="closeSchedClModal()" aria-label="${_t('cancel')}"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body-simple scm-body">
+            <p class="scm-hint">${_t(isStack ? 'scm_hint_ms' : 'scm_hint')}</p>
+            <label class="scm-start"><span>${_t('scm_start')}</span><input type="time" id="scm_start" value="${startVal}" step="900" onchange="schedClSetStart(this.value)"></label>
+            <div class="scm-sec">${_t(isStack ? 'scm_existing_ms' : 'scm_existing')}</div>
+            <div class="scm-list">${open.length ? open.map(c => `<label class="scm-item${s.sel.has(c.id) ? ' on' : ''}">
+                <input type="checkbox" ${s.sel.has(c.id) ? 'checked' : ''} onchange="schedClToggle('${c.id}')">
+                <span class="scm-item-txt"><b>${escapeHtmlToday(c.title || _t('unnamed'))}</b><small>${fmtWhen(c)} · ${ttNum(schedClDuration(c) / 60)} h</small></span>
+            </label>`).join('') : `<div class="scm-empty">${_t(isStack ? 'scm_none_ms' : 'scm_none')}</div>`}</div>
+            <div class="scm-sec">${_t(isStack ? 'scm_new_ms' : 'scm_new')}</div>
+            ${s.news.map((n, i) => `<div class="scm-new-row"><i class="fas fa-plus-circle"></i><span>${escapeHtmlToday(n.title)}</span><small>${n.dur} ${_t('min_short')}</small><button type="button" class="secondary icon-btn" onclick="schedClRemoveNew(${i})" aria-label="${_t('delete')}"><i class="fas fa-xmark"></i></button></div>`).join('')}
+            <form class="scm-add" onsubmit="event.preventDefault(); schedClAddNew();">
+                <input type="text" id="scm_new" placeholder="${_t(isStack ? 'scm_new_ph_ms' : 'scm_new_ph')}" maxlength="120">
+                <select id="scm_new_dur" aria-label="${_t('scm_dur')}">${[15, 30, 45, 60, 90, 120, 180, 240].map(m => `<option value="${m}" ${m === 60 ? 'selected' : ''}>${m < 60 ? m + ' ' + _t('min_short') : ttNum(m / 60) + ' h'}</option>`).join('')}</select>
+                <button type="submit" class="secondary"><i class="fas fa-plus"></i></button>
+            </form>
+            ${plan.length ? `<div class="scm-plan"><div class="scm-sec">${_t('scm_preview')}</div>${plan.map(x => `<div class="scm-plan-row"><span class="scm-plan-time">${formatTimeFromMinutes(x.a)}–${formatTimeFromMinutes(x.b)}</span><span>${escapeHtmlToday(x.t)}</span>${x.isNew ? `<em>${_t('scm_new_badge')}</em>` : ''}</div>`).join('')}</div>` : ''}
+        </div>
+        <div class="modal-footer" style="justify-content:space-between;">
+            <button class="secondary" onclick="closeSchedClModal()">${_t('cancel')}</button>
+            <button onclick="schedClApply()" ${plan.length ? '' : 'disabled'}><i class="fas fa-calendar-check"></i> ${plan.length ? _tf('scm_apply', { n: plan.length }) : _t('scm_apply0')}</button>
+        </div>
+    </div>`;
+    if (focusedId) { const f = document.getElementById(focusedId); if (f) try { f.focus(); } catch (e) {} }
+}
+function schedClApply() {
+    const s = _schedCl; if (!s) return;
+    const p = schedParent(s.kind, s.id); if (!p) return;
+    /* Eingabe im Feld „Neu" ohne Klick auf + trotzdem übernehmen */
+    const pend = document.getElementById('scm_new'); if (pend && pend.value.trim()) schedClAddNew();
+    if (!p.checklist) p.checklist = [];
+    let cur = s.startMin, n = 0;
+    p.checklist.filter(c => !c.done && s.sel.has(c.id)).forEach(c => { const d = schedClDuration(c); schedSetClTime(s.kind, s.id, c.id, s.dateStr, cur, d, { silent: true }); cur += d; n++; });
+    s.news.forEach(x => {
+        const cl = { id: generateId(), done: false, title: x.title, dueDate: '', assigneeId: '', predecessors: [] };
+        p.checklist.push(cl);
+        schedSetClTime(s.kind, s.id, cl.id, s.dateStr, cur, x.dur, { silent: true }); cur += x.dur; n++;
+    });
+    closeSchedClModal();
+    saveToLocal(); safeRenderSchedule();
+    showToast(_tf('scm_done', { n, a: formatTimeFromMinutes(s.startMin), b: formatTimeFromMinutes(cur) }));
+}
+/* Griffe links/rechts an einem Zeitblock: Start bzw. Ende in 15-Min.-Schritten ziehen */
+let _schedRz = null;
+function schedRzStart(ev, edge, kind, pid, clId, dateStr) {
+    ev.preventDefault(); ev.stopPropagation();
+    const block = ev.target.closest('.cal-event'); const lane = document.getElementById('sched-timeline-drop');
+    if (!block || !lane) return;
+    const p = schedParent(kind, pid); const cl = p && (p.checklist || []).find(x => x.id === clId); if (!cl) return;
+    const sd = cl.startDate && cl.startDate.includes('T') ? cl.startDate : (cl.dueDate || '');
+    const a = wtHM((sd.split('T')[1] || '').slice(0, 5)); const bRaw = wtHM(((cl.dueDate || '').split('T')[1] || '').slice(0, 5));
+    const startMins = parseFloat(lane.dataset.startMins) || 0, totalMins = parseFloat(lane.dataset.totalMins) || 60;
+    const s0 = isNaN(a) ? startMins : a; const e0 = (!isNaN(bRaw) && bRaw > s0) ? bRaw : s0 + schedClDuration(cl);
+    _schedRz = { edge, kind, pid, clId, dateStr, block, lane, startMins, totalMins, s: s0, e: e0, moved: false };
+    block.classList.add('is-resizing');
+    try { ev.target.setPointerCapture(ev.pointerId); } catch (e) {}
+    document.addEventListener('pointermove', schedRzMove);
+    document.addEventListener('pointerup', schedRzEnd, { once: true });
+}
+function schedRzMove(ev) {
+    const r = _schedRz; if (!r) return;
+    const rect = r.lane.getBoundingClientRect();
+    let m = r.startMins + Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width)) * r.totalMins;
+    m = Math.round(m / 15) * 15;
+    if (r.edge === 'l') r.s = Math.min(m, r.e - 15); else r.e = Math.max(m, r.s + 15);
+    r.s = Math.max(r.startMins, r.s); r.e = Math.min(r.startMins + r.totalMins, r.e);
+    r.moved = true;
+    r.block.style.left = ((r.s - r.startMins) / r.totalMins * 100) + '%';
+    r.block.style.width = ((r.e - r.s) / r.totalMins * 100) + '%';
+    const lbl = r.block.querySelector('.sched-ev-time'); if (lbl) lbl.textContent = formatTimeFromMinutes(r.s) + ' - ' + formatTimeFromMinutes(r.e);
+}
+function schedRzEnd() {
+    document.removeEventListener('pointermove', schedRzMove);
+    const r = _schedRz; _schedRz = null; if (!r) return;
+    r.block.classList.remove('is-resizing');
+    /* den folgenden Klick (öffnet sonst die Aufgabe) unterdrücken */
+    if (r.moved) {
+        const stop = (e) => { e.stopPropagation(); e.preventDefault(); };
+        document.addEventListener('click', stop, { capture: true, once: true });
+        setTimeout(() => document.removeEventListener('click', stop, { capture: true }), 50);
+        schedSetClTime(r.kind, r.pid, r.clId, r.dateStr, r.s, r.e - r.s);
+    }
 }
 
 // --- QUICK ACTIONS FÜR DIE LISTENANSICHT ---
@@ -7458,7 +7689,7 @@ function renderSchedule(c) {
         if(s.checklist) s.checklist.forEach(m => { 
             let mMatchesUser = activeFilters.users.length === 0 || activeFilters.users.includes(m.assigneeId || '');
             if(hideDone && m.done) return;
-            if(m.dueDate && (stackMatchesUser || mMatchesUser)) { pushSpanned(m.dueDate, m.dueDate, 'milestone', m, s); }
+            if(m.dueDate && (stackMatchesUser || mMatchesUser)) { pushSpanned(m.startDate || m.dueDate, m.dueDate, 'milestone', m, s); }
         });
     });
 
@@ -7545,8 +7776,8 @@ function renderSchedule(c) {
                     if(ev.span === 'middle') spanText = '(Laufend)';
 
                     let pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
-                    const isDraggableItem = ev.type === 'task' || ev.type === 'stack';
-                    const dragAttrs = isDraggableItem ? `draggable="true" ondragstart="handleSchedDragStart(event, '${ev.type}', '${ev.data.id}')"` : '';
+                    const isDraggableItem = ev.type === 'task' || ev.type === 'stack' || ((ev.type === 'task-checklist' || ev.type === 'milestone') && ev.parent && !isComp);
+                    const dragAttrs = isDraggableItem ? `draggable="true" ondragstart="handleSchedDragStart(event, '${ev.type}', '${ev.data.id}', '${ev.parent ? ev.parent.id : ''}')"` : '';
                     
                     html += `<div class="cal-event ${isComp?'is-completed':''}" ${dragAttrs} style="background:${bg}; color:${color}; padding:6px 12px; font-size:12px; display:inline-flex; flex-direction:row; align-items:center; gap:6px; border-radius:20px; cursor:pointer; border: 1px solid ${color};" onclick="${click}">
                         ${icon} <span style="font-weight:bold; white-space:nowrap;">${pausedIcon}${title} <span style="font-weight:normal; font-size:10px; opacity:0.7;">${spanText}</span></span>
@@ -7654,10 +7885,14 @@ function renderSchedule(c) {
                 let timeLabel = `${formatTimeFromMinutes(item.evStartMins)} - ${formatTimeFromMinutes(item.evEndMins)}`;
                 let pausedIcon = isPaused ? '<i class="fas fa-pause" style="color:var(--warning); margin-right:4px;"></i>' : '';
 
-                html += `<div class="cal-event ${isComp?'is-completed':''}" style="position:absolute; left:${item.leftPct}%; width:${item.widthPct}%; min-width:140px; height:42px; top:${topPos}px; background:${bg}; color:${color}; border:1px solid ${color}; padding:6px 10px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:center; cursor:pointer;" onclick="${click}" title="${timeLabel} | ${title}">
-                    <div style="font-size:10px; opacity:0.8; margin-bottom:2px; line-height:1; font-weight:normal;">${timeLabel}</div>
+                const _rz = (ev.type === 'task-checklist' || ev.type === 'milestone') && ev.parent && !isComp;
+                const _rzKind = ev.type === 'milestone' ? 'stack' : 'task';
+                const _rzArgs = _rz ? `'${_rzKind}','${ev.parent.id}','${ev.data.id}','${dStr}'` : '';
+                html += `<div class="cal-event sched-ev${_rz ? ' sched-ev-rz' : ''} ${isComp?'is-completed':''}" ${_rz ? `draggable="true" ondragstart="handleSchedDragStart(event, '${ev.type}', '${ev.data.id}', '${ev.parent.id}')"` : ''} style="position:absolute; left:${item.leftPct}%; width:${item.widthPct}%; min-width:${_rz ? 44 : 140}px; height:42px; top:${topPos}px; background:${bg}; color:${color}; border:1px solid ${color}; padding:6px 10px; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:center; cursor:pointer;" onclick="${click}" title="${timeLabel} | ${title}">
+                    <div class="sched-ev-time" style="font-size:10px; opacity:0.8; margin-bottom:2px; line-height:1; font-weight:normal;">${timeLabel}</div>
                     <div style="font-weight:bold; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">${icon} ${pausedIcon}${title}</div>
                     ${ev.type === 'task-checklist' && ev.parent ? clBookBtnHtml(ev.parent.id, ev.data.id, 'cl-book-cal cl-book-abs') : ''}
+                    ${_rz ? `<span class="sched-rz l" draggable="false" onpointerdown="schedRzStart(event,'l',${_rzArgs})" onclick="event.stopPropagation()" title="${_t('sched_rz_start')}" aria-label="${_t('sched_rz_start')}"></span><span class="sched-rz r" draggable="false" onpointerdown="schedRzStart(event,'r',${_rzArgs})" onclick="event.stopPropagation()" title="${_t('sched_rz_end')}" aria-label="${_t('sched_rz_end')}"></span>` : ''}
                 </div>`;
             });
 
@@ -8485,9 +8720,9 @@ function renderTimeline(c) {
     appData.timelineMarkers.forEach(m => {
         const mDate = new Date(m.date); const xPos = ((mDate - minDateMs) / 86400000) * appData.settings.tlPixelsPerDay;
         if(xPos >= 0 && xPos <= trackWidth) {
-            markerPinsHtml += `<div class="timeline-marker" style="left:${xPos}px; top:14px; transform: translateX(-50%); z-index:40;" draggable="true" ondragstart="event.dataTransfer.setData('markerId', '${m.id}');" ondblclick="openMarkerModal('${m.id}')" title="${m.date} - ${m.name}">
-                <i class="fas fa-map-marker-alt" style="color:var(--danger); font-size:14px; filter:drop-shadow(0 2px 2px rgba(0,0,0,0.3));"></i>
-                <div style="font-size:9px; color:var(--danger); background:var(--surface-color); padding:1px 4px; border-radius:4px; border:1px solid var(--danger); margin-top:0px; font-weight:bold; white-space:nowrap;">${m.name}</div>
+            markerPinsHtml += `<div class="timeline-marker" style="left:${xPos}px; top:2px; transform: translateX(-50%); z-index:40;" draggable="true" ondragstart="event.dataTransfer.setData('markerId', '${m.id}');" ondblclick="openMarkerModal('${m.id}')" title="${m.date} - ${m.name}">
+                <i class="fas fa-map-marker-alt" style="color:var(--danger); font-size:12px; line-height:12px; filter:drop-shadow(0 1px 1px rgba(0,0,0,0.3));"></i>
+                <div style="font-size:9px; line-height:11px; color:var(--danger); background:var(--surface-color); padding:1px 4px; border-radius:4px; border:1px solid var(--danger); margin-top:1px; font-weight:bold; white-space:nowrap;">${m.name}</div>
             </div>`;
         }
     });
@@ -8682,7 +8917,7 @@ function renderTimeline(c) {
                     <div style="display: flex; height: 35px; border-bottom: 1px solid var(--border-color); position: relative; z-index: 30; background: var(--surface-color);">
                         <div class="timeline-header-col" style="display: flex; align-items: flex-end; padding: 5px 15px; font-weight: bold; font-size:11px;">${_t('gantt_project_task')}</div>
                         <!-- eigener Stapelkontext (z-index:1): Marker bleiben beim Scrollen UNTER der klebenden Spaltenbeschriftung -->
-                        <div style="position: relative; width: ${trackWidth}px; z-index: 1;">
+                        <div style="position: relative; width: ${trackWidth}px; z-index: 1; overflow: hidden;">
                             ${kwHtml}
                             ${dayHtml}
                             ${markerPinsHtml}
