@@ -12706,14 +12706,16 @@ function renderToday(c) {
     })();
 
     /* Kennzahlen für die grafische Übersicht */
-    const doneAll = appData.tasks.filter(t => isTaskDone(t)).length;
-    const totalAll = appData.tasks.length;
-    const donePct = totalAll ? Math.round(doneAll / totalAll * 100) : 0;
+    /* Ring „Wochenfortschritt": alle noch offenen Aufgaben + die in dieser Woche erledigten.
+       Früher erledigte Aufgaben zählen nicht mehr mit, sonst wächst der Wert mit der Zeit gegen 100 %. */
+    const openAll = appData.tasks.filter(t => !isTaskDone(t)).length;
     const _now = new Date(); const _dow = (_now.getDay() + 6) % 7;
     const weekStartIso = ttShiftIso(todayIso, -_dow);
     let doneThisWeek = 0;
     const weekStartMs = ttParse(weekStartIso).getTime();
     appData.tasks.forEach(t => { if (isTaskDone(t) && t.completedAt && t.completedAt >= weekStartMs) doneThisWeek++; });
+    const weekLoad = openAll + doneThisWeek;
+    const donePct = weekLoad ? Math.round(doneThisWeek / weekLoad * 100) : 0;
     let weekSoll = 0, weekIst = 0;
     for (let i = 0; i <= 6; i++) { const iso = ttShiftIso(weekStartIso, i); const di = ttDayInfo(iso); weekSoll += di.target; weekIst += di.total; }
     const weekPct = weekSoll ? Math.min(100, Math.round(weekIst / weekSoll * 100)) : 0;
@@ -12779,7 +12781,7 @@ function renderToday(c) {
         </div>
         ${hubPro ? `<div class="wk-hero-stats">
             ${ring(weekPct, t('today_week_quota'), ttNum(weekIst) + ' / ' + ttNum(weekSoll) + ' h', weekPct>=100?'ok':'')}
-            ${ring(donePct, t('today_done_share'), doneAll + ' / ' + totalAll + ' ' + t('tasks'), 'accent')}
+            ${ring(donePct, t('today_week_progress'), _tf('today_week_progress_sub', { d: doneThisWeek, o: openAll }), 'accent')}
             <div class="wk-stat wide"><div class="wk-stat-nums">
                 <span><b>${doneThisWeek}</b><u>${t('today_done_week')}</u></span>
                 <span><b>${openCount}</b><u>${t('today_open')}</u></span>

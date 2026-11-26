@@ -1,6 +1,8 @@
 // --- 1. STATE, DATA MODEL & TRANSLATION ---
 const i18n = {
     de: {
+        today_week_progress: "Wochenfortschritt",
+        today_week_progress_sub: "{d} erledigt · {o} offen",
         ya_done_one: "1 abgeschlossener Eintrag",
         ya_done_n: "{n} abgeschlossene Einträge",
         ya_stacks_one: "1 abgeschlossener Projekt-Stack",
@@ -171,6 +173,8 @@ const i18n = {
         wf_act_send_email: "Sende E-Mail mit Infos..."
     },
     en: {
+        today_week_progress: "Weekly progress",
+        today_week_progress_sub: "{d} done · {o} open",
         ya_done_one: "1 completed item",
         ya_done_n: "{n} completed items",
         ya_stacks_one: "1 completed project stack",
@@ -343,6 +347,8 @@ const i18n = {
         wf_act_set_stat: "Set Status to...", wf_act_set_prio: "Set Priority to...", wf_act_set_ass: "Assign User...", wf_act_set_buck: "Move to Bucket...", wf_act_set_sh: "Assign Stakeholder...", wf_act_add_note: "Add Note...", wf_act_notif_bell: "Create Notification (Bell)...", wf_act_notif_toast: "Create Notification (Toast)...", wf_act_notif_modal: "Create Notification (Modal)...", wf_act_notif_push: "Create Notification (Push)...", wf_act_set_due_rel: "Shift Due Date by X Days", wf_act_set_start_tdy: "Set Start Date to Today", wf_act_clear_due: "Remove Due Date", wf_act_add_est: "Increase Estimated Time by X Hrs", wf_act_set_est: "Set Estimated Time to X Hrs", wf_hours: "Hours", wf_days_from_now: "Days from today", wf_no_val_needed: "(No value needed)", wf_act_send_email: "Send Email with info..."
     },
     fr: {
+        today_week_progress: "Progression hebdo",
+        today_week_progress_sub: "{d} faits · {o} ouverts",
         ya_done_one: "1 élément terminé",
         ya_done_n: "{n} éléments terminés",
         ya_stacks_one: "1 stack terminé",
