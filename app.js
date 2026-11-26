@@ -12707,8 +12707,11 @@ function renderToday(c) {
 
     /* Kennzahlen für die grafische Übersicht */
     /* Ring „Wochenfortschritt": alle noch offenen Aufgaben + die in dieser Woche erledigten.
-       Früher erledigte Aufgaben zählen nicht mehr mit, sonst wächst der Wert mit der Zeit gegen 100 %. */
-    const openAll = appData.tasks.filter(t => !isTaskDone(t)).length;
+       Früher erledigte Aufgaben zählen nicht mehr mit, sonst wächst der Wert mit der Zeit gegen 100 %.
+       Pausierte Aufgaben (selbst pausiert oder in einem pausierten Stack) zählen ebenfalls nicht mit. */
+    const _pausedStacks = new Set((appData.projectStacks || []).filter(s => s.status === 'paused').map(s => s.id));
+    const _wpPaused = (t) => !!t.isPaused || (t.projectStackId && _pausedStacks.has(t.projectStackId));
+    const openAll = appData.tasks.filter(t => !isTaskDone(t) && !_wpPaused(t)).length;
     const _now = new Date(); const _dow = (_now.getDay() + 6) % 7;
     const weekStartIso = ttShiftIso(todayIso, -_dow);
     let doneThisWeek = 0;
