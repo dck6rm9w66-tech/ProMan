@@ -1,6 +1,17 @@
 // --- 1. STATE, DATA MODEL & TRANSLATION ---
 const i18n = {
     de: {
+        act_type_time: "Zeit gebucht",
+        act_type_done: "Abgeschlossen",
+        act_type_status: "Status",
+        act_type_pause: "Pausiert",
+        act_type_resume: "Fortgesetzt",
+        act_type_ms: "Milestone",
+        act_type_cp: "Checkliste",
+        act_type_prio: "Priorität",
+        act_type_date: "Termine",
+        act_type_note: "Notiz",
+        t_act_days: "{n} Tage mit Buchungen",
         today_week_progress: "Wochenfortschritt",
         today_week_progress_sub: "{d} erledigt · {o} offen",
         ya_done_one: "1 abgeschlossener Eintrag",
@@ -173,6 +184,17 @@ const i18n = {
         wf_act_send_email: "Sende E-Mail mit Infos..."
     },
     en: {
+        act_type_time: "Time booked",
+        act_type_done: "Completed",
+        act_type_status: "Status",
+        act_type_pause: "Paused",
+        act_type_resume: "Resumed",
+        act_type_ms: "Milestone",
+        act_type_cp: "Checklist",
+        act_type_prio: "Priority",
+        act_type_date: "Dates",
+        act_type_note: "Note",
+        t_act_days: "{n} days with bookings",
         today_week_progress: "Weekly progress",
         today_week_progress_sub: "{d} done · {o} open",
         ya_done_one: "1 completed item",
@@ -347,6 +369,17 @@ const i18n = {
         wf_act_set_stat: "Set Status to...", wf_act_set_prio: "Set Priority to...", wf_act_set_ass: "Assign User...", wf_act_set_buck: "Move to Bucket...", wf_act_set_sh: "Assign Stakeholder...", wf_act_add_note: "Add Note...", wf_act_notif_bell: "Create Notification (Bell)...", wf_act_notif_toast: "Create Notification (Toast)...", wf_act_notif_modal: "Create Notification (Modal)...", wf_act_notif_push: "Create Notification (Push)...", wf_act_set_due_rel: "Shift Due Date by X Days", wf_act_set_start_tdy: "Set Start Date to Today", wf_act_clear_due: "Remove Due Date", wf_act_add_est: "Increase Estimated Time by X Hrs", wf_act_set_est: "Set Estimated Time to X Hrs", wf_hours: "Hours", wf_days_from_now: "Days from today", wf_no_val_needed: "(No value needed)", wf_act_send_email: "Send Email with info..."
     },
     fr: {
+        act_type_time: "Temps saisi",
+        act_type_done: "Terminé",
+        act_type_status: "Statut",
+        act_type_pause: "En pause",
+        act_type_resume: "Reprise",
+        act_type_ms: "Jalon",
+        act_type_cp: "Liste de contrôle",
+        act_type_prio: "Priorité",
+        act_type_date: "Dates",
+        act_type_note: "Note",
+        t_act_days: "{n} jours avec saisies",
         today_week_progress: "Progression hebdo",
         today_week_progress_sub: "{d} faits · {o} ouverts",
         ya_done_one: "1 élément terminé",

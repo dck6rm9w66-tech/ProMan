@@ -6783,7 +6783,10 @@ function dropTaskToColumn(e, newStatus) {
  * Gibt '' zurück, wenn keine Werte vorliegen.
  */
 function buildBarCurveChartHtml(valueByDate, titleAttr, opts) {
-    const dates = Object.keys(valueByDate).sort((a, b) => new Date(a) - new Date(b));
+    /* opts.events: { 'YYYY-MM-DD': [{ type, icon, text, time }] } – Tage mit Aktivitäten bekommen
+       ebenfalls einen Slot (auch ohne gebuchte Zeit) und unter der Grafik ein Icon. */
+    const evMap = (opts && opts.events) || {};
+    const dates = Array.from(new Set([...Object.keys(valueByDate), ...Object.keys(evMap)])).sort((a, b) => new Date(a) - new Date(b));
     const N = dates.length;
     if (N === 0) return '';
     const maxV = Math.max(...Object.values(valueByDate), 0.1);
@@ -6793,17 +6796,22 @@ function buildBarCurveChartHtml(valueByDate, titleAttr, opts) {
     const slotW = 100 / N;
     const barW = Math.min(slotW * 0.55, 12);
     let barsD = '';
-    const points = dates.map((d, i) => {
+    const points = [];
+    dates.forEach((d, i) => {
+        const v = valueByDate[d] || 0;
+        if (v <= 0) return;   /* Tag nur mit Aktivitäten: kein Balken, kein Kurvenpunkt */
         const cx = (i + 0.5) * slotW;
-        const h = (valueByDate[d] / maxV) * scale;
+        const h = (v / maxV) * scale;
         const y = baseline - h;
         barsD += `<rect x="${(cx - barW / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barW.toFixed(2)}" height="${h.toFixed(2)}" rx="1" fill="rgba(204,163,0,0.35)"></rect>`;
-        return { x: cx, y };
+        points.push({ x: cx, y });
     });
 
     /* Bezierkurve als Trendlinie, liegt über den Balken */
     let pathD = '';
-    if (N === 1) {
+    if (!points.length) {
+        pathD = '';
+    } else if (points.length === 1) {
         pathD = `M ${(points[0].x - slotW / 2).toFixed(2)} ${points[0].y.toFixed(2)} L ${(points[0].x + slotW / 2).toFixed(2)} ${points[0].y.toFixed(2)}`;
     } else {
         pathD = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
@@ -6822,8 +6830,9 @@ function buildBarCurveChartHtml(valueByDate, titleAttr, opts) {
             const dt = ttParse(d); const th = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 3 - (dt.getDay() + 6) % 7);
             const key = th.getFullYear() + '-' + hwIsoWeek(d);
             const g = groups[groups.length - 1];
-            if (g && g.key === key) { g.n++; g.h += valueByDate[d]; g.to = d; }
-            else groups.push({ key, wk: hwIsoWeek(d), yr: th.getFullYear(), start: i, n: 1, h: valueByDate[d], from: d, to: d });
+            const v = valueByDate[d] || 0;
+            if (g && g.key === key) { g.n++; g.h += v; g.to = d; }
+            else groups.push({ key, wk: hwIsoWeek(d), yr: th.getFullYear(), start: i, n: 1, h: v, from: d, to: d });
         });
         const multiYear = groups.length > 1 && groups[0].yr !== groups[groups.length - 1].yr;
         groups.forEach((g, gi) => {
@@ -6832,12 +6841,25 @@ function buildBarCurveChartHtml(valueByDate, titleAttr, opts) {
             if (gi > 0) bandsD += `<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="40" stroke="currentColor" stroke-width="0.4" stroke-dasharray="1.5 1.5" opacity="0.35" vector-effect="non-scaling-stroke"></line>`;
             const lbl = `${t('cw')} ${g.wk}${multiYear && (gi === 0 || groups[gi - 1].yr !== g.yr) ? ' · ' + g.yr : ''}`;
             const tip = `${t('cw')} ${g.wk} / ${g.yr}: ${ttNum(g.h)} h (${ttFmtDate(g.from)}${g.from !== g.to ? ' – ' + ttFmtDate(g.to) : ''})`;
-            weekRow += `<span class="bc-wk${w < 9 ? ' is-tight' : ''}" style="left:${x.toFixed(2)}%; width:${w.toFixed(2)}%" title="${tip}"><b>${w < 9 ? g.wk : lbl}</b><u>${ttNum(g.h)} h</u></span>`;
+            weekRow += `<span class="bc-wk${w < 9 ? ' is-tight' : ''}" style="left:${x.toFixed(2)}%; width:${w.toFixed(2)}%" title="${tip}"><b>${w < 9 ? g.wk : lbl}</b>${g.h > 0 ? `<u>${ttNum(g.h)} h</u>` : ''}</span>`;
         });
         weekRow = `<div class="bc-weeks">${weekRow}</div>`;
     }
+
+    /* Aktivitäten-Zeile: je Tag das Icon der wichtigsten Aktivität, bei mehreren mit Zähler; Tooltip listet alle. */
+    let evRow = '';
+    if (Object.keys(evMap).length) {
+        dates.forEach((d, i) => {
+            const evs = evMap[d]; if (!evs || !evs.length) return;
+            const top = evs.slice().sort((a, b) => (a.rank || 9) - (b.rank || 9))[0];
+            const tip = ttFmtDate(d) + '\n' + evs.map(x => (x.time ? x.time + '  ' : '') + x.text).join('\n');
+            evRow += `<span class="bc-ev bc-ev-${top.type}" style="left:${((i + 0.5) * slotW).toFixed(2)}%" title="${ttEsc(tip)}"><i class="fas ${top.icon}"></i>${evs.length > 1 ? `<sup>${evs.length}</sup>` : ''}</span>`;
+        });
+        evRow = `<div class="bc-evs">${evRow}</div>`;
+    }
     return `<div style="margin-top:5px; margin-bottom:10px;">
         <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color); color:var(--text-muted);" title="${titleAttr || ''}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${bandsD}${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        ${evRow}
         ${weekRow}
         <div style="font-size:10px; color:var(--text-muted); text-align:right; margin-top:2px;">${rangeLabel}</div>
     </div>`;
@@ -6943,6 +6965,62 @@ function buildWeeklyHoursChartHtml(taskIds, scaleMax) {
     </div>`;
 }
 
+/* Aktivitätsarten der Historie: Icon + Rang (kleiner = wichtiger, bestimmt das Icon eines Tages) */
+const ACT_TYPES = [
+    { type: 'done',   icon: 'fa-check-circle',   rank: 1 },
+    { type: 'status', icon: 'fa-exchange-alt',   rank: 2 },
+    { type: 'pause',  icon: 'fa-pause',          rank: 3 },
+    { type: 'resume', icon: 'fa-play',           rank: 3 },
+    { type: 'ms',     icon: 'fa-flag-checkered', rank: 4 },
+    { type: 'cp',     icon: 'fa-check-square',   rank: 5 },
+    { type: 'prio',   icon: 'fa-exclamation',    rank: 6 },
+    { type: 'date',   icon: 'fa-calendar-alt',   rank: 7 },
+    { type: 'note',   icon: 'fa-comment',        rank: 8 }
+];
+let _actRx = null;
+/* Erkennt die Art einer Historienzeile anhand der Textvorlagen aller Sprachen (die Historie bleibt
+   in der Sprache gespeichert, in der sie entstanden ist). */
+function actClassify(text) {
+    if (!_actRx) {
+        const esc = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const mk = tpl => new RegExp('^' + esc(tpl).replace(/\\\{[abn]\\\}/g, '(.+?)') + '\\s*$', 'i');
+        const map = { hist_status: 'status', hist_prio: 'prio', hist_start: 'date', hist_due: 'date', hist_paused: 'pause', hist_resumed: 'resume', hist_cp_done: 'cp', hist_ms_done: 'ms' };
+        _actRx = [];
+        const done = new Set(Object.keys(i18n).map(l => String((i18n[l] || {}).col_completed || '').toLowerCase()).filter(Boolean));
+        Object.keys(i18n).forEach(l => Object.keys(map).forEach(k => { const tpl = i18n[l] && i18n[l][k]; if (tpl) _actRx.push({ rx: mk(tpl), type: map[k], key: k, done }); }));
+    }
+    for (const r of _actRx) {
+        const m = text.match(r.rx);
+        if (!m) continue;
+        if (r.key === 'hist_status' && m[2] && r.done.has(m[2].trim().toLowerCase())) return 'done';
+        return r.type;
+    }
+    return 'note';
+}
+/* Historie einer Aufgabe (Feld „notes": Zeilen „[Note | TT.MM.JJJJ, hh:mm] Text") → Ereignisse mit Datum */
+function taskHistoryEvents(task) {
+    const out = [];
+    const src = String(task.notes || '');
+    const rx = /\[Note \| (\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}),? (\d{1,2}):(\d{2})\]\s*/g;
+    const marks = []; let m;
+    while ((m = rx.exec(src))) marks.push({ idx: m.index, end: rx.lastIndex, d: m[1], mo: m[2], y: m[3], hh: m[4], mm: m[5] });
+    const def = Object.fromEntries(ACT_TYPES.map(a => [a.type, a]));
+    marks.forEach((mk, i) => {
+        const text = src.slice(mk.end, i + 1 < marks.length ? marks[i + 1].idx : src.length).trim();
+        if (!text) return;
+        const type = actClassify(text);
+        const date = `${mk.y}-${String(mk.mo).padStart(2, '0')}-${String(mk.d).padStart(2, '0')}`;
+        out.push({ date, time: `${String(mk.hh).padStart(2, '0')}:${mk.mm}`, type, icon: def[type].icon, rank: def[type].rank, text: text.length > 140 ? text.slice(0, 137) + '…' : text });
+    });
+    /* Abschluss ohne passenden Historien-Eintrag (z. B. ältere Daten): aus completedAt ergänzen */
+    if (isTaskDone(task) && task.completedAt && !out.some(x => x.type === 'done')) {
+        const c = new Date(task.completedAt);
+        const date = `${c.getFullYear()}-${String(c.getMonth() + 1).padStart(2, '0')}-${String(c.getDate()).padStart(2, '0')}`;
+        out.push({ date, time: `${String(c.getHours()).padStart(2, '0')}:${String(c.getMinutes()).padStart(2, '0')}`, type: 'done', icon: def.done.icon, rank: def.done.rank, text: t('col_completed') });
+    }
+    return out;
+}
+
 /* Aufgaben-Modal: Aktivitätsverlauf (Zeiterfassung) unter dem Aufgabennamen.
    Berücksichtigt die Rechte (fremde Buchungen nur mit Freigabe); ohne Buchungen bleibt der Bereich verborgen. */
 function renderTaskActivityChart(taskId) {
@@ -6950,10 +7028,16 @@ function renderTaskActivityChart(taskId) {
     const logs = taskId ? (appData.timeLogs || []).filter(l => l && l.taskId === taskId && l.date && acLogVisible(l)) : [];
     const agg = {}; let total = 0;
     logs.forEach(l => { const h = parseFloat(l.hours) || 0; agg[l.date] = (agg[l.date] || 0) + h; total += h; });
-    const chart = logs.length ? buildBarCurveChartHtml(agg, t('activity_chart_title'), { weeks: true }) : '';
+    const task = taskId ? (appData.tasks || []).find(x => x.id === taskId) : null;
+    const evs = task ? taskHistoryEvents(task) : [];
+    const evMap = {}; evs.forEach(ev => { (evMap[ev.date] = evMap[ev.date] || []).push(ev); });
+    const chart = (logs.length || evs.length) ? buildBarCurveChartHtml(agg, t('activity_chart_title'), { weeks: true, events: evMap }) : '';
     if (!chart) { box.hidden = true; box.innerHTML = ''; return; }
-    const days = Object.keys(agg).length;
-    box.innerHTML = `<div class="t-act-head"><span><i class="fas fa-chart-line"></i> ${t('activity_chart_title')}</span><b>${ttNum(total)} h <small>· ${_tf('t_act_days', { n: days })}</small></b></div>${chart}`;
+    /* Legende: nur Arten, die vorkommen, mit Anzahl; gebuchte Zeit als Balken-Muster */
+    const cnt = {}; evs.forEach(ev => { cnt[ev.type] = (cnt[ev.type] || 0) + 1; });
+    const legend = (logs.length ? `<span class="bc-lg bc-lg-time"><i class="bc-lg-bar"></i>${t('act_type_time')} <b>${logs.length}</b></span>` : '')
+        + ACT_TYPES.filter(a => cnt[a.type]).map(a => `<span class="bc-lg bc-ev-${a.type}"><i class="fas ${a.icon}"></i>${t('act_type_' + a.type)} <b>${cnt[a.type]}</b></span>`).join('');
+    box.innerHTML = `<div class="t-act-head"><span><i class="fas fa-chart-line"></i> ${t('activity_chart_title')}</span>${logs.length ? `<b>${ttNum(total)} h</b>` : ''}</div>${chart}${legend ? `<div class="bc-legend">${legend}</div>` : ''}`;
     box.hidden = false;
 }
 
