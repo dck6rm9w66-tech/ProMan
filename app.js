@@ -10601,7 +10601,7 @@ function wordMetaTable(rows) {
 }
 
 function wordSection(title) {
-    return `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; font-weight:bold; color:#22262b; text-transform:uppercase; letter-spacing:0.4pt; margin:12pt 0 4pt 0;">${escapeHtmlToday(title)}</div>`;
+    return `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; font-weight:bold; color:#22262b; text-transform:uppercase; letter-spacing:0.4pt; margin:12pt 0 4pt 0; page-break-after:avoid; mso-pagination:widow-orphan;">${escapeHtmlToday(title)}</div>`;
 }
 
 /* Checklistenpunkte / Milestones als saubere Liste mit Status und Zeitangaben */
@@ -10638,7 +10638,7 @@ function wordStackBlock(stack) {
     let shName = '-';
     if (stack.stakeholderId) { const sh = appData.stakeholders.find(x => x.id === stack.stakeholderId); if (sh) shName = sh.name; }
 
-    let h = `<div style="border-left:3pt solid ${accent}; padding-left:10pt; margin:0 0 18pt 0;">`;
+    let h = `<div style="margin:0 0 18pt 0;">`;
     h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; text-transform:uppercase; letter-spacing:0.4pt;">${_t('x_stack')}</div>`;
     h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(stack.name || '-')}</div>`;
     h += wordMetaTable([
@@ -10680,7 +10680,7 @@ function wordTaskBlock(task, actImg) {
     let stackName = '';
     if (task.projectStackId) { const s = appData.projectStacks.find(x => x.id === task.projectStackId); if (s) stackName = s.name; }
 
-    let h = `<div style="border-left:3pt solid ${shColor}; padding-left:10pt; margin:0 0 18pt 0;">`;
+    let h = `<div style="margin:0 0 18pt 0;">`;   /* ohne farbige Linie am linken Rand */
     h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(task.projectName || _t('x_unnamed_task'))}</div>`;
     if (stackName) h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; margin-top:1pt;">${escapeHtmlToday(stackName)}</div>`;
 
