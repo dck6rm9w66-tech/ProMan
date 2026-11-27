@@ -10660,6 +10660,18 @@ function wordStackBlock(stack) {
 }
 
 /* Eine vollständige Aufgabenkarte inkl. Notizen, Checkliste, Dateien und Historie */
+/* Abgerundeter Titelbalken für Word: Word selbst kennt kein border-radius, daher eine VML-Form
+   (abgerundetes Rechteck mit Textfeld, wächst mit dem Text). Programme ohne VML (z. B. LibreOffice)
+   zeigen denselben Balken als farbige Tabellenzelle. */
+function wordTitlePill(title, sub, color) {
+    const c = /^#[0-9a-f]{3,8}$/i.test(String(color || '')) ? color : wordAccent();
+    const inner = `<table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse;"><tr>
+            <td style="font-family:Helvetica,Arial,sans-serif; font-size:12pt; font-weight:bold; color:#ffffff; vertical-align:middle; padding:0;">${escapeHtmlToday(title)}</td>
+            ${sub ? `<td style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; color:#ffffff; text-align:right; vertical-align:middle; white-space:nowrap; padding:0 0 0 10pt;">${escapeHtmlToday(sub)}</td>` : ''}
+        </tr></table>`;
+    return `<!--[if gte vml 1]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" arcsize="18%" fillcolor="${c}" stroked="f" style="width:481.9pt; height:28pt; mso-position-horizontal:left; mso-wrap-style:square; v-text-anchor:middle;"><v:textbox inset="12pt,5pt,12pt,5pt" style="mso-fit-shape-to-text:t">${inner}</v:textbox></v:roundrect><br style="mso-ignore:vglayout" clear="all"><![endif]--><![if !vml]><table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; margin:0 0 2pt 0;"><tr><td bgcolor="${c}" style="background:${c}; padding:6pt 12pt; border-radius:6pt;">${inner}</td></tr></table><![endif]>`;
+}
+
 function wordTaskBlock(task, actImg) {
     const accent = wordAccent();
     let shName = '-', shColor = accent;
@@ -10681,8 +10693,8 @@ function wordTaskBlock(task, actImg) {
     if (task.projectStackId) { const s = appData.projectStacks.find(x => x.id === task.projectStackId); if (s) stackName = s.name; }
 
     let h = `<div style="margin:0 0 18pt 0;">`;   /* ohne farbige Linie am linken Rand */
-    h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:13pt; font-weight:bold; color:#22262b;">${escapeHtmlToday(task.projectName || _t('x_unnamed_task'))}</div>`;
-    if (stackName) h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; margin-top:1pt;">${escapeHtmlToday(stackName)}</div>`;
+    /* Titel in einer abgerundeten Fläche in Stakeholder-Farbe (wie der Kartenkopf im PDF), Stack rechts */
+    h += wordTitlePill(task.projectName || _t('x_unnamed_task'), stackName, task.stakeholderId ? shColor : accent);
 
     h += wordMetaTable([
         [_t('x_stakeholder'), wordPill(shName, shColor), true],
@@ -10796,13 +10808,14 @@ async function exportWord(opts) {
         ${escapeHtmlToday(docTitle)}${company ? ' · ' + escapeHtmlToday(company) : ''} · ${today}
     </div>`;
 
-    const fullHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    const fullHtml = `<html xmlns:v='urn:schemas-microsoft-com:vml' xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head><meta charset='utf-8'>
 <style>
   @page { size: A4; margin: 2cm; }
   body { font-family: Helvetica, Arial, sans-serif; color:#22262b; font-size:10pt; }
   h2, h3 { font-family: Helvetica, Arial, sans-serif; color:#22262b; }
   table { border-collapse: collapse; }
+  v\\:* { behavior:url(#default#VML); }
 </style>
 </head>
 <body>${header}${body}${details}${attachments}${footer}</body></html>`;
@@ -11234,9 +11247,8 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
             if(sh) { shName = sh.name; cardColor = pdfHexToRgb(sh.color, ACCENT); }
         }
 
-        /* Kopfzeile der Karte – entfällt, wenn der Aufgabenname bereits als Dokumenttitel oben steht */
-        const nameIsDocTitle = (tasksArray.length === 1 && !stackObj && String(docTitle) === String(task.projectName || ''));
-        if (!nameIsDocTitle) {
+        /* Kopfzeile der Karte – immer, auch beim Export einer einzelnen Aufgabe (einheitliches Design) */
+        {
             const headH = 11;
             doc.setFillColor(cardColor[0], cardColor[1], cardColor[2]);
             doc.roundedRect(M, yPos, contentWidth, headH, 1.8, 1.8, 'F');
@@ -11252,10 +11264,6 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
             }
             yPos += headH + 7;
             setInk();
-        } else if(task.projectStackId) {
-            /* Stack-Zugehörigkeit trotzdem ausweisen */
-            const stack = appData.projectStacks.find(ps => ps.id === task.projectStackId);
-            if(stack) { doc.setFontSize(9); setMuted(); doc.text(`${_t('x_stack_label')} ${stack.name}`, M, yPos); setInk(); yPos += 6; }
         }
 
         /* Kennzahlen */
