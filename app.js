@@ -10672,7 +10672,7 @@ function wordTitlePill(title, sub, color) {
     return `<!--[if gte vml 1]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" arcsize="18%" fillcolor="${c}" stroked="f" style="width:481.9pt; height:28pt; mso-position-horizontal:left; mso-wrap-style:square; v-text-anchor:middle;"><v:textbox inset="12pt,5pt,12pt,5pt" style="mso-fit-shape-to-text:t">${inner}</v:textbox></v:roundrect><br style="mso-ignore:vglayout" clear="all"><![endif]--><![if !vml]><table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse; margin:0 0 2pt 0;"><tr><td bgcolor="${c}" style="background:${c}; padding:6pt 12pt; border-radius:6pt;">${inner}</td></tr></table><![endif]>`;
 }
 
-function wordTaskBlock(task, actImg) {
+function wordTaskBlock(task, actImg, noTitle) {
     const accent = wordAccent();
     let shName = '-', shColor = accent;
     if (task.stakeholderId) {
@@ -10694,7 +10694,8 @@ function wordTaskBlock(task, actImg) {
 
     let h = `<div style="margin:0 0 18pt 0;">`;   /* ohne farbige Linie am linken Rand */
     /* Titel in einer abgerundeten Fläche in Stakeholder-Farbe (wie der Kartenkopf im PDF), Stack rechts */
-    h += wordTitlePill(task.projectName || _t('x_unnamed_task'), stackName, task.stakeholderId ? shColor : accent);
+    if (!noTitle) h += wordTitlePill(task.projectName || _t('x_unnamed_task'), stackName, task.stakeholderId ? shColor : accent);
+    else if (stackName) h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9pt; color:#6e7681; margin:0 0 2pt 0;">${escapeHtmlToday(_t('x_stack'))}: ${escapeHtmlToday(stackName)}</div>`;
 
     h += wordMetaTable([
         [_t('x_stakeholder'), wordPill(shName, shColor), true],
@@ -10729,7 +10730,7 @@ function wordTaskBlock(task, actImg) {
     }
     if (task.notes && String(task.notes).trim()) {
         h += wordSection(t('sec_history'));
-        h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; color:#6e7681; white-space:pre-wrap;">${escapeHtmlToday(task.notes)}</div>`;
+        h += `<div style="font-family:Helvetica,Arial,sans-serif; font-size:9.5pt; color:#6e7681; white-space:pre-wrap;">${escapeHtmlToday(task.notes).replace(/\r?\n/g, '<br>')}</div>`;
     }
     return h + `</div>`;
 }
@@ -10788,11 +10789,13 @@ async function exportWord(opts) {
 
     let details = '';
     if (tasks.length) {
-        details += `<h2 style="font-family:Helvetica,Arial,sans-serif; font-size:15pt; color:#22262b; border-bottom:1.5pt solid #cccccc; padding-bottom:4pt; margin-top:24pt;">${t('sec_details')}</h2>`;
+        /* keine Überschrift „Details" mehr; bei einer einzelnen Aufgabe steht ihr Name schon im Dokumentkopf,
+           daher entfällt dort der zweite Titel (Titelbalken) */
+        const single = scoped && !opts.stack && tasks.length === 1 && String(docTitle) === String(tasks[0].projectName || _t('x_task'));
         for (const tk of tasks) {
             let img = null;
             try { img = await taskActivityChartImage(tk); } catch (e) { console.warn('Aktivitätsverlauf für Word fehlgeschlagen', e); }
-            details += wordTaskBlock(tk, img);
+            details += wordTaskBlock(tk, img, single);
         }
     }
 
@@ -10804,21 +10807,34 @@ async function exportWord(opts) {
         }
     } catch (e) { console.warn('Anhänge für Word-Export fehlgeschlagen', e); }
 
-    const footer = `<div style="border-top:1pt solid #cccccc; margin-top:22pt; padding-top:5pt; font-family:Helvetica,Arial,sans-serif; font-size:8pt; color:#6e7681;">
-        ${escapeHtmlToday(docTitle)}${company ? ' · ' + escapeHtmlToday(company) : ''} · ${today}
-    </div>`;
+    /* Echte Word-Fusszeile auf jeder Seite: Titel links, „Done with ProMan" Mitte, Seitenzahl rechts (Feld PAGE / NUMPAGES).
+       Die Fusszeilen-Vorlage steht in einer ausserhalb der Seite verschobenen Tabelle, damit Word sie nicht
+       zusätzlich am Dokumentende anzeigt. */
+    const fcell = 'font-family:Helvetica,Arial,sans-serif; font-size:8pt; color:#6e7681; border-top:1pt solid #cccccc; padding-top:4pt;';
+    const footer = `<table id="pmFtrTbl" border="0" cellspacing="0" cellpadding="0"><tr><td>
+        <div style="mso-element:footer" id="pmf1"><p class="MsoFooter" style="margin:0;"></p>
+        <table cellspacing="0" cellpadding="0" style="width:100%; border-collapse:collapse;"><tr>
+            <td style="${fcell} width:40%; text-align:left;">${escapeHtmlToday(docTitle)}</td>
+            <td style="${fcell} width:20%; text-align:center; white-space:nowrap;">Done with ProMan</td>
+            <td style="${fcell} width:40%; text-align:right;"><span style='mso-field-code:" PAGE "'>1</span> / <span style='mso-field-code:" NUMPAGES "'>1</span></td>
+        </tr></table></div>
+    </td></tr></table>`;
 
     const fullHtml = `<html xmlns:v='urn:schemas-microsoft-com:vml' xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head><meta charset='utf-8'>
 <style>
   @page { size: A4; margin: 2cm; }
+  @page PmSection { size: 595.3pt 841.9pt; margin: 2cm 2cm 2cm 2cm; mso-footer-margin: 1cm; mso-footer: pmf1; }
+  div.PmSection { page: PmSection; }
+  p.MsoFooter { margin:0; font-size:8pt; }
+  table#pmFtrTbl { margin: 0 0 0 900in; width: 1px; height: 1px; overflow: hidden; }
   body { font-family: Helvetica, Arial, sans-serif; color:#22262b; font-size:10pt; }
   h2, h3 { font-family: Helvetica, Arial, sans-serif; color:#22262b; }
   table { border-collapse: collapse; }
   v\\:* { behavior:url(#default#VML); }
 </style>
 </head>
-<body>${header}${body}${details}${attachments}${footer}</body></html>`;
+<body><div class="PmSection">${header}${body}${details}${attachments}${footer}</div></body></html>`;
 
     const blob = new Blob(['\ufeff', fullHtml], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
@@ -11194,11 +11210,13 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
     }
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(16); doc.setFont("helvetica", "bold");
-    doc.text(doc.splitTextToSize(String(docTitle), pageWidth - titleX - M - 46)[0], titleX, 15);
+    /* Export einer einzelnen Aufgabe: Titel steht im farbigen Kartenkopf – oben neben dem Logo entfällt er */
+    const singleTask = tasksArray.length === 1 && !stackObj && String(docTitle) === String(tasksArray[0].projectName || '');
+    if (!singleTask) doc.text(doc.splitTextToSize(String(docTitle), pageWidth - titleX - M - 46)[0], titleX, 15);
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
     setMuted();
     const companyName = (appData.settings && appData.settings.companyName) ? appData.settings.companyName : '';
-    if (companyName) doc.text(companyName, titleX, 20.5);
+    if (companyName) { if (singleTask) { doc.setFontSize(10.5); doc.setFont("helvetica", "bold"); setInk(); } doc.text(companyName, titleX, singleTask ? 15 : 20.5); doc.setFontSize(8.5); doc.setFont("helvetica", "normal"); setMuted(); }
     doc.text(new Date().toLocaleDateString(ttLocale()), pageWidth - M, 15, { align: 'right' });
     doc.setDrawColor(BORDER[0], BORDER[1], BORDER[2]); doc.setLineWidth(0.4);
     doc.line(M, bandH, pageWidth - M, bandH);
@@ -11361,7 +11379,8 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
             doc.line(M, pageHeight - 10, pageWidth - M, pageHeight - 10);
             doc.setFontSize(8); doc.setFont("helvetica", "normal");
             doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-            doc.text(String(docTitle), M, pageHeight - 6);
+            doc.text(doc.splitTextToSize(String(docTitle), contentWidth / 2 - 22)[0] || '', M, pageHeight - 6);
+            doc.text('Done with ProMan', pageWidth / 2, pageHeight - 6, { align: 'center' });
             doc.text(`${p} / ${total}`, pageWidth - M, pageHeight - 6, { align: 'right' });
         }
     } catch(e) { console.warn('Fusszeile konnte nicht gesetzt werden', e); }
