@@ -10579,9 +10579,14 @@ async function buildAttachmentsHtmlForWord(tasks) {
 function wordAccent() { return (appData.customColor || '#0070f2'); }
 
 /* Farbige Pill wie in der Webapp – als Tabelle, damit Word sie zuverlässig rendert */
+/* Ohne Rahmen: Word wandelt einen umrandeten Span, der allein in einer Zelle steht, teils in einen
+   Absatzrahmen um – dann erscheint eine Linie in der Pill-Farbe am rechten Rand. Stattdessen helle
+   Zeichenschattierung + farbige Schrift; das nachgestellte Leerzeichen verhindert die Umwandlung. */
 function wordPill(text, color) {
     const c = color || '#6e7681';
-    return `<span style="border:0.75pt solid ${c}; color:${c}; padding:1pt 6pt; font-size:8.5pt; font-weight:bold; white-space:nowrap;">${escapeHtmlToday(text || '-')}</span>`;
+    let bg = '#eef0f2';
+    try { const t2 = pdfTint(pdfHexToRgb(c, [110, 118, 129]), 0.85); bg = '#' + t2.map(v => Math.round(v).toString(16).padStart(2, '0')).join(''); } catch (e) {}
+    return `<span style="background:${bg}; color:${c}; padding:1pt 6pt; font-size:8.5pt; font-weight:bold; white-space:nowrap;">&nbsp;${escapeHtmlToday(text || '-')}&nbsp;</span>&nbsp;`;
 }
 
 function wordMetaTable(rows) {
@@ -10693,7 +10698,8 @@ function wordTaskBlock(task, actImg) {
     /* Aktivitätsverlauf (Zeiterfassung + Historie) als Bild; 17 cm = Satzspiegel A4 bei 2 cm Rand */
     if (actImg && actImg.url) {
         const wPx = 640, hPx = Math.round(actImg.h / actImg.w * wPx);
-        h += wordSection(t('activity_chart_title')).replace(/<\/div>$/, actImg.hasLogs ? ` <span style="text-transform:none; color:#6e7681; font-weight:normal;">· ${ttNum(actImg.total)} h</span></div>` : '</div>');
+        /* Titel selbst in Grossbuchstaben setzen, damit „h" bei den Stunden klein bleibt */
+        h += wordSection(t('activity_chart_title')).replace('text-transform:uppercase;', '').replace(/>([^<]*)<\/div>$/, (m0, txt) => `>${txt.toLocaleUpperCase()}${actImg.hasLogs ? ` <span style="color:#6e7681; font-weight:normal;">· ${ttNum(actImg.total)} h</span>` : ''}</div>`);
         h += `<p style="margin:0 0 6pt 0;"><img src="${actImg.url}" width="${wPx}" height="${hPx}" style="width:17cm; height:${(hPx / wPx * 17).toFixed(2)}cm;" /></p>`;
     }
 
@@ -11002,8 +11008,9 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
     const setInk = () => doc.setTextColor(INK[0], INK[1], INK[2]);
     const setMuted = () => doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
 
+    const PAGE_TOP = 20;                /* Startposition auf Folgeseiten */
     function ensureSpace(needed, y) {
-        if (y + needed > bottomLimit) { doc.addPage(); return 20; }
+        if (y + needed > bottomLimit) { doc.addPage(); return PAGE_TOP; }
         return y;
     }
 
@@ -11011,16 +11018,34 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         if(!text) return y; doc.setFontSize(fontSize); doc.setFont("helvetica", isBold ? "bold" : "normal"); 
         const lines = doc.splitTextToSize(String(text), maxWidth);
         const lh = fontSize > 10 ? 6.4 : 5;
-        if (y + (lines.length * lh) > bottomLimit) { doc.addPage(); y = 20; } 
-        doc.text(lines, x, y); return y + (lines.length * lh); 
+        /* Passt der Block auf die aktuelle Seite → am Stück; sonst zeilenweise über Seiten fortsetzen
+           (ein Block, der länger als eine Seite ist, lief früher unten aus der Seite heraus). */
+        if (y + (lines.length * lh) <= bottomLimit) { doc.text(lines, x, y); return y + (lines.length * lh); }
+        const tc = doc.getTextColor ? doc.getTextColor() : null;
+        lines.forEach(line => {
+            if (y + lh > bottomLimit) { doc.addPage(); y = PAGE_TOP; doc.setFontSize(fontSize); doc.setFont("helvetica", isBold ? "bold" : "normal"); if (tc) doc.setTextColor(tc); }
+            doc.text(line, x, y); y += lh;
+        });
+        return y;
+    }
+    /* Geschätzte Höhe eines Textblocks (gleiche Umbruch-/Zeilenlogik wie printWrappedText) */
+    function wrappedTextH(text, maxWidth, fontSize = 10) {
+        if (!text) return 0; doc.setFontSize(fontSize); doc.setFont("helvetica", "normal");
+        return doc.splitTextToSize(String(text), maxWidth).length * (fontSize > 10 ? 6.4 : 5);
     }
 
-    /* Abschnittstitel */
-    function sectionTitle(label, y) {
-        y = ensureSpace(10, y);
+    /* Abschnittstitel – mit Abstand davor und nie allein am Seitenende:
+       need = Höhe des folgenden Inhalts. Passt der ganze Abschnitt auf eine Seite, wird er
+       zusammengehalten (bei Bedarf auf die nächste Seite); ist er länger als eine Seite,
+       bleibt mindestens ein Anfang (ca. 18 mm) bei der Überschrift. */
+    function sectionTitle(label, y, need = 0) {
+        const HEAD = 5.5, GAP = 5;
+        if (y > PAGE_TOP + 1) y += GAP;
+        const keep = (need > 0 && need + HEAD <= bottomLimit - PAGE_TOP) ? need : Math.min(need || 14, 18);
+        if (y + HEAD + keep > bottomLimit) { doc.addPage(); y = PAGE_TOP; }
         doc.setFontSize(10); doc.setFont("helvetica", "bold"); setInk();
         doc.text(String(label).toUpperCase(), M, y);
-        return y + 5.5;
+        return y + HEAD;
     }
 
     /* Zweispaltige Kennzahl-Zeile */
@@ -11072,6 +11097,16 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         return y + 10.5;
     }
 
+    /* Höhe eines Checklisten-Eintrags (gleiche Rechnung wie checklistRow) */
+    function checklistRowH(cl, indent = 0) {
+        const metaStr = pdfChecklistMeta(cl);
+        doc.setFontSize(9.5); doc.setFont("helvetica", "normal");
+        const titleW = contentWidth - indent - 8 - (metaStr ? 62 : 0);
+        const lines = doc.splitTextToSize(String(cl.title || ''), Math.max(20, titleW));
+        return Math.max(5.6, lines.length * 4.6) + 1.2;
+    }
+    const checklistH = (list, indent) => (list || []).reduce((a, cl) => a + checklistRowH(cl, indent), 0);
+
     /* Checklisten-/Milestone-Eintrag mit gezeichneter Checkbox */
     function checklistRow(cl, y, indent = 0) {
         const x = M + indent;
@@ -11104,14 +11139,16 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         return y + rowH + 1.2;
     }
 
-    async function renderRTFToPDF(htmlStr, x, y, maxWidth) {
+    async function renderRTFToPDF(htmlStr, x, y, maxWidth, title) {
         if(!htmlStr || htmlStr.trim()==='' || htmlStr==='<br>') return y;
         const tempDiv = document.createElement('div'); tempDiv.className = 'rte-content'; tempDiv.style.position = 'absolute'; tempDiv.style.left = '-9999px'; tempDiv.style.top = '0'; tempDiv.style.width = '700px'; tempDiv.style.background = '#ffffff'; tempDiv.style.color = '#000000'; tempDiv.style.padding = '10px'; tempDiv.style.boxSizing = 'border-box'; tempDiv.style.wordBreak = 'break-word'; tempDiv.style.maxHeight = 'none'; tempDiv.style.height = 'auto'; tempDiv.style.overflow = 'visible'; tempDiv.innerHTML = htmlStr; pdfSplitInlineHighlights(tempDiv); document.body.appendChild(tempDiv);
         try {
             const canvas = await html2canvas(tempDiv, { scale: 2, useCORS: true, windowWidth: 720 });
             if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv);
             const pxPerMm = canvas.width / maxWidth;
-            if (y + 12 > bottomLimit) { doc.addPage(); y = 20; }
+            /* Überschrift erst jetzt setzen – die Höhe des Inhalts ist nun bekannt */
+            if (title) y = sectionTitle(title, y, canvas.height / pxPerMm);
+            else if (y + 12 > bottomLimit) { doc.addPage(); y = 20; }
             let srcY = 0; let destY = y; const totalSrcH = canvas.height;
             while (srcY < totalSrcH) {
                 const availMm = bottomLimit - destY;
@@ -11128,7 +11165,7 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
                 if (srcY < totalSrcH) { doc.addPage(); destY = 20; }
             }
             return destY + 4;
-        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); return printWrappedText(_t('pdf_rtf_error'), x, y, maxWidth); }
+        } catch(e) { if(document.body.contains(tempDiv)) document.body.removeChild(tempDiv); if (title) y = sectionTitle(title, y, 6); return printWrappedText(_t('pdf_rtf_error'), x, y, maxWidth); }
     }
 
     /* ── Kopfbereich: ohne Hintergrundfarbe, Titel in Schwarz ── */
@@ -11172,9 +11209,9 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         if(stackObj.startDate || stackObj.dueDate) {
             yPos = metaRow(_t('x_start'), pdfFormatDateTime(stackObj.startDate), _t('x_target'), pdfFormatDateTime(stackObj.dueDate), yPos);
         }
-        if(stackObj.notes) { yPos = sectionTitle(_t('x_notes'), yPos); yPos = await renderRTFToPDF(stackObj.notes, M, yPos, contentWidth); yPos += 2; }
+        if(stackObj.notes) { yPos = await renderRTFToPDF(stackObj.notes, M, yPos, contentWidth, _t('x_notes')); yPos += 2; }
         if(stackObj.checklist && stackObj.checklist.length > 0) {
-            yPos = sectionTitle(_t('x_milestones'), yPos);
+            yPos = sectionTitle(_t('x_milestones'), yPos, checklistH(stackObj.checklist, 2));
             stackObj.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
             yPos += 3;
         }
@@ -11187,7 +11224,8 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
     /* ── Aufgabenkarten ── */
     for (let index = 0; index < tasksArray.length; index++) {
         const task = tasksArray[index];
-        yPos = ensureSpace(46, yPos);
+        /* Kartenkopf + alle Kennzahl-Zeilen zusammenhalten (Kopf ~18 mm + 4 Zeilen ~42 mm) */
+        yPos = ensureSpace(62, yPos);
 
         /* Akzentfarbe: Stakeholder-Farbe, sonst Nutzerfarbe */
         let cardColor = ACCENT; let shName = '-';
@@ -11241,23 +11279,22 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
             const img = await taskActivityChartImage(task);
             if (img) {
                 const hMm = img.h / img.w * contentWidth;
-                yPos = ensureSpace(hMm + 12, yPos);
-                yPos = sectionTitle(t('activity_chart_title'), yPos);
+                yPos = sectionTitle(t('activity_chart_title'), yPos, hMm + 2);
                 if (img.hasLogs) { doc.setFontSize(10); doc.setFont("helvetica", "bold"); setInk(); doc.text(ttNum(img.total) + ' h', pageWidth - M, yPos - 5.5, { align: 'right' }); }
                 doc.addImage(img.url, 'PNG', M, yPos - 1, contentWidth, hMm);
                 yPos += hMm + 4;
             }
         } catch (e) { console.warn('Aktivitätsverlauf für PDF fehlgeschlagen', e); }
 
-        if(task.description) { yPos = sectionTitle(_t('x_notes'), yPos); yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth); yPos += 2; }
+        if(task.description) { yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth, _t('x_notes')); yPos += 2; }
         if(task.checklist && task.checklist.length > 0) {
-            yPos = sectionTitle(_t('x_checklist'), yPos);
+            yPos = sectionTitle(_t('x_checklist'), yPos, checklistH(task.checklist, 2));
             task.checklist.forEach(cl => { yPos = checklistRow(cl, yPos, 2); });
             yPos += 3;
         }
-        if(task.notes) { yPos = sectionTitle(_t('x_history'), yPos); doc.setFontSize(9.5); setMuted(); yPos = printWrappedText(task.notes, M, yPos, contentWidth, 9.5, false); setInk(); yPos += 3; }
+        if(task.notes) { yPos = sectionTitle(_t('x_history'), yPos, wrappedTextH(task.notes, contentWidth, 9.5)); doc.setFontSize(9.5); setMuted(); yPos = printWrappedText(task.notes, M, yPos, contentWidth, 9.5, false); setInk(); yPos += 3; }
         if(task.files && task.files.length > 0) {
-            yPos = sectionTitle(_t('x_files'), yPos);
+            yPos = sectionTitle(_t('x_files'), yPos, task.files.reduce((a, f) => a + wrappedTextH(`• ${f.type === 'blob' ? f.name : f.path}`, contentWidth - 4, 9), 0));
             doc.setFontSize(9); setMuted();
             task.files.forEach(f => { const fname = f.type === 'blob' ? f.name : f.path; yPos = printWrappedText(`• ${fname}`, M + 2, yPos, contentWidth - 4, 9, false); });
             setInk(); yPos += 3;
