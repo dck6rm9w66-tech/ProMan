@@ -3963,3 +3963,18 @@ button.ya-sum-btn.secondary{ width:100% !important; border-radius:var(--radius) 
   .ya-tb .ya-head > td::before{ display:none !important; }
 }
 @media (max-width:599px){ .ya-grid{ grid-template-columns:1fr; padding:10px; gap:12px; } }
+
+/* Aufgaben-Modal: Aktivitätsverlauf unter dem Namen */
+.t-act-chart{margin:-2px 0 14px;padding:10px 12px 4px;border:1px solid var(--border-color);border-radius:var(--radius,10px);background:var(--bg-color,transparent)}
+.t-act-chart[hidden]{display:none!important}
+.t-act-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:11px;color:var(--text-muted);margin-bottom:2px}
+.t-act-head i{color:#cca300;margin-right:4px}
+.t-act-head b{font-size:12px;color:var(--text-main);white-space:nowrap}
+.t-act-head small{font-weight:400;color:var(--text-muted)}
+/* Aktivitätsverlauf: Kalenderwochen-Zeile */
+.bc-weeks{position:relative;height:28px;margin-top:3px}
+.bc-wk{position:absolute;top:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;min-width:0;overflow:hidden;padding:0 2px;box-sizing:border-box;line-height:1.15;cursor:default}
+.bc-wk b{font-size:10.5px;font-weight:600;color:var(--text-main);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bc-wk u{font-size:9.5px;color:var(--text-muted);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.bc-wk.is-tight u{display:none}
+.bc-wk + .bc-wk{border-left:1px dashed color-mix(in srgb,var(--text-muted) 35%,transparent)}

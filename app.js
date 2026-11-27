@@ -4567,6 +4567,7 @@ function renderTaskChecklistItem(container, title, done, dueDate='', assigneeId=
 function openTaskToCheckpoint(taskId, checkpointId) { openModal(taskId, checkpointId); }
 
 function openModal(taskId = null, _scrollToCpId = null) {
+    try { renderTaskActivityChart(taskId); } catch (e) {}
     populateTaskDropdowns(); document.getElementById('taskModal').classList.add('active'); switchTaskTab('tab-general', document.querySelector('#taskModal .modal-tab-btn')); 
     const container = document.getElementById('t_checklist_container'); container.innerHTML = '';
     document.getElementById('t_file_list').innerHTML = ''; document.getElementById('t_files').value = ''; document.getElementById('t_filepath').value = ''; currentTempFiles = [];
@@ -6781,7 +6782,7 @@ function dropTaskToColumn(e, newStatus) {
  * `valueByDate` ist eine Map { 'YYYY-MM-DD': Zahl }. `titleAttr` ist der Tooltip-Text des Charts.
  * Gibt '' zurück, wenn keine Werte vorliegen.
  */
-function buildBarCurveChartHtml(valueByDate, titleAttr) {
+function buildBarCurveChartHtml(valueByDate, titleAttr, opts) {
     const dates = Object.keys(valueByDate).sort((a, b) => new Date(a) - new Date(b));
     const N = dates.length;
     if (N === 0) return '';
@@ -6811,8 +6812,33 @@ function buildBarCurveChartHtml(valueByDate, titleAttr) {
     }
 
     const rangeLabel = N === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[N - 1])}`;
+
+    /* Optional: Kalenderwochen – aufeinanderfolgende Balken derselben ISO-Woche werden gruppiert,
+       abwechselnd hinterlegt und unter der Grafik mit „KW nn" beschriftet. */
+    let bandsD = '', weekRow = '';
+    if (opts && opts.weeks) {
+        const groups = [];
+        dates.forEach((d, i) => {
+            const dt = ttParse(d); const th = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 3 - (dt.getDay() + 6) % 7);
+            const key = th.getFullYear() + '-' + hwIsoWeek(d);
+            const g = groups[groups.length - 1];
+            if (g && g.key === key) { g.n++; g.h += valueByDate[d]; g.to = d; }
+            else groups.push({ key, wk: hwIsoWeek(d), yr: th.getFullYear(), start: i, n: 1, h: valueByDate[d], from: d, to: d });
+        });
+        const multiYear = groups.length > 1 && groups[0].yr !== groups[groups.length - 1].yr;
+        groups.forEach((g, gi) => {
+            const x = g.start * slotW, w = g.n * slotW;
+            if (gi % 2 === 0) bandsD += `<rect x="${x.toFixed(2)}" y="0" width="${w.toFixed(2)}" height="40" fill="currentColor" opacity="0.06"></rect>`;
+            if (gi > 0) bandsD += `<line x1="${x.toFixed(2)}" y1="0" x2="${x.toFixed(2)}" y2="40" stroke="currentColor" stroke-width="0.4" stroke-dasharray="1.5 1.5" opacity="0.35" vector-effect="non-scaling-stroke"></line>`;
+            const lbl = `${t('cw')} ${g.wk}${multiYear && (gi === 0 || groups[gi - 1].yr !== g.yr) ? ' · ' + g.yr : ''}`;
+            const tip = `${t('cw')} ${g.wk} / ${g.yr}: ${ttNum(g.h)} h (${ttFmtDate(g.from)}${g.from !== g.to ? ' – ' + ttFmtDate(g.to) : ''})`;
+            weekRow += `<span class="bc-wk${w < 9 ? ' is-tight' : ''}" style="left:${x.toFixed(2)}%; width:${w.toFixed(2)}%" title="${tip}"><b>${w < 9 ? g.wk : lbl}</b><u>${ttNum(g.h)} h</u></span>`;
+        });
+        weekRow = `<div class="bc-weeks">${weekRow}</div>`;
+    }
     return `<div style="margin-top:5px; margin-bottom:10px;">
-        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color);" title="${titleAttr || ''}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div style="height:40px; width:100%; position:relative; overflow:hidden; border-bottom:1px solid var(--border-color); color:var(--text-muted);" title="${titleAttr || ''}"><svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%; height:100%;">${bandsD}${barsD}<path d="${pathD}" fill="none" stroke="#cca300" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        ${weekRow}
         <div style="font-size:10px; color:var(--text-muted); text-align:right; margin-top:2px;">${rangeLabel}</div>
     </div>`;
 }
@@ -6915,6 +6941,20 @@ function buildWeeklyHoursChartHtml(taskIds, scaleMax) {
         <div class="wh-head" style="display:flex; justify-content:space-between; align-items:baseline; font-size:11px; color:var(--text-muted); margin-bottom:4px;"><span>${t('weekly_hours')}</span><b style="color:var(--text-main); font-size:12px;">${ttNum(total)} h</b></div>
         <div class="wh-chart" style="display:flex !important; align-items:flex-end !important; gap:8px; width:100%; height:auto !important;">${bars}</div>
     </div>`;
+}
+
+/* Aufgaben-Modal: Aktivitätsverlauf (Zeiterfassung) unter dem Aufgabennamen.
+   Berücksichtigt die Rechte (fremde Buchungen nur mit Freigabe); ohne Buchungen bleibt der Bereich verborgen. */
+function renderTaskActivityChart(taskId) {
+    const box = document.getElementById('t_activity_chart'); if (!box) return;
+    const logs = taskId ? (appData.timeLogs || []).filter(l => l && l.taskId === taskId && l.date && acLogVisible(l)) : [];
+    const agg = {}; let total = 0;
+    logs.forEach(l => { const h = parseFloat(l.hours) || 0; agg[l.date] = (agg[l.date] || 0) + h; total += h; });
+    const chart = logs.length ? buildBarCurveChartHtml(agg, t('activity_chart_title'), { weeks: true }) : '';
+    if (!chart) { box.hidden = true; box.innerHTML = ''; return; }
+    const days = Object.keys(agg).length;
+    box.innerHTML = `<div class="t-act-head"><span><i class="fas fa-chart-line"></i> ${t('activity_chart_title')}</span><b>${ttNum(total)} h <small>· ${_tf('t_act_days', { n: days })}</small></b></div>${chart}`;
+    box.hidden = false;
 }
 
 function buildActivitySparklineHtml(taskIds) {

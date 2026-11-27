@@ -34,7 +34,7 @@
     </script>
 
     <!-- Eigenes CSS -->
-    <link rel="stylesheet" href="styles.css?v=20261126-78">
+    <link rel="stylesheet" href="styles.css?v=20261127-80">
 </head>
 <body onclick="closeAllMultiSelects(event)">
     <!-- Compat: Logo-Elemente für JS-Rückwärtskompatibilität (sichtbare Vorschau liegt in den Einstellungen) -->
@@ -514,6 +514,7 @@
                         <span class="form-label" data-i18n="t_name">Aufgabenname</span>
                         <input type="text" id="t_project" required style="font-size: 20px; font-weight: bold; padding: 15px;" oninput="syncModalTitle('modalTitle', this.value, 'task_new')">
                     </div>
+                    <div id="t_activity_chart" class="t-act-chart" hidden></div>
                     
                     <div class="form-grid-2">
                         <div><span class="form-label" data-i18n="t_stack">Zugehöriges Projekt-Stack</span><select id="t_projectStack"></select></div>
@@ -1350,8 +1351,8 @@
     <!-- Eigenes JavaScript -->
     <!-- Motion (Framer-Motion-Engine als Vanilla-JS) für die UI-Animationen -->
     <script src="https://cdn.jsdelivr.net/npm/motion@12.23.24/dist/motion.js"></script>
-    <script src="i18n.js?v=20261126-78"></script>
-    <script src="app.js?v=20261126-78"></script>
+    <script src="i18n.js?v=20261127-80"></script>
+    <script src="app.js?v=20261127-80"></script>
 
 </body>
 </html>
