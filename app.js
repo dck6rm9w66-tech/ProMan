@@ -7023,14 +7023,140 @@ function taskHistoryEvents(task) {
 
 /* Aufgaben-Modal: Aktivitätsverlauf (Zeiterfassung) unter dem Aufgabennamen.
    Berücksichtigt die Rechte (fremde Buchungen nur mit Freigabe); ohne Buchungen bleibt der Bereich verborgen. */
-function renderTaskActivityChart(taskId) {
-    const box = document.getElementById('t_activity_chart'); if (!box) return;
-    const logs = taskId ? (appData.timeLogs || []).filter(l => l && l.taskId === taskId && l.date && acLogVisible(l)) : [];
+/* Gemeinsame Datengrundlage für Modal-Grafik und Exporte (Rechte für fremde Buchungen berücksichtigt) */
+function taskActivityData(task) {
+    const logs = task ? (appData.timeLogs || []).filter(l => l && l.taskId === task.id && l.date && acLogVisible(l)) : [];
     const agg = {}; let total = 0;
     logs.forEach(l => { const h = parseFloat(l.hours) || 0; agg[l.date] = (agg[l.date] || 0) + h; total += h; });
-    const task = taskId ? (appData.tasks || []).find(x => x.id === taskId) : null;
     const evs = task ? taskHistoryEvents(task) : [];
     const evMap = {}; evs.forEach(ev => { (evMap[ev.date] = evMap[ev.date] || []).push(ev); });
+    return { logs, agg, total, evs, evMap, empty: !logs.length && !evs.length };
+}
+
+/* Aktivitätsverlauf als PNG (für PDF- und Word-Export): gleiche Logik wie die Modal-Grafik –
+   Balken je Tag + Trendkurve, Kalenderwochen, Aktivitäten-Icons und Legende, auf weissem Grund.
+   Gibt { url, w, h } (logische Pixel) oder null zurück. */
+const ACT_EXPORT_COLORS = { done: '#1f9463', status: null, pause: '#d98a00', resume: '#d98a00', ms: '#8e5bd6', cp: '#3b82c4', prio: '#d9342b', date: '#2a9d9b', note: '#6e7681' };
+const ACT_GLYPHS = { 'fa-check-circle': '\uf058', 'fa-exchange-alt': '\uf362', 'fa-pause': '\uf04c', 'fa-play': '\uf04b', 'fa-flag-checkered': '\uf11e', 'fa-check-square': '\uf14a', 'fa-exclamation': '\uf12a', 'fa-calendar-alt': '\uf073', 'fa-comment': '\uf075' };
+async function taskActivityChartImage(task) {
+    const D = taskActivityData(task);
+    if (D.empty) return null;
+    let fa = false;
+    try { await document.fonts.load('900 16px "Font Awesome 6 Free"'); fa = document.fonts.check('900 16px "Font Awesome 6 Free"'); } catch (e) {}
+    const FONT = 'Helvetica, Arial, sans-serif';
+    const INK = '#22262b', MUTED = '#6e7681', BORDER = '#d9dde2', GOLD = '#cca300';
+    const accent = appData.customColor || GOLD;
+    const colOf = (type) => ACT_EXPORT_COLORS[type] || accent;
+    const dates = Array.from(new Set([...Object.keys(D.agg), ...Object.keys(D.evMap)])).sort();
+    const N = dates.length;
+    const W = 1000, PAD = 4, chartH = 120, evH = D.evs.length ? 38 : 0, wkH = 44, rangeH = 24;
+    const plotW = W - PAD * 2, slot = plotW / N;
+    /* Legende vorab messen (Zeilenumbruch) */
+    const cnv0 = document.createElement('canvas').getContext('2d');
+    const cnt = {}; D.evs.forEach(ev => { cnt[ev.type] = (cnt[ev.type] || 0) + 1; });
+    const items = [];
+    if (D.logs.length) items.push({ type: 'time', label: t('act_type_time'), n: D.logs.length });
+    ACT_TYPES.filter(a => cnt[a.type]).forEach(a => items.push({ type: a.type, icon: a.icon, label: t('act_type_' + a.type), n: cnt[a.type] }));
+    const LG_FS = 16, LG_ROW = 28, LG_GAP = 26;
+    let lx = PAD, rows = 1;
+    items.forEach(it => {
+        cnv0.font = `${LG_FS}px ${FONT}`; const tw = cnv0.measureText(it.label + ' ').width;
+        cnv0.font = `bold ${LG_FS}px ${FONT}`; const nw = cnv0.measureText(String(it.n)).width;
+        it.w = 22 + tw + nw;
+        if (lx + it.w > W - PAD && lx > PAD) { rows++; lx = PAD; }
+        it.row = rows - 1; it.x = lx; lx += it.w + LG_GAP;
+    });
+    const lgH = items.length ? rows * LG_ROW + 8 : 0;
+    const H = chartH + evH + wkH + rangeH + lgH;
+    const S = 2;
+    const cv = document.createElement('canvas'); cv.width = W * S; cv.height = H * S;
+    const c = cv.getContext('2d'); c.scale(S, S);
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, H);
+    c.textBaseline = 'alphabetic';
+
+    /* Kalenderwochen gruppieren */
+    const groups = [];
+    dates.forEach((d, i) => {
+        const dt = ttParse(d); const th = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 3 - (dt.getDay() + 6) % 7);
+        const key = th.getFullYear() + '-' + hwIsoWeek(d); const g = groups[groups.length - 1]; const v = D.agg[d] || 0;
+        if (g && g.key === key) { g.n++; g.h += v; } else groups.push({ key, wk: hwIsoWeek(d), yr: th.getFullYear(), start: i, n: 1, h: v });
+    });
+    const multiYear = groups.length > 1 && groups[0].yr !== groups[groups.length - 1].yr;
+    groups.forEach((g, gi) => {
+        const x = PAD + g.start * slot, w = g.n * slot;
+        if (gi % 2 === 0) { c.fillStyle = 'rgba(110,118,129,0.07)'; c.fillRect(x, 0, w, chartH); }
+        if (gi > 0) { c.save(); c.strokeStyle = 'rgba(110,118,129,0.45)'; c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(x, 0); c.lineTo(x, chartH + evH + wkH - 6); c.stroke(); c.restore(); }
+    });
+    /* Balken + Kurve */
+    const maxV = Math.max(...Object.values(D.agg), 0.1), base = chartH - 10, sc = chartH - 26;
+    const barW = Math.min(slot * 0.55, 34); const pts = [];
+    dates.forEach((d, i) => {
+        const v = D.agg[d] || 0; if (v <= 0) return;
+        const cx = PAD + (i + 0.5) * slot, h = v / maxV * sc, y = base - h;
+        c.fillStyle = 'rgba(204,163,0,0.35)'; c.fillRect(cx - barW / 2, y, barW, h);
+        pts.push({ x: cx, y });
+    });
+    if (pts.length) {
+        c.strokeStyle = GOLD; c.lineWidth = 3; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath();
+        if (pts.length === 1) { c.moveTo(pts[0].x - slot / 2, pts[0].y); c.lineTo(pts[0].x + slot / 2, pts[0].y); }
+        else {
+            c.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length - 1; i++) { const xc = (pts[i].x + pts[i + 1].x) / 2, yc = (pts[i].y + pts[i + 1].y) / 2; c.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
+            c.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+        }
+        c.stroke();
+    }
+    c.strokeStyle = BORDER; c.lineWidth = 1; c.beginPath(); c.moveTo(0, chartH - 0.5); c.lineTo(W, chartH - 0.5); c.stroke();
+
+    /* Icon zeichnen (Font Awesome, sonst farbiger Punkt) */
+    const drawIcon = (icon, color, x, y, size) => {
+        if (fa && ACT_GLYPHS[icon]) { c.fillStyle = color; c.font = `900 ${size}px "Font Awesome 6 Free"`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(ACT_GLYPHS[icon], x, y + 0.5); c.textBaseline = 'alphabetic'; c.textAlign = 'left'; }
+        else { c.fillStyle = color; c.beginPath(); c.arc(x, y, size * 0.38, 0, Math.PI * 2); c.fill(); }
+    };
+    /* Aktivitäten-Zeile */
+    if (evH) {
+        const cy = chartH + evH / 2 + 1, R = 13;
+        dates.forEach((d, i) => {
+            const evs = D.evMap[d]; if (!evs || !evs.length) return;
+            const top = evs.slice().sort((a, b) => (a.rank || 9) - (b.rank || 9))[0];
+            const cx = PAD + (i + 0.5) * slot;
+            c.fillStyle = '#ffffff'; c.strokeStyle = BORDER; c.lineWidth = 1.5; c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.fill(); c.stroke();
+            drawIcon(top.icon, colOf(top.type), cx, cy, 13);
+            if (evs.length > 1) {
+                const bx = cx + R - 2, by = cy - R + 1; c.fillStyle = INK; c.beginPath(); c.arc(bx, by, 8, 0, Math.PI * 2); c.fill();
+                c.fillStyle = '#fff'; c.font = `bold 11px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(evs.length), bx, by + 0.5); c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+            }
+        });
+    }
+    /* Wochen-Beschriftung */
+    const wy = chartH + evH;
+    groups.forEach((g, gi) => {
+        const x = PAD + g.start * slot, w = g.n * slot, cx = x + w / 2;
+        const lbl = w < 70 ? String(g.wk) : `${t('cw')} ${g.wk}${multiYear && (gi === 0 || groups[gi - 1].yr !== g.yr) ? ' · ' + g.yr : ''}`;
+        c.textAlign = 'center'; c.fillStyle = INK; c.font = `bold 16px ${FONT}`; c.fillText(lbl, cx, wy + 18, Math.max(10, w - 4));
+        if (g.h > 0 && w >= 50) { c.fillStyle = MUTED; c.font = `14px ${FONT}`; c.fillText(ttNum(g.h) + ' h', cx, wy + 36, Math.max(10, w - 4)); }
+        c.textAlign = 'left';
+    });
+    /* Zeitraum */
+    c.fillStyle = MUTED; c.font = `14px ${FONT}`; c.textAlign = 'right';
+    c.fillText(N === 1 ? ttFmtDate(dates[0]) : `${ttFmtDate(dates[0])} – ${ttFmtDate(dates[N - 1])}`, W - PAD, chartH + evH + wkH + 16);
+    c.textAlign = 'left';
+    /* Legende */
+    const ly0 = chartH + evH + wkH + rangeH + 4;
+    items.forEach(it => {
+        const y = ly0 + it.row * LG_ROW + LG_ROW / 2, x = it.x;
+        if (it.type === 'time') { c.fillStyle = 'rgba(204,163,0,0.45)'; c.fillRect(x + 2, y - 8, 12, 16); c.fillStyle = GOLD; c.fillRect(x + 2, y - 8, 12, 3); }
+        else drawIcon(it.icon, colOf(it.type), x + 8, y, 14);
+        c.textBaseline = 'middle'; c.fillStyle = MUTED; c.font = `${LG_FS}px ${FONT}`; c.fillText(it.label + ' ', x + 22, y + 1);
+        const tw = c.measureText(it.label + ' ').width; c.fillStyle = INK; c.font = `bold ${LG_FS}px ${FONT}`; c.fillText(String(it.n), x + 22 + tw, y + 1); c.textBaseline = 'alphabetic';
+    });
+    return { url: cv.toDataURL('image/png'), w: W, h: H, total: D.total, hasLogs: D.logs.length > 0 };
+}
+
+function renderTaskActivityChart(taskId) {
+    const box = document.getElementById('t_activity_chart'); if (!box) return;
+    const task = taskId ? (appData.tasks || []).find(x => x.id === taskId) : null;
+    const { logs, agg, total, evs, evMap } = taskActivityData(task);
     const chart = (logs.length || evs.length) ? buildBarCurveChartHtml(agg, t('activity_chart_title'), { weeks: true, events: evMap }) : '';
     if (!chart) { box.hidden = true; box.innerHTML = ''; return; }
     /* Legende: nur Arten, die vorkommen, mit Anzahl; gebuchte Zeit als Balken-Muster */
@@ -10529,7 +10655,7 @@ function wordStackBlock(stack) {
 }
 
 /* Eine vollständige Aufgabenkarte inkl. Notizen, Checkliste, Dateien und Historie */
-function wordTaskBlock(task) {
+function wordTaskBlock(task, actImg) {
     const accent = wordAccent();
     let shName = '-', shColor = accent;
     if (task.stakeholderId) {
@@ -10563,6 +10689,13 @@ function wordTaskBlock(task) {
         [_t('x_target'), fmt(task.dueDate)],
         [_t('x_effort'), `${task.spentTime || 0} / ${task.estimatedTime || 0} h`]
     ]);
+
+    /* Aktivitätsverlauf (Zeiterfassung + Historie) als Bild; 17 cm = Satzspiegel A4 bei 2 cm Rand */
+    if (actImg && actImg.url) {
+        const wPx = 640, hPx = Math.round(actImg.h / actImg.w * wPx);
+        h += wordSection(t('activity_chart_title')).replace(/<\/div>$/, actImg.hasLogs ? ` <span style="text-transform:none; color:#6e7681; font-weight:normal;">· ${ttNum(actImg.total)} h</span></div>` : '</div>');
+        h += `<p style="margin:0 0 6pt 0;"><img src="${actImg.url}" width="${wPx}" height="${hPx}" style="width:17cm; height:${(hPx / wPx * 17).toFixed(2)}cm;" /></p>`;
+    }
 
     if (task.description && task.description.trim() && task.description !== '<br>') {
         h += wordSection(t('sec_notes'));
@@ -10638,7 +10771,11 @@ async function exportWord(opts) {
     let details = '';
     if (tasks.length) {
         details += `<h2 style="font-family:Helvetica,Arial,sans-serif; font-size:15pt; color:#22262b; border-bottom:1.5pt solid #cccccc; padding-bottom:4pt; margin-top:24pt;">${t('sec_details')}</h2>`;
-        tasks.forEach(tk => { details += wordTaskBlock(tk); });
+        for (const tk of tasks) {
+            let img = null;
+            try { img = await taskActivityChartImage(tk); } catch (e) { console.warn('Aktivitätsverlauf für Word fehlgeschlagen', e); }
+            details += wordTaskBlock(tk, img);
+        }
     }
 
     let attachments = '';
@@ -11098,6 +11235,19 @@ async function createPDF(tasksArray, docTitle, filename, stackObj = null, extraF
         yPos = metaRow(_t('x_start'), pdfFormatDateTime(task.startDate), _t('x_target'), pdfFormatDateTime(task.dueDate), yPos);
         yPos = metaRow(_t('x_effort'), `${task.spentTime || 0} / ${task.estimatedTime || 0} h`, _t('x_assignee'), (() => { const u = appData.users.find(x => x.id === task.assigneeId); return u ? u.name : '-'; })(), yPos);
         yPos += 1;
+
+        /* Aktivitätsverlauf (Zeiterfassung + Historie) als Grafik */
+        try {
+            const img = await taskActivityChartImage(task);
+            if (img) {
+                const hMm = img.h / img.w * contentWidth;
+                yPos = ensureSpace(hMm + 12, yPos);
+                yPos = sectionTitle(t('activity_chart_title'), yPos);
+                if (img.hasLogs) { doc.setFontSize(10); doc.setFont("helvetica", "bold"); setInk(); doc.text(ttNum(img.total) + ' h', pageWidth - M, yPos - 5.5, { align: 'right' }); }
+                doc.addImage(img.url, 'PNG', M, yPos - 1, contentWidth, hMm);
+                yPos += hMm + 4;
+            }
+        } catch (e) { console.warn('Aktivitätsverlauf für PDF fehlgeschlagen', e); }
 
         if(task.description) { yPos = sectionTitle(_t('x_notes'), yPos); yPos = await renderRTFToPDF(task.description, M, yPos, contentWidth); yPos += 2; }
         if(task.checklist && task.checklist.length > 0) {
